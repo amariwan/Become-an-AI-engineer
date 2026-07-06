@@ -644,6 +644,55 @@ Der Unterschied zwischen einem Hobby-Projekt und einem Portfolio-Projekt liegt n
     \item Wie hast du die Qualität deines Chatbots gemessen und verbessert?
 \end{enumerate}
 
+% ============================================================
+% INTERVIEWFRAGEN
+% ============================================================
+\section{Interviewfragen}
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Architektur deines letzten KI-Projekts \& Entscheidungsgründe?}
+
+    \textbf{Antwort:} Event-Driven via FastAPI/Celery für Async-RAG-Ingest. Qdrant (HNSW) für Search. LiteLLM als Fallback-Gateway. WebSockets fürs Token-Streaming zum Frontend.
+
+    \item \textbf{Schwierigster Bug und Lösung?}
+
+    \textbf{Antwort:} Silent Data Contamination. PDFs wurden falsch geparst, RAG lieferte Müll. Lösung: Pydantic ETL-Validierung vor dem Embedding, um Parsing-Success zu garantieren.
+
+    \item \textbf{RAG für 1 Million Dokumente optimieren?}
+
+    \textbf{Antwort:} Hierarchisches Chunking, Metadaten-Partitioning (Filtern vor Vector-Search) und hybride Suche (BM25 + Dense) mit Cross-Encoder Re-Ranking.
+
+    \item \textbf{Integration einer Legacy-API per Agent?}
+
+    \textbf{Antwort:} Legacy-API hatte kein OpenAPI-Spec. Lösung: Custom Middleware gebaut, die JSON-RPC auf modernes REST mappt, damit der LLM-Agent strikte Pydantic-Tools nutzen konnte.
+
+    \item \textbf{System von 10 auf 1.000 User skaliert. Was brach zuerst?}
+
+    \textbf{Antwort:} Das Rate-Limit des Provider-Tier. Lösung: Multi-Key Rotation im Gateway, asynchrones Caching und Batching für unkritische Background-Tasks.
+
+    \item \textbf{Wie hast du Edge Cases (User tippt nur "Hilfe") abgefangen?}
+
+    \textbf{Antwort:} Semantic Router. Kurze, generische Intent-Queries bypassen RAG und LLM komplett und liefern eine deterministische FAQ-Liste aus dem UI zurück (0ms Latenz, 0 API Kosten).
+
+    \item \textbf{Disaster Recovery Plan für lokale LLMs?}
+
+    \textbf{Antwort:} Modell-Gewichte (Safetensors) in S3 gebackupt. Terraform-Scripts, die in einer Backup-Region GPU-Spot-Instanzen hochziehen, Gewichte mounten und vLLM starten (RTO < 10 Min).
+
+    \item \textbf{Wie verhinderst du Vector-DB Schema-Migration Nightmares?}
+
+    \textbf{Antwort:} Vektor-DB niemals als Source of Truth nutzen. Originaldaten in PostgreSQL. Vector-DB ist reiner abgeleiteter Index, der bei Schema-Änderung aus Postgres komplett neu gebuildet wird.
+
+    \item \textbf{User Feedback Loop architektonisch umgesetzt?}
+
+    \textbf{Antwort:} Thumbs-Up/Down in UI sendet `trace\_id` ans Backend. Payload wird direkt in eine ClickHouse-Tabelle (Golden Dataset Pipeline) geschrieben für zukünftiges DPO/Fine-Tuning.
+
+    \item \textbf{Build vs. Buy Evaluierungsprozess im Team?}
+
+    \textbf{Antwort:} Proof of Concept (PoC) immer mit der besten Kauf-API (GPT-4o) bauen, um UX zu validieren. Erst wenn Unit-Economics (Kosten) bei Scale nicht stimmen, bauen wir ein eigenes OSS-Setup.
+
+
+\end{enumerate}
+
 \section{Ressourcen}
 
 \begin{itemize}[leftmargin=*]

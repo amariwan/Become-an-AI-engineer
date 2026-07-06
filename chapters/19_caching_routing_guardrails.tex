@@ -29,7 +29,7 @@ Parallel zum Caching braucht jedes Produktionssystem \textbf{Guardrails} -- Vali
 
 Und zwischen diesen Ebenen vermittelt der \textbf{Semantic Router}: Er entscheidet anhand der Intent-Erkennung, welches Modell, welche Pipeline oder welcher Cache für eine Anfrage zuständig ist.
 
-% ===========================================================%
+% ============================================================
 % GRUNDLAGEN
 % ===========================================================%
 \section{Grundlagen -- Die drei Caching-Ebenen}
@@ -696,36 +696,55 @@ Caching ist der effektivste Hebel zur Kostensenkung in LLM-Systemen -- 20--40\,\
 
 \textbf{Erfolgskriterium:} Mindestens 25\,\% Cache-Hit-Rate, null PII-Leaks, null Budget-Überschreitungen.
 
-% ===========================================================%
+% ============================================================
 % INTERVIEWFRAGEN
-% ===========================================================%
+% ============================================================
 \section{Interviewfragen}
 
 \begin{enumerate}[leftmargin=*]
-    \item \textbf{Erkläre den Unterschied zwischen Response Caching und Semantic Caching. Wann setzt du welches ein?}
+    \item \textbf{User bekommt Cache-Antwort mit privaten Daten eines anderen Users. Ursache?}
 
-    \textbf{Antwort:} Response Cached speichert exakte Input-Output-Paare (Hash-basiert). Semantic Cached speichert Embedding-Vektoren und findet semantisch ähnliche Anfragen. Response Caching für identische Wiederholungen (Bestellstatus), Semantic Caching für variierende Formulierungen (Support-Fragen).
+    \textbf{Antwort:} PII wurde *nach* dem Caching maskiert. PII muss zwingend vor der Hash-/Vector-Generierung aus dem Payload entfernt werden.
 
-    \item \textbf{Ein User bekommt eine Antwort aus dem Semantic Cache, die sich auf einen \textit{anderen} User bezieht. Was ist passiert?}
+    \item \textbf{Semantic Router (Embedding-basiert) routet 20 \% falsch. Fix?}
 
-    \textbf{Antwort:} Die PII-Redaktion wurde \textit{nach} dem Caching durchgeführt, nicht davor. User-spezifische Daten (Name, Bestellnummer) wurden im Cache gespeichert und an einen anderen User ausgeliefert. Lösung: PII vor dem Caching redigieren und personalisierte Felder vom Caching ausschliessen.
+    \textbf{Antwort:} Confidence-Score Threshold tunen, Vektor-DB auf hochwertigeres Embedding-Modell umstellen und ein "Fallback-Intent" definieren, wenn die Distanz zu groß ist.
 
-    \item \textbf{Dein Semantic Router routet 20\,\% aller Anfragen falsch. Was machst du?}
+    \item \textbf{Response Caching vs Semantic Caching?}
 
-    \textbf{Antwort:} (1) Intent-Definitionen prüfen und ggf. trennen. (2) Confidence-Score einführen: Bei Score $<$ 0,7 Fallback-Router mit GPT-4o-mini. (3) Embedding-basierten Router (MiniLM) statt LLM-basiertem Router testen. (4) Falsch klassifizierte Beispiele sammeln und in den Router integrieren.
+    \textbf{Antwort:} Response = Exakter String-Hash (Redis). Semantic = Vektor-Suche, erkennt auch umformulierte Fragen ("Wie ist das Wetter?" = "Regnet es?"). Semantic erfordert einen Embedding-Call.
 
-    \item \textbf{Wie stellst du sicher, dass ein Cache-Eintrag noch gültig ist?}
+    \item \textbf{Architektur von NeMo Guardrails / LlamaGuard?}
 
-    \textbf{Antwort:} TTL (Time-to-Live) für jeden Cache-Eintrag. FAQ: 24h, Status: 5 Min, Preise: 1h. Bei Prompt-Änderungen: Cache-Version im Key (z.\,B. \texttt{prompt\_v2\_<hash>}). Bei Modellwechsel: komplette Cache-Invalidierung.
+    \textbf{Antwort:} Sie operieren als Middleware. Input-Rail blockt böse Prompts, Dialog-Rail erzwingt Flows (z.B. "Darf nicht über Politik reden"), Output-Rail scannt LLM-Antwort vor Delivery. Latenz-Tradeoff.
 
-    \item \textbf{Wie berechnest du die Kosteneinsparung durch Caching?}
+    \item \textbf{Cache Invalidation Strategien bei Modellen?}
 
-    \textbf{Antwort:} Kosten ohne Cache: Requests $\times$ Cost pro Request. Kosten mit Cache: (Cache-Hits $\times$ 0) + (Cache-Misses $\times$ Cost pro Request) + Embedding-Kosten. Einsparung: (Hits / Total) $\times$ Total Cost. Beispiel: 30\,\% Hit-Rate bei 10.000 Requests/Tag zu 0,002 EUR = 6 EUR/Tag Ersparnis.
+    \textbf{Antwort:} Der Cache-Key muss zwingend die Modell-Version und den Hash des System-Prompts enthalten. Ändert sich der System-Prompt, wird der Cache für alle User automatisch invalidiert.
 
-    \item \textbf{Wie schützt du ein LLM-System vor einem Denial-of-Wallet-Angriff?}
+    \item \textbf{Latenz-Impact von Input-Guardrails minimieren?}
 
-    \textbf{Antwort:} Drei Ebenen: (1) Rate-Limiting pro User/IP (60 Requests/min). (2) Budget-Limit pro User/Tag (5 EUR). (3) Globales Budget (100 EUR/Tag). Bei Überschreitung: Request blockieren, Alarm auslösen, Admin benachrichtigen. Zusätzlich: Input-Länge limitieren (4.096 Zeichen) und teure Modelle nur für autorisierte User.
+    \textbf{Antwort:} Keine schweren LLMs als Guard nutzen. Lokale BERT-Klassifikatoren oder Heuristiken (Regex) vorschalten, die asynchron in <10ms feuern.
+
+    \item \textbf{Dynamic Thresholding beim Semantic Cache?}
+
+    \textbf{Antwort:} Der Threshold (Similarity Score) wird je nach Domain angepasst. Bei medizinischen Fragen 0.99 (fast Exact Match nötig), bei Smalltalk reicht 0.85 für einen Cache-Hit.
+
+    \item \textbf{Denial-of-Wallet-Abwehr über Routing?}
+
+    \textbf{Antwort:} Wenn der Rate-Limiter zuschlägt, Request nicht droppen (schlechte UX), sondern hart auf ein extrem günstiges lokales Modell (CPU-basiert) oder GPT-4o-mini umrouten ("Degraded Mode").
+
+    \item \textbf{Kostenberechnung: Lohnt sich Semantic Caching?}
+
+    \textbf{Antwort:} Formel: \$(Hits * LLM\\_Cost) - (Total\\_Calls * Embedding\\_Cost)\$. Caching lohnt sich finanziell nur, wenn die Embedding-Inference drastisch günstiger ist als der gesparte LLM-Aufruf.
+
+    \item \textbf{Wie baust du eine Fallback-Chain im Code robust ein?}
+
+    \textbf{Antwort:} Try-Catch Block mit Circuit-Breaker-Pattern (LiteLLM). Nach 3 fails auf Provider A öffnet sich der Circuit, und Provider B übernimmt für 5 Minuten den gesamten Traffic.
+
+
 \end{enumerate}
+
 
 % ===========================================================%
 % RESSOURCEN
@@ -742,4 +761,3 @@ Caching ist der effektivste Hebel zur Kostensenkung in LLM-Systemen -- 20--40\,\
 \end{itemize}
 
 \textbf{Nächster Schritt:} Der Übergang von der Optimierung zum Deployment -- wie bringst du dein optimiertes System in Produktion.
-\endinput

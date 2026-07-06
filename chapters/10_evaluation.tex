@@ -814,13 +814,49 @@ Füge ein Budget-Limit hinzu, das die Pipeline abbricht, wenn die Evaluationskos
 \section{Interviewfragen}
 
 \begin{enumerate}[leftmargin=*]
-    \item Erkläre den Unterschied zwischen Offline-Evaluation und Online-Monitoring. Wann brauchst du welche?
-    \item Was ist ein Golden Dataset und wie pflegst du es über die Zeit?
-    \item Welche Biases hat LLM-as-a-Judge? Wie mitigierst du sie?
-    \item Wie würdest du die Qualität eines RAG-Systems in der Produktion messen?
-    \item Ein Prompt-Update verbessert einen Use-Case, verschlechtert aber drei andere. Wie gehst du vor?
-    \item Dein LLM-Judge-Score sinkt plötzlich von 8.5 auf 6.2. Was sind die ersten Schritte zur Analyse?
+    \item \textbf{Offline-Evaluation vs Online-Monitoring?}
+
+    \textbf{Antwort:} Offline (CI/CD) testet deterministisch gegen Golden Datasets vor dem Merge. Online (Produktion) misst probabilistisch Drift, Latenz und User-Feedback.
+
+    \item \textbf{Was ist ein Golden Dataset und wie pflegt man es?}
+
+    \textbf{Antwort:} Manuelle Edge-Cases (Inputs + erwartete Outputs). Pflege durch "Hard-Mining": Fehlerhafte Prod-Queries werden korrigiert und per DVC ins Set aufgenommen.
+
+    \item \textbf{LLM-as-a-Judge Biases mitigieren?}
+
+    \textbf{Antwort:} Position Bias und Verbosity Bias bekämpfen durch Answer-Swapping, granulare Rubriken statt 1-10 Skalen und Few-Shot Kalibrierung.
+
+    \item \textbf{Prompt-Update verbessert Use-Case A, zerstört B. Vorgehen?}
+
+    \textbf{Antwort:} Intent-Splitting. Semantic Router vorschalten: Use-Case A bekommt den neuen Prompt, B wird über die alte, stabile Baseline geroutet.
+
+    \item \textbf{LLM-Judge-Score sinkt plötzlich von 8.5 auf 6.2 in Produktion. Erste Analyse?}
+
+    \textbf{Antwort:} Prüfen auf stillschweigende Model-Weight-Updates beim Provider oder Data Drift (User fragen plötzlich nach Themen außerhalb des RAG-Kontexts).
+
+    \item \textbf{RAGAS Metriken: Faithfulness vs Answer Relevance?}
+
+    \textbf{Antwort:} Faithfulness = Basieren alle Aussagen strikt auf den RAG-Chunks? Answer Relevance = Beantwortet der Text die User-Query präzise (ohne Ausschweifungen)?
+
+    \item \textbf{Wie testest du Non-Deterministic Outputs (Kreatives Schreiben)?}
+
+    \textbf{Antwort:} Exact Match funktioniert nicht. Semantic Similarity Search (Embedding der Antwort vs Ground Truth) oder LLM-basierte Kriterien-Prüfung (z.B. "Enthält 3 Argumente").
+
+    \item \textbf{A/B Testing von LLMs in Produktion?}
+
+    \textbf{Antwort:} Shadow Deployment. Request geht an Modell A (antwortet User) und asynchron an Modell B (nur geloggt). Offline vergleicht ein Judge die Outputs.
+
+    \item \textbf{Kosten von kontinuierlichen LLM-Evals senken?}
+
+    \textbf{Antwort:} Für Evals auf kleine, extrem stark instruktions-getunte OSS-Modelle (Prometheus-Eval) ausweichen statt jede Eval-Zeile über GPT-4o zu jagen.
+
+    \item \textbf{Wie validierst du den LLM-Judge selbst?}
+
+    \textbf{Antwort:} Meta-Evaluation. Menschliche Annotatoren bewerten 200 Samples. Die Übereinstimmung (Cohen's Kappa) zwischen Mensch und LLM-Judge muss > 0.8 liegen.
+
+
 \end{enumerate}
+
 
 % ============================================================
 % RESSOURCEN

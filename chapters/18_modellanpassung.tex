@@ -481,40 +481,55 @@ Fine-Tuning ist kein Ersatz für RAG, sondern eine Ergänzung. RAG liefert Fakte
 
 \textbf{Erfolgskriterium:} Das Modell generiert korrektes SQL für 90\,\% der Test-Query. Die MMLU-Accuracy sinkt um maximal 5\,\%.
 
-% ===========================================================%
+% ============================================================
 % INTERVIEWFRAGEN
-% ===========================================================%
+% ============================================================
 \section{Interviewfragen}
 
 \begin{enumerate}[leftmargin=*]
-    \item \textbf{Wann würdest du Fine-Tuning statt RAG einsetzen?}
+    \item \textbf{LoRA-Mechanismus. Was ist der Rank (\$r\$)?}
 
-    \textbf{Antwort:} Fine-Tuning, wenn das Modell ein spezifisches Output-Format erlernen muss (SQL, JSON-Schema, E-Mail-Stil), das durch Prompting nicht zuverlässig erreichbar ist. RAG, wenn faktenbasierte Antworten mit aktuellem Wissen benötigt werden. Kombination: FT für Format/Kompetenz + RAG für Fakten.
+    \textbf{Antwort:} Statt Milliarden Gewichte anzupassen, lernt LoRA zwei kleine Low-Rank-Matrizen \$A\$ und \$B\$. Der Rank \$r\$ definiert die "Lernkapazität" (Dimension). Zu hoch = Overfitting, zu niedrig = Underfitting.
 
-    \item \textbf{Erkläre den Mechanismus von LoRA. Was ist der Rang?}
+    \item \textbf{Multi-LoRA Serving in Produktion?}
 
-    \textbf{Antwort:} LoRA fügt zwei trainierbare Matrizen A und B pro Schicht hinzu, deren Produkt die Gewichtsänderung approximiert. Rang r bestimmt die Dimension der Matrizen: A hat Shape (hidden, r), B hat Shape (r, hidden). Höherer Rang = mehr Kapazität, aber auch mehr Overfitting.
+    \textbf{Antwort:} Das schwere Basismodell (z.B. Llama 3) bleibt 1x im VRAM. Die winzigen LoRA-Adapter (wenige MB) werden per Request (Dynamic Adapter Loading) im vLLM on-the-fly in den Batch injiziert.
 
-    \item \textbf{Dein fine-getuntes Modell ist super in der neuen Aufgabe, beantwortet aber keine Allgemeinwissen-Fragen mehr. Was ist passiert?}
+    \item \textbf{Modell verlernt nach Fine-Tuning sein Allgemeinwissen. Fix?}
 
-    \textbf{Antwort:} Catastrophic Forgetting. Das Dataset enthielt zu wenige allgemeine Beispiele oder die Lernrate war zu hoch. Lösung: Dataset um 20\,\% allgemeine Wissensfragen erweitern, Lernrate senken, LoRA-Rang prüfen (niedriger = weniger Änderung).
+    \textbf{Antwort:} Catastrophic Forgetting. Das Dataset muss Replay-Data (20-30\% alte, generische Prompts) enthalten, um die alten Gewichtungs-Cluster zu stabilisieren.
 
-    \item \textbf{Wie gehst du vor, wenn du LoRA-Gewichte in Produktion bringen willst, aber nur einen Inference-Server hast?}
+    \item \textbf{DPO (Direct Preference Optimization) vs RLHF?}
 
-    \textbf{Antwort:} Multi-LoRA-Serving mit vLLM: Der Server lädt das Basismodell einmal und blendet pro Request den passenden Adapter ein. Speicher-Overhead pro Adapter: einige MB. alternative: LoRA-Gewichte in das Basismodell mergen und deployen (kein separater Adapter nötig).
+    \textbf{Antwort:} RLHF erfordert ein separates Reward-Model und komplexe PPO-Pipelines. DPO optimiert das Modell direkt mathematisch auf Basis von "Chosen vs. Rejected" Paaren. DPO ist leichter, billiger und stabiler.
 
-    \item \textbf{Wie gross sollte ein Fine-Tuning-Dataset mindestens sein?}
+    \item \textbf{Wie bestimmst du die Lernrate für LoRA vs Full Fine-Tuning?}
 
-    \textbf{Antwort:} 100 Beispiele pro Task, 500+ für zuverlässige Ergebnisse. Wichtiger als Quantität ist Qualität: Ein fehlerhaftes Beispiel trainiert das Modell falsch. 500 manuell geprüfte Beispiele sind wertvoller als 5.000 automatisierte.
+    \textbf{Antwort:} LoRA benötigt viel höhere Lernraten (z.B. `2e-4` bis `1e-3`), da von Null trainiert wird. Full Fine-Tuning nutzt minimale Raten (`1e-5`), da vortrainierte Strukturen zerstört werden könnten.
 
-    \item \textbf{Welche Lernrate wählst du für LoRA und warum?}
+    \item \textbf{Wann nutzt man Prefix-Tuning anstelle von LoRA?}
 
-    \textbf{Antwort:} 2e-4 als Startwert. LoRA benötigt höhere Lernraten als Full Fine-Tuning (1e-5), weil nur wenige Parameter trainiert werden. Bei Lernraten unter 1e-4 passiert kaum etwas, über 5e-4 droht Instabilität.
+    \textbf{Antwort:} Wenn man das Modellverhalten nur temporär für spezifische Tasks "lenken" will, ohne die Modellgewichte anzufassen (Virtuelle Tokens werden in den Attention-Head injiziert).
 
-    \item \textbf{Du hast nur eine T4 GPU (16 GB). Welches Fine-Tuning ist möglich?}
+    \item \textbf{Minimale Dataset-Größe für Format-Fine-Tuning (z.B. Custom JSON)?}
 
-    \textbf{Antwort:} QLoRA mit einem 8B-Modell in 4-Bit: 16~GB reichen für Training (8B ~ 5~GB in 4-Bit + Adapter + Optimizer-States). Batch-Size auf 1--2 reduzieren, Gradient Accumulation nutzen. 70B ist auf einer T4 nicht möglich.
+    \textbf{Antwort:} Für reine Syntax-Imitation reichen 100-300 hochqualitative, diverse Beispiele. Quantität ist irrelevant, Data-Quality (keine Fehler im Target-Output) ist alles.
+
+    \item \textbf{Evaluierung während des Fine-Tunings?}
+
+    \textbf{Antwort:} Validation Set (20\% der Daten) nutzen. Den Validation-Loss überwachen. Steigt der Val-Loss während der Training-Loss sinkt, fängt das Modell an zu memorisieren (Overfitting) → Early Stopping.
+
+    \item \textbf{Merging: LoRA-Adapter dauerhaft ins Basismodell integrieren?}
+
+    \textbf{Antwort:} Via Weight-Merging Scripts (z.B. PEFT). Die \$A \times B\$ Matrix wird mathematisch auf die Basis-Gewichte addiert. Eliminiert den minimalen Inference-Overhead von LoRA.
+
+    \item \textbf{Hardware-Setup für 8B Modell Fine-Tuning (QLoRA)?}
+
+    \textbf{Antwort:} Basismodell in 4-Bit laden. Training auf einer Single-GPU mit 16-24GB VRAM (z.B. RTX 4090). Batch-Size 1-2 mit Gradient Accumulation, um VRAM-OOM zu verhindern.
+
+
 \end{enumerate}
+
 
 % ===========================================================%
 % RESSOURCEN
@@ -530,4 +545,3 @@ Fine-Tuning ist kein Ersatz für RAG, sondern eine Ergänzung. RAG liefert Fakte
 \end{itemize}
 
 \textbf{Nächster Schritt:} Im nächsten Kapitel erfährst du, wie du LLM-Systeme durch Caching, intelligentes Routing und Guardrails optimierst und absicherst.
-\endinput

@@ -480,40 +480,55 @@ Der stärkste Produktionsnachweis ist nicht das, was du kannst -- es ist das, wa
 
 \textbf{Erfolgskriterium:} Das Repository kann von einem Senior-Engineer innerhalb von 15 Minuten als produktionsreif eingestuft werden -- nicht weil der Code perfekt ist, sondern weil die Systemstruktur stimmt.
 
-% ===========================================================%
+% ============================================================
 % INTERVIEWFRAGEN
-% ===========================================================%
-\section{Interviewfragen -- Failure-Mode-Analyse}
+% ============================================================
+\section{Interviewfragen}
 
 \begin{enumerate}[leftmargin=*]
-    \item \textbf{Dein RAG-System hat eine Halluzinationsrate von 12\,\%. Beschreibe deinen Debugging-Prozess in 5 Schritten.}
+    \item \textbf{System-Design: RAG mit 500 Golden-Dataset Fällen. Update verbessert 480, zerstört 20. Entscheidung?}
 
-    \textbf{System-Review:} (1) Retrieval-Abdeckung prüfen (findet das Embedding relevante Chunks?). (2) Chunking-Strategie prüfen (zu grosse/kleine Chunks?). (3) Prompt-Struktur prüfen (wird \glqq weiss nicht\grqq{} erlaubt?). (4) Post-Retrieval-Reranking mit Cross-Encoder. (5) Golden Dataset aufbauen und Halluzinationen als Testfälle erfassen.
+    \textbf{Antwort:} Segment-Analyse: Sind die 20 Fälle systematisch oder Zufall? Cost-Impact: Ist ein Fehler dort kritisch (Medizin)? Wenn unkritisch: Canary Rollout (5\%) mit Fallback-Chain.
 
-    \item \textbf{Ein Multi-Agent-System kostet plötzlich 4x so viel pro Task. Welche drei Komponenten prüfst du zuerst?}
+    \item \textbf{Failure-Mode: RAG hat 12 \% Halluzinationsrate. 5-Schritt Debug?}
 
-    \textbf{Antwort:} (1) Agent-Step-Count (wie viele Tool-Calls pro Task? Ein Loop könnte stecken). (2) Token-Verbrauch pro Schritt (System-Prompts gewachsen?). (3) Modell-Wechsel (Provider hat Modell hinter generischem String ausgetauscht?). Debugging: Tracing-Logs nach steps/task gruppieren.
+    \textbf{Antwort:} 1) Retrieval (Hit Rate). 2) Chunk-Qualität. 3) Prompt-Direktive ("Darf sagen: Weiß ich nicht"). 4) Re-Ranking Effizienz. 5) Golden Dataset Metriken.
 
-    \item \textbf{Du deployst einen Prompt-Update, der die Accuracy von 88\,\% auf 94\,\% erhöht -- aber die Cost pro Query steigt von 0,003 EUR auf 0,015 EUR. Wie entscheidest du?}
+    \item \textbf{Multi-Agent kostet plötzlich 4x mehr. Prüfpunkte?}
 
-    \textbf{Antwort:} Kosten-Nutzen-Analyse: 6\,\% mehr Accuracy ist bei Support-Tickets (10.000/Tag) 600 korrekte Antworten mehr. Aber 0,012 EUR Mehrkosten pro Query = 120 EUR/Tag = 3.600 EUR/Monat. Ist die Accuracy-Steigerung 3.600 EUR wert? Alternative: Nur schwierige Queries ($>$ 0,7 Confidence) ans teurere Modell routen, einfache bleiben günstig.
+    \textbf{Antwort:} 1) Step-Count Explusion (Agent hängt im Loop). 2) Token-Verbrauch pro Step (History läuft voll). 3) Modell-Routing kaputt (alles geht an Opus statt Haiku).
 
-    \item \textbf{Dein LLM-System fällt aus, weil der einzige Provider Rate-Limits hat. Du hast keine Fallback-Infrastruktur. Was machst du in den nächsten 5 Minuten?}
+    \item \textbf{Accuracy +6 \%, Kosten 5x höher. Entscheidung?}
 
-    \textbf{Antwort:} (1) Caching sofort auf maximale TTL stellen (alle Responses aus Cache bedienen, auch wenn veraltet). (2) Degraded Mode: Statische FAQ-Seite bereitstellen. (3) Provider-Status-Seite prüfen, Rate-Limit-Reset-Zeit ermitteln. (4) Backup-Provider-Integration starten (OpenAI-Client liegt bereit, muss nur API-Key aktivieren). Langfristig: Fallback-Chain als Baustein der Architektur etablieren.
+    \textbf{Antwort:} Reiner Kosten-Nutzen-Case. Ist die +6\% Accuracy im Business-Case 5x mehr Budget wert? Lösung: Dynamisches Routing nur für extrem harte Queries.
 
-    \item \textbf{Ein Entwickler behauptet: \glqq Unser System hat 99,9\,\% Availability.\grqq{} Was fragst du als nächstes?}
+    \item \textbf{Provider Rate-Limit, keine Fallback-Infra. Erste 5 Minuten?}
 
-    \textbf{Antwort:} (1) Ist das die API-Verfügbarkeit oder die End-to-End-Verfügbarkeit? (2) Was ist das SLI -- erfolgreiche HTTP-Responses oder korrekte LLM-Antworten? (3) Wie wird gemessen -- synthetische Tests oder Produktionstraffic? (4) Fehler werden in 5 Minuten erkannt (MTTD) und in 30 Minuten behoben (MTTR)? Availability ohne Error-Budget und Incident-Response ist eine Kennzahl ohne Aussagekraft.
+    \textbf{Antwort:} 1) Caches auf max TTL zwingen (Stale Data). 2) Degraded Mode (UI zeigt FAQ). 3) Backup-API-Keys der Entwickler injizieren.
 
-    \item \textbf{Dein Semantic Cache hat eine Hit-Rate von 8\,\%. Welche fünf Stellschrauben justierst du?}
+    \item \textbf{"99,9 \% Availability." — Deine Rückfragen an den Provider?}
 
-    \textbf{Antwort:} (1) Threshold senken (0,95 $\rightarrow$ 0,90 -- mehr Hits, aber Risiko false positives prüfen). (2) Embedding-Modell wechseln (text-embedding-3-small vs text-embedding-3-large). (3) Cache-Key-Strategie ändern (Query normalisieren: Lowercase, Stopwords entfernen). (4) Intent-basiertes Caching (FAQ-Intents cachen, personalisierte nicht). (5) TTL erhöhen (1h $\rightarrow$ 24h für statische Inhalte).
+    \textbf{Antwort:} API-Ping oder E2E Inference? Bezieht sich die SLA auf HTTP 200 oder korrekte, generierte Tokens? Was ist die P99 Time-to-First-Token?
 
-    \item \textbf{Wie beweist du einem Interviewer in 3 Minuten, dass dein Portfolio-Projekt produktionsreif ist?}
+    \item \textbf{Semantic Cache mit 8 \% Hit-Rate. Stellschrauben?}
 
-    \textbf{Antwort:} Zeige drei Artefakte: (1) \texttt{docker-compose.yml} mit Healthcheck und mehreren Services. (2) \texttt{.github/workflows/eval.yml} mit Golden-Dataset-Check. (3) Ein Screenshot des Tracing-Dashboards mit Latenz-P95, Cost-per-Query und Halluzinationsrate. Das deckt Deployment, Eval und Observability in 3 Minuten ab.
+    \textbf{Antwort:} 1) Confidence-Threshold senken. 2) Text vor Embedding normalisieren (Lowercase/Stopwords). 3) Intent-basiert cachen statt volltextbasiert.
+
+    \item \textbf{Beweise Produktionsreife in 3 Minuten (Artefakte)?}
+
+    \textbf{Antwort:} `docker-compose.yml` (Infra), `.github/workflows/eval.yml` (CI/CD Testing) und ein Screenshot des Datadog/LangSmith Tracing-Dashboards.
+
+    \item \textbf{LLM-System zeigt ab 14:23 5x höhere Halluzinationsrate. Prozess?}
+
+    \textbf{Antwort:} Erkennen (Metrik-Alarm) -> Isolieren (Traffic auf Backup-Provider) -> Ursache finden (Provider hat Modell hinter generischem Alias getauscht) -> Prävention (Version-Pinning).
+
+    \item \textbf{Wie erklärst du einem non-tech Stakeholder, warum das LLM 2+2=5 sagt?}
+
+    \textbf{Antwort:} LLMs rechnen nicht, sie raten das wahrscheinlichste nächste Wort basierend auf Trainingsmustern. Ohne ein Calculator-Tool (Agent) fehlt die mathematische Engine.
+
+
 \end{enumerate}
+
 
 % ===========================================================%
 % RESSOURCEN
@@ -534,4 +549,3 @@ Der stärkste Produktionsnachweis ist nicht das, was du kannst -- es ist das, wa
 AI Engineering ist System-Engineering. Der Unterschied zwischen einem guten Notebook und einem guten AI Engineer ist die Fähigkeit, unter Druck zu liefern: wenn die Halluzinationsrate steigt, wenn der Provider ausfällt, wenn die Kosten explodieren. Die Systeme, die du baust, müssen das aushalten -- und deine Projekte müssen beweisen, dass sie es können.
 
 Der nächste Schritt ist nicht \glqq bewirb dich\grqq{}. Der nächste Schritt ist: \glqq Baue ein System, das unter Druck nicht versagt. Und dann zeig es.\grqq
-\endinput

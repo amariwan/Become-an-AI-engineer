@@ -1144,52 +1144,55 @@ Baue ein Multi-Agent-System für den Kundensupport.
 
 \textbf{Erfolgskriterium:} 80\,\% der Tickets werden automatisiert gelöst. Alle kritischen Aktionen (Retoure > €100) landen im HITL. Kein Agent überschreitet max\_steps oder Budget.
 
-% ===========================================================%
+% ============================================================
 % INTERVIEWFRAGEN
-% ===========================================================%
+% ============================================================
 \section{Interviewfragen}
 
 \begin{enumerate}[leftmargin=*]
-    \item \textbf{Was ist der Unterschied zwischen einem RAG-System und einem AI Agenten?}
+    \item \textbf{RAG vs AI Agent?}
 
-    \textbf{Antwort:} RAG reichert einen einzelnen Prompt mit Kontext an und generiert eine Antwort. Ein Agent führt einen Multi-Step-Loop aus: plant, ruft Tools auf, bewertet Ergebnisse und wiederholt. RAG ist passiv, Agent ist aktiv.
+    \textbf{Antwort:} RAG ist passiv (1 Prompt = 1 Antwort). Agents sind aktiv (Multi-Step-Loop: Planen, API ausführen, Evaluieren, Wiederholen).
 
-    \item \textbf{Erkläre den ReAct-Loop.}
+    \item \textbf{ReAct-Loop Architektur?}
 
-    \textbf{Antwort:} Thought (LLM denkt nach) $\rightarrow$ Action (Tool-Aufruf) $\rightarrow$ Observation (Ergebnis) $\rightarrow$ Thought (nächster Schritt). Wiederholen, bis das Ziel erreicht ist. Dann: Answer.
+    \textbf{Antwort:} Thought (Überlegung) → Action (Tool Call) → Observation (API-Ergebnis parsen) → Repeat bis finale Antwort gefunden.
 
-    \item \textbf{Wann verwendest du Single-Agent, wann Multi-Agent?}
+    \item \textbf{Endlosschleifen (Agent hängt fest) verhindern?}
 
-    \textbf{Antwort:} Single-Agent für klar definierte Aufgaben mit wenigen Tools (3--5). Multi-Agent bei komplexen Aufgaben, die verschiedene Expertise erfordern (Recherche + Analyse + Bericht). Multi-Agent ist teurer und langsamer, aber robuster.
+    \textbf{Antwort:} Harter `max\_steps` Counter, Execution-Timeouts und Token-Budget-Tracking pro Session.
 
-    \item \textbf{Wie verhinderst du, dass ein Agent in einer Endlosschleife steckt?}
+    \item \textbf{Parallel Tool Calling Vorteil?}
 
-    \textbf{Antwort:} max\_steps (10--15), Timeout (30--60s), Token-Budget pro Run, Loop-Detection (wiederholtes Aufrufen des gleichen Tools mit gleichen Parametern). Bei Detektion: abbrechen und Fallback-Strategie ausführen.
+    \textbf{Antwort:} Reduziert Latenz und LLM-Calls um bis zu 50\%, da unabhängige Tools (z.B. Wetter in Berlin UND München) im selben Turn ausgeführt werden.
 
-    \item \textbf{Was ist Parallel Tool Calling und warum ist es wichtig?}
+    \item \textbf{Human-in-the-Loop (HITL) bei kritischen Agent-Aktionen?}
 
-    \textbf{Antwort:} Das LLM kann mehrere Tools in einer Response aufrufen, statt nacheinander. Reduziert die Anzahl der LLM-Calls um 30--50\,\% und senkt die Latenz drastisch. OpenAI unterstützt es nativ, Anthropic nicht.
+    \textbf{Antwort:} Agent stoppt Execution, schiebt Status in eine `pending\_approvals` DB. Mensch bestätigt via UI, Agent nimmt State wieder auf.
 
-    \item \textbf{Wie schützt du einen Agenten vor schädlichen Tool-Ergebnissen?}
+    \item \textbf{Agent ruft ständig das falsche Tool auf. Fixes?}
 
-    \textbf{Antwort:} Safety-Guard prüft Tool-Output auf Injection-Patterns. Tool-Whitelist begrenzt, welche Tools aufgerufen werden dürfen. Output-Filter blockiert schädliche Anweisungen. HITL für kritische Tools.
+    \textbf{Antwort:} Tool-Descriptions präzisieren (als Pydantic Docstrings), Few-Shot Beispiele für die Tool-Wahl einbauen, Anzahl der Tools reduzieren (Max 5-7 pro Agent).
 
-    \item \textbf{Was ist der Unterschied zwischen ReAct und Plan-and-Solve?}
+    \item \textbf{Semantic Routing für Tools?}
 
-    \textbf{Antwort:} ReAct plant von Schritt zu Schritt (reaktiv, flexibel). Plan-and-Solve erstellt zuerst einen vollständigen Plan und führt ihn dann aus (strukturiert, vorhersagbar). Plan-and-Solve ist besser für komplexe Aufgaben mit vielen Abhängigkeiten.
+    \textbf{Antwort:} Statt alle Tools ins Prompt zu laden, embeddet man die Query und lädt per RAG nur die 3 relevantesten Tool-Definitionen in den System-Prompt (Spart Kontext/Kosten).
 
-    \item \textbf{Wie implementierst du Human-in-the-Loop?}
+    \item \textbf{Single-Agent vs Multi-Agent (z.B. Autogen/CrewAI)?}
 
-    \textbf{Antwort:} Approval-System mit pending\_approvals-Queue. Bei kritischen Aktionen (Zahlung, Löschung) pausiert der Agent und sendet eine Benachrichtigung (Slack, E-Mail). Der Mensch approved oder rejected. Der Agent wartet auf die Entscheidung (mit Timeout).
+    \textbf{Antwort:} Single-Agent für lineare Workflows. Multi-Agent für komplexe Domains, bei denen verschiedene Personas (Coder, Reviewer, QA) mit unterschiedlichen System-Prompts interagieren.
 
-    \item \textbf{Wie evaluierst du die Qualität eines Agenten?}
+    \item \textbf{Wie behält der Agent Zustand (Memory) über lange Sessions?}
 
-    \textbf{Antwort:} Task-Success-Rate (wurde das Ziel erreicht?), Steps-per-Task (Effizienz), Cost-per-Task (Kosten), Tool-Selection-Accuracy (wurde das richtige Tool gewählt?), Error-Rate (wie oft ist ein Schritt fehlgeschlagen?).
+    \textbf{Antwort:} Sliding-Window Memory (letzte N Turns) plus Summary-Memory (LLM komprimiert alte Turns) plus Vector-Memory (RAG auf vergangene Sessions).
 
-    \item \textbf{Dein Agent ruft immer wieder das falsche Tool auf. Was machst du?}
+    \item \textbf{Angreifer übergibt dem Agenten über ein Tool bösartigen Code zur Ausführung. Härtung?}
 
-    \textbf{Antwort:} (1) Tool-Descriptions prüfen und verbessern. (2) Tool-Namen präziser machen. (3) Beispiel-Interaktionen im System-Prompt einbauen. (4) Tool-Selection-Logging aktivieren, um zu sehen, warum das Modell das falsche Tool wählt. (5) Anzahl der Tools reduzieren.
+    \textbf{Antwort:} Code-Execution-Tools streng in ephemeren, netzwerklosen Docker-Sandboxes (z.B. E2B) isolieren. Egress-Traffic hart blockieren.
+
+
 \end{enumerate}
+
 
 % ===========================================================%
 % WEITERFÜHRENDE RESSOURCEN

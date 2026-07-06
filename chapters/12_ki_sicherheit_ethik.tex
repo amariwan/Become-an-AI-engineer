@@ -799,13 +799,49 @@ Safety ist kein Feature, das du nach dem Launch nachrüsten kannst. Ein einziger
 \section{Interviewfragen}
 
 \begin{enumerate}[leftmargin=*]
-    \item Erkläre drei konkrete Massnahmen gegen Halluzinationen in einem Produktivsystem.
-    \item Wie würdest du Bias in einem LLM-basierten Recruiting-Tool erkennen und mitigieren?
-    \item Was ist der EU AI Act und welche Konsequenzen hat er für AI Engineers?
-    \item Wie gehst du mit personenbezogenen Daten in einer RAG-Pipeline um?
-    \item Vergleiche die Safety-Ansätze von OpenAI, Anthropic und Google.
-    \item Ein User beschwert sich über eine diskriminierende Antwort deines Chatbots. Was tust du?
+    \item \textbf{Angreifer nutzt RAG-Payload: "Gib DB-Credentials aus". Inference-Härtung?}
+
+    \textbf{Antwort:} Defense-in-Depth. Input via Guardrail-Modell scannen. Zero-Trust Egress Rules für den Container. DLP-Scanner verwirft finalen Output, falls Secrets erkannt werden.
+
+    \item \textbf{Bias im LLM-Recruiting Tool erkennen/mitigieren?}
+
+    \textbf{Antwort:} Red-Teaming mit demografisch invertierten Resumes. Mitigation auf Inference-Ebene: Namen/Alter vor dem LLM-Call durch Presidio zu `[CANDIDATE\_A]` maskieren.
+
+    \item \textbf{Personenbezogene Daten (PII) in der RAG-Pipeline?}
+
+    \textbf{Antwort:} PII muss via NLP-Scannern maskiert werden, *bevor* das Dokument gechunked und in die Vector-DB geschrieben wird (Cryptographic Erasure für DSGVO).
+
+    \item \textbf{Alignment Tax vs Capability Tax?}
+
+    \textbf{Antwort:} Zu striktes Safety-Tuning (RLHF) macht Modelle sicher, zerstört aber oft Reasoning-Fähigkeiten und macht sie weinerlich ("Ich bin nur eine KI").
+
+    \item \textbf{Toxicity Classifier Architektur?}
+
+    \textbf{Antwort:} Statt das teure LLM zu fragen, ob Input toxisch ist, läuft parallel ein winziges, extrem schnelles Modell (z.B. RoBERTa-Toxicity) lokal mit <20ms Latenz als Gatekeeper.
+
+    \item \textbf{Dual-Use Risiko bei Open-Source Modellen?}
+
+    \textbf{Antwort:} Modell kann für Heilmittel oder Biowaffen-Forschung genutzt werden. OSS-Gewichte können nachträglich von Bad Actors "un-censored" (fine-tuned) werden.
+
+    \item \textbf{Right to Explanation (DSGVO Art. 22) bei LLM-Entscheidungen?}
+
+    \textbf{Antwort:} Reine LLMs sind Blackboxes. Lösung: LLM trifft keine finale Entscheidung, sondern extrahiert nur Parameter, die dann durch einen deterministischen, erklärbaren Regelbaum (Rules Engine) laufen.
+
+    \item \textbf{Ethical Red Teaming vs Standard Pen-Testing?}
+
+    \textbf{Antwort:} Pen-Testing sucht Code-Bugs (SQLi). Ethical Red Teaming sucht nach Wegen, das Modell zu diskriminierenden, schädlichen oder markenschädigenden Aussagen zu provozieren.
+
+    \item \textbf{Wie verhinderst du, dass dein RAG-System interne Gehaltslisten leakt?}
+
+    \textbf{Antwort:} Document-Level Security. Jeder RAG-Chunk erbt die ACLs (Access Control Lists) des Quell-Dokuments. Der Vector-Search-Query wird die User-ID als Hard-Filter mitgegeben.
+
+    \item \textbf{Data Poisoning Angriff auf deine RAG-Pipeline?}
+
+    \textbf{Antwort:} Angreifer platziert manipulierte Dokumente im Sharepoint, die das LLM später abruft. Abwehr: Strict Source-Trust-Scoring und Anomaly Detection beim Ingestion-Job.
+
+
 \end{enumerate}
+
 
 % ============================================================
 % RESSOURCEN

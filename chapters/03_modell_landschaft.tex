@@ -795,46 +795,49 @@ Jede Anfrage verbraucht durchschnittlich 500 Input-Tokens und 200 Output-Tokens.
 \section{Interviewfragen}
 
 \begin{enumerate}[leftmargin=*]
-    \item \textbf{Ein Junior-Entwickler will ein \glqq 8x7B\grqq{} MoE-Modell (Mixture of Experts) auf einer kleinen 16-GB-GPU hosten. Sein Argument: \glqq Pro Token werden ja nur 14 Milliarden Parameter aktiviert, das passt locker.\grqq{} Wo liegt sein Denkfehler?}
+    \item \textbf{Junior will 8x7B MoE-Modell auf 16-GB-GPU hosten. Denkfehler?}
 
-    \textbf{Antwort:} Er verwechselt \textit{aktive} Parameter mit \textit{Speicherbedarf}. Damit das Modell routen kann, müssen \textit{alle} Gewichte des gesamten Modells im VRAM (Grafikspeicher) vorgehalten werden. Ein 8x7B-Modell benötigt (abzüglich geteilter Layer) rund 47 Milliarden Parameter. Selbst mit starker Quantisierung (INT4) sprengt das eine 16-GB-Karte bei weitem.
+    \textbf{Antwort:} Alle Gewichte (ca. 47B) müssen im VRAM liegen für das Routing, nicht nur die pro Token aktivierten Parameter.
 
-    \item \textbf{Du baust einen Semantic Router: Jede Anfrage geht zuerst an GPT-4o-mini zur Klassifikation, danach (wenn komplex) an Claude Opus. Das System funktioniert fehlerfrei, aber Nutzer beschweren sich über unerträgliche Wartezeiten. Was ist das architektonische Nadelöhr?}
+    \item \textbf{Semantic Router (Mini -> Opus) führt zu 2 Sekunden TTFT. Bottleneck?}
 
-    \textbf{Antwort:} Die sequenzielle Latenz. Die \glqq Time to First Token\grqq{} (TTFT) summiert sich. Wenn GPT-4o-mini 600~ms braucht und Opus danach nochmal 1500~ms TTFT hat, wartet der User über 2 Sekunden, bevor das erste Wort erscheint. Streaming löst das Problem nicht, wenn der Router den Stream blockiert. Bessere Lösung: Kleine lokale Klassifikatoren (FastText/BERT) mit 10~ms Latenz oder asynchrones Routing.
+    \textbf{Antwort:} Sequenzielle Latenz. LLM-Calls in Reihe summieren sich. Lösung: Klassifikation durch lokale Modelle (FastText/BERT) mit 10ms Latenz ersetzen.
 
-    \item \textbf{Ein neues Open-Source-Modell schlägt GPT-4o in den HumanEval- und MMLU-Benchmarks um Längen. In eurem System versagt es aber komplett daran, ein striktes JSON-Schema für eure API einzuhalten. Wie erklärst du dir das?}
+    \item \textbf{Neues OS-Modell schlägt GPT-4o, versagt aber bei striktem JSON. Warum?}
 
-    \textbf{Antwort:} Das ist ein klassischer Fall von \glqq Benchmark-Overfitting\grqq{} oder \glqq Data Contamination\grqq{}. Das Modell hat die Testdatenbanken während des Pre-Trainings auswendig gelernt, was die hohen Scores erklärt. Es mangelt ihm aber an echter \glqq Alignment\grqq{}-Qualität (Instruction Following) für komplexe Formatvorgaben wie JSON, die im Benchmark nicht in dieser Tiefe getestet wurden.
+    \textbf{Antwort:} Mangelndes Alignment/Instruction Tuning für Formatvorgaben. Benchmarks testen oft nur Multiple-Choice.
 
-    \item \textbf{Euer System nutzt eine Fallback-Strategie: Wenn OpenAI einen \texttt{429 Rate Limit}-Fehler wirft, feuert das Backend den Request sofort exakt so gegen Anthropic. Nach einem viralen Marketing-Post gehen plötzlich beide Provider in eurer App offline. Warum?}
+    \item \textbf{Fallback feuert bei 429 sofort gegen Anthropic. Beide Provider offline. Warum?}
 
-    \textbf{Antwort:} Es fehlt das \glqq Exponential Backoff \& Jitter\grqq{} sowie ein vernünftiges Queueing. Bei einem massiven Traffic-Spike laufen alle Requests gegen die Rate-Limits von Provider A und fluten im selben Millisekunden-Fenster Provider B, was dessen Limits sofort sprengt (Thundering Herd Problem). Solche Systeme erfordern Message-Broker (Kafka/RabbitMQ) zur Lastverteilung.
+    \textbf{Antwort:} Thundering Herd Problem. Bei Ausfall wechseln alle User synchron zu B. Lösung: Exponential Backoff \& Jitter.
 
-    \item \textbf{Der CFO will Kosten sparen und fordert, euren interaktiven Echtzeit-Support-Chatbot komplett auf DeepSeek R1 umzustellen, da es \glqq Reasoning auf o1-Niveau zu 10\,\% der Kosten\grqq{} bietet. Warum legst du Veto ein?}
+    \item \textbf{CFO will Chatbot auf DeepSeek R1 umstellen für 90\% Kostensenkung. Veto-Grund?}
 
-    \textbf{Antwort:} Reasoning-Modelle (wie R1 oder o1) haben einen internen, unsichtbaren \glqq Chain-of-Thought\grqq{}-Prozess, bevor sie das finale Ergebnis ausgeben. Dadurch dauert es oft 5 bis 15 Sekunden, bis der erste Output-Token beim User ankommt. Das zerstört die UX in einem Echtzeit-Chat völlig. Solche Modelle sind für asynchrone Aufgaben (Agenten, Code-Generierung, komplexe Analyse) gedacht, nicht für den direkten Chat.
+    \textbf{Antwort:} Reasoning-Modelle (R1/o1) haben 5–15 Sekunden interne Chain-of-Thought vor dem ersten Output-Token. Tödlich für Echtzeit-Chat-UX.
 
-    \item \textbf{Euer Startup verarbeitet sensible Gesundheitsdaten (DSGVO). Du hast Mistral auf europäischen AWS-Servern vorgeschlagen, aber die Security-Abteilung lehnt ab: \glqq Die Daten verlassen unser VPC.\grqq{} Was ist die einzige echte Zero-Trust-Architektur?}
+    \item \textbf{Was ist die einzige Zero-Trust-Architektur für LLMs?}
 
-    \textbf{Antwort:} Das Self-Hosting eines Open-Weight-Modells (wie Llama 3 oder Qwen) auf komplett eigener, On-Premise-Hardware oder in einem isolierten Cloud-VPC (Virtual Private Cloud) \textit{ohne} Outbound-Internet-Zugang (Air-Gapped). Nur so ist technisch garantiert, dass keine Telemetrie- oder Log-Daten an Dritte abfließen.
+    \textbf{Antwort:} Self-Hosting von Open-Weight-Modellen auf Air-Gapped On-Premise-Infrastruktur.
 
-    \item \textbf{Du abstrahierst OpenAI und Anthropic in einer gemeinsamen Client-Klasse. Ein Core-Feature deiner App benötigt zwingend den \texttt{json\_schema}-Modus von OpenAI für verschachtelte Daten. Anthropic bietet genau diesen Parameter nicht. Wie rettest du die Abstraktion?}
+    \item \textbf{Abstraktion: Feature braucht OpenAIs json\_schema, Anthropic bietet das nicht. Lösung?}
 
-    \textbf{Antwort:} Ich mappe das Feature in meiner Middleware auf das \glqq Native Tool Calling\grqq{} (Function Calling) von Anthropic. Anthropic zwingt das Modell, Argumente für ein definiertes Tool (Funktion) zurückzugeben, was unter der Haube ein valides JSON nach vorgegebenem JSON-Schema erzwingt. So emuliere ich den Structured Output plattformunabhängig.
+    \textbf{Antwort:} Mapping auf Native Tool Calling (Function Calling) bei Anthropic, was das JSON-Format über Tool-Argumente erzwingt.
 
-    \item \textbf{Ihr quantisiert ein 70B-Modell auf INT4, um es auf günstigeren GPUs laufen zu lassen. Im Smalltalk auf Deutsch funktioniert es super, aber es generiert plötzlich fehlerhaften Python-Code mit Syntax-Fehlern, was es in FP16 nicht tat. Warum?}
+    \item \textbf{70B auf INT4: Code hat Syntax-Fehler, Smalltalk geht. Warum?}
 
-    \textbf{Antwort:} Quantisierung (das Kappen von Gleitkommazahlen-Präzision) trifft nicht alle Fähigkeiten gleich. Allgemeine Sprache ist sehr robust gegenüber Genauigkeitsverlusten. Komplexe Logik, Mathematik und Code-Syntax basieren jedoch auf hochsensiblen, feingetunten Gewichten. INT4 zerstört oft genau diese Randbereiche des Modellwissens.
+    \textbf{Antwort:} Quantisierung zerstört feingranulare Gewichte. Code-Syntax ist hochsensibel, Smalltalk-Wahrscheinlichkeiten sind robuster.
 
-    \item \textbf{Du tauschst das Backbone-Modell deines Agenten-Systems von GPT-4o auf Claude 3.5 Sonnet, verwendest aber exakt denselben 5.000 Tokens langen System-Prompt. Plötzlich weigert sich der Agent regelmäßig, völlig harmlose Aufgaben auszuführen. Warum?}
+    \item \textbf{System-Prompt 1:1 von GPT-4o auf Claude 3.5 portiert. Claude weigert sich. Warum?}
 
-    \textbf{Antwort:} Modelle haben unterschiedliche Alignments (RLHF). Anthropics \glqq Constitutional AI\grqq{} macht Claude deutlich empfindlicher gegenüber potenziellen Safety-Verstößen (Refusal Rate). Zudem reagieren Modelle unterschiedlich auf Prompting-Stile (Claude bevorzugt XML-Tags zur Strukturierung, OpenAI Markdown). Ein System-Prompt ist Code und muss bei einem Modellwechsel immer modellspezifisch umgeschrieben und neu evaluiert werden.
+    \textbf{Antwort:} Unterschiedliches Alignment (Constitutional AI). Prompts sind nicht 1:1 portabel und müssen modell-spezifisch kalibriert werden.
 
-    \item \textbf{Euer System fasst täglich 10.000 PDF-Verträge zusammen. Der Text ändert sich, aber der 2.000 Token lange System-Prompt mit den Extraktionsregeln bleibt immer gleich. Wie senkst du die Input-Kosten bei Anthropic oder OpenAI massiv, ohne das Modell zu wechseln?}
+    \item \textbf{10.000 PDF-Verträge am Tag analysieren, System-Prompt immer gleich. Kosten-Hack?}
 
-    \textbf{Antwort:} Durch \glqq Prompt Caching\grqq{}. Ich strukturiere den Prompt strikt so, dass die statischen 2.000 Tokens (Regeln, Few-Shot-Beispiele) immer exakt gleich am Anfang (als Prefix) stehen. Die APIs von Anthropic und OpenAI cachen diesen Prefix im KV-Cache, sodass für die System-Anweisungen nur noch ein Bruchteil (oft 10\,\% bis 50\,\%) der üblichen Input-Kosten berechnet wird.
+    \textbf{Antwort:} Prompt Caching. Der statische System-Prompt muss exakt am Anfang (Prefix) des Arrays stehen, damit der Cache-Hit erfolgt.
+
+
 \end{enumerate}
+
 % ===========================================================%
 % WEITERFÜHRENDE RESSOURCEN
 % ===========================================================%

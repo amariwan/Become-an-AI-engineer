@@ -818,46 +818,49 @@ Teilnehmer: Anna, Ben, Clara, David
 \section{Interviewfragen}
 
 \begin{enumerate}[leftmargin=*]
-    \item \textbf{Ein Kunde möchte ein Llama-3-Modell per Fine-Tuning mit den PDF-Handbüchern seiner Firma trainieren, damit das Modell Fragen dazu beantworten kann. Warum rätst du ihm davon ab und was schlägst du stattdessen vor?}
+    \item \textbf{Ein Kunde will Llama-3 mit PDF-Handbüchern fine-tunen für Wissensabfragen. Warum rätst du ab?}
 
-    \textbf{Antwort:} Fine-Tuning ist hervorragend geeignet, um den \textit{Stil}, das Format oder den Tonfall eines Modells anzupassen. Es ist aber ein sehr schlechtes und unzuverlässiges Werkzeug, um einem Modell neues, abrufbares Faktenwissen beizubringen (Halluzinationsgefahr). Stattdessen schlage ich eine RAG-Architektur vor: Die Handbücher kommen in eine Vektor-Datenbank und werden zur Laufzeit als Kontext in den Prompt geladen. Das ist günstiger, aktueller und man kann die Quellen präzise referenzieren.
+    \textbf{Antwort:} Fine-Tuning passt Stil/Format an, ist aber unzuverlässig für neues Faktenwissen (Halluzinationen). RAG ist hier der korrekte Architektur-Ansatz.
 
-    \item \textbf{Du hast ein Modell mit einem riesigen Kontextfenster von 1 Million Tokens zur Verfügung. Du wirfst 50 lange Dokumente in den Prompt, aber das Modell übersieht entscheidende Details aus der Mitte der Dokumente. Welches Phänomen ist das und wie löst du es?}
+    \item \textbf{Du nutzt ein 1M-Token Fenster. Das Modell ignoriert Fakten aus der Mitte des Prompts. Welches Phänomen?}
 
-    \textbf{Antwort:} Das ist das \glqq Lost in the Middle\grqq{}- oder \glqq Needle in a Haystack\grqq{}-Phänomen. LLMs schenken dem Anfang und dem Ende eines sehr langen Prompts mehr Attention als der Mitte. Die Lösung: Trotz großem Kontextfenster sollte man die Input-Dokumente filtern und ranken (z.\,B. via Re-Ranking-Modellen), um dem LLM nur die 5 bis 10 wirklich relevantesten Dokumente zu übergeben, statt blind das gesamte Fenster auszunutzen.
+    \textbf{Antwort:} "Lost in the Middle". LLMs fokussieren sich auf den Anfang und das Ende. Lösung: Re-Ranking nutzen, um nur die relevantesten 10 Dokumente zu übergeben.
 
-    \item \textbf{Ein Startup aus dem Healthcare-Bereich hat strenge DSGVO-Auflagen und darf keine Cloud-APIs nutzen. Sie haben nur begrenztes Budget für Hardware (z.\,B. eine einzelne starke GPU). Welche Modell-Strategie fährst du?}
+    \item \textbf{Gesundheits-Startup (Air-Gapped) braucht ein lokales LLM, hat aber nur eine GPU. Strategie?}
 
-    \textbf{Antwort:} Ich setze auf stark quantisierte Open-Source-Modelle (z.\,B. Llama 3 8B oder Mistral in einer INT4- oder INT8-Quantisierung). Diese Modelle passen in den VRAM einer handelsüblichen GPU (wie einer RTX 4090) oder laufen sogar auf der CPU (mit llama.cpp). So bleiben alle Patientendaten zu 100\,\% lokal bei überschaubaren Hardwarekosten.
+    \textbf{Antwort:} Stark quantisierte Open-Weights (INT4/INT8) wie Llama 3 8B. So bleiben die Patientendaten lokal und das Modell passt in den VRAM einer Standard-GPU.
 
-    \item \textbf{Dein Team nutzt das teuerste Flagship-Modell für jede User-Anfrage. Du sollst die Kosten um 70\,\% senken, ohne die Qualität der komplexen Antworten zu gefährden. Was ist dein Architektur-Ansatz?}
+    \item \textbf{Kosten um 70 \% senken ohne Qualitätsverlust. Ansatz?}
 
-    \textbf{Antwort:} Ich implementiere ein \glqq Semantic Router\grqq{}-Pattern. Ich schalte ein sehr schnelles, günstiges Modell (wie GPT-4o-mini) vor. Dieses klassifiziert die Anfrage: Ist es eine simple Standardfrage, beantwortet das kleine Modell sie direkt. Nur wenn die Anfrage als \glqq komplex\grqq{} eingestuft wird, routet das System sie an das teure Flagship-Modell weiter.
+    \textbf{Antwort:} Semantic Router. Ein kleines Modell (GPT-4o-mini) klassifiziert die Komplexität der Anfrage. Nur schwere Tasks gehen an das teure Flagship-Modell.
 
-    \item \textbf{Du übernimmst ein Projekt, bei dem das API-Modell \glqq gpt-4o\grqq{} im Code hart verdrahtet ist. Nach ein paar Monaten beschweren sich die User plötzlich über schlechtere Qualität, obwohl am Code nichts geändert wurde. Was ist passiert?}
+    \item \textbf{"gpt-4o" ist im Code verdrahtet. Qualität sinkt plötzlich ohne Codeänderung. Ursache?}
 
-    \textbf{Antwort:} Der Provider hat hinter dem Alias \glqq gpt-4o\grqq{} stillschweigend ein neues Modell-Gewichts-Update ausgerollt. Um dieses API-Risiko zu verhindern, pinne ich Modelle in Produktion immer an spezifische Versionen (z.\,B. \glqq gpt-4o-2026-05-13\grqq{}). So bleibt das Verhalten deterministisch.
+    \textbf{Antwort:} Provider-seitiges Modell-Update. Lösung: In Produktion immer feste Version-Pins (z.B. gpt-4o-2026-05-13) nutzen.
 
-    \item \textbf{Ein lokal gehostetes Open-Source-Modell ist bei der Verarbeitung deutscher Support-Tickets fast doppelt so langsam und verbraucht deutlich mehr Tokens als bei englischen Tickets, obwohl die Texte exakt gleich lang sind. Woran liegt das architektonisch?}
+    \item \textbf{Lokal gehostetes Modell ist bei deutschen Texten viel langsamer als bei englischen. Warum?}
 
-    \textbf{Antwort:} Das liegt am Tokenizer (meist Byte-Pair Encoding), dessen Vokabular primär auf englische Korpora optimiert ist. Deutsche Wörter (besonders Komposita) werden in viel mehr kleine Sub-Tokens zerschnitten. Die Lösung: Ein Modell mit einem multilingual optimierten Tokenizer wählen (z.\,B. Qwen oder Mistral) oder Input vorab maschinell übersetzen.
+    \textbf{Antwort:} Tokenizer Bias (Byte-Pair Encoding). Deutsche Komposita zerfallen in mehr Tokens. Abhilfe: Modelle mit multilingualem Tokenizer wählen.
 
-    \item \textbf{Du evaluierst ein neues Open-Source-Modell. Es bricht alle Rekorde auf öffentlichen Benchmarks (MMLU, HumanEval), versagt aber bei euren echten Produktionsdaten komplett. Was ist der wahrscheinlichste Grund?}
+    \item \textbf{Modell schlägt alle Benchmarks, versagt aber bei euren internen Daten. Grund?}
 
-    \textbf{Antwort:} \glqq Data Contamination\grqq{} (Datenkontamination). Die öffentlichen Benchmark-Daten waren (versehentlich oder absichtlich) Teil des massiven Pre-Training-Korpus des Modells. Es hat die Antworten der Benchmarks schlicht auswendig gelernt, anstatt generelles Reasoning zu entwickeln. Evaluierungen dürfen in Produktion nur auf einem geheimen, unternehmensinternen Golden Dataset stattfinden.
+    \textbf{Antwort:} Data Contamination. Die öffentlichen Benchmarks waren Teil der Pre-Training-Daten. Das Modell hat auswendig gelernt, nicht generalisiert.
 
-    \item \textbf{Euer Agenten-System schickt in jedem Turn den riesigen, 10.000 Tokens langen System-Prompt (Regeln + Tool-Definitionen) an die API. Die Kosten sind astronomisch. Wie löst du das auf API-Ebene und lokal?}
+    \item \textbf{10.000 Tokens System-Prompt bei jedem Agent-Call. Wie senkst du Kosten?}
 
-    \textbf{Antwort:} Ich nutze \glqq Prompt Caching\grqq{}. Bei Providern wie Anthropic oder OpenAI kann man statische Prompt-Teile cachen, sodass sie im KV-Cache der Server verbleiben und nur zu einem Bruchteil der Kosten berechnet werden. Lokal (z.\,B. mit vLLM) aktiviere ich ebenfalls \textit{Prefix Caching} und achte darauf, dass der Präfix (System-Prompt) in jedem Request exakt identisch angeordnet bleibt.
+    \textbf{Antwort:} Prompt Caching auf API-Ebene oder Prefix Caching in vLLM. Der Präfix muss exakt identisch bleiben.
 
-    \item \textbf{Du hostest ein großes Modell (70B) lokal. Es liefert die nötige Qualität, generiert aber nur 15 Tokens pro Sekunde -- zu langsam für euren Voice-Bot. Neue GPUs sind nicht im Budget. Welche Inference-Technik nutzt du?}
+    \item \textbf{Lokal gehostetes 70B-Modell liefert nur 15 Tokens/s. Wie beschleunigen ohne Hardware-Upgrade?}
 
-    \textbf{Antwort:} Ich setze \glqq Speculative Decoding\grqq{} ein. Dabei lasse ich ein sehr kleines Modell (z.\,B. eine 8B-Variante) die nächsten Tokens extrem schnell \glqq erraten\grqq{} (Drafting). Das große 70B-Modell läuft parallel und verifiziert diese Token-Kette nur noch in einem einzigen Batch-Schritt. Das erhöht die Output-Geschwindigkeit (Tokens/s) massiv bei exakt gleicher Qualität.
+    \textbf{Antwort:} Speculative Decoding. Ein kleines 8B-Modell entwirft Tokens, das große 70B-Modell verifiziert sie parallel in einem Batch.
 
-    \item \textbf{Du migrierst einen funktionierenden Prompt, der komplexes \glqq Chain-of-Thought\grqq{}-Reasoning nutzt, von einem 70B-Modell auf ein winziges 3B-Modell für Edge-Devices. Das kleine Modell halluziniert wild, obwohl das JSON-Format stimmt. Warum?}
+    \item \textbf{Chain-of-Thought-Prompt auf winziges 3B-Modell migriert. Modell halluziniert. Warum?}
 
-    \textbf{Antwort:} Das liegt am Fehlen von \glqq Emergent Abilities\grqq{}. Die Fähigkeit zu echtem, mehrschrittigem Chain-of-Thought-Reasoning entsteht erst ab einer bestimmten Modellgröße und Trainingstiefe. Kleine Modelle können zwar die Syntax von Gedankengängen imitieren (das Format), haben aber nicht die interne Repräsentation, um logisch korrekte Zwischenschritte abzuleiten.
+    \textbf{Antwort:} Fehlen von "Emergent Abilities". Echtes, mehrschrittiges Reasoning entsteht erst ab einer bestimmten Parameterzahl. Kleine Modelle imitieren nur Syntax.
+
+
 \end{enumerate}
+
 
 % ===========================================================%
 % WEITERFÜHRENDE RESSOURCEN

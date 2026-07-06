@@ -551,52 +551,55 @@ Baue ein vollständiges Prompt-Engineering-System für einen E-Commerce-Support-
 
 \textbf{Erfolgskriterium:} Der Classifier erzielt >90\,\% Accuracy. Prompt-Injection-Versuche werden zu 100\,\% erkannt und abgewiesen. Die Token-Kosten sind dokumentiert.
 
-% ===========================================================%
+% ============================================================
 % INTERVIEWFRAGEN
-% ===========================================================%
+% ============================================================
 \section{Interviewfragen}
 
 \begin{enumerate}[leftmargin=*]
-    \item \textbf{Erkläre den Unterschied zwischen Zero-Shot und Few-Shot Prompting.}
+    \item \textbf{Zero-Shot vs Few-Shot in Produktion?}
 
-    \textbf{Antwort:} Zero-Shot gibt nur die Instruktion, keine Beispiele. Few-Shot fügt 3--5 Eingabe-Ausgabe-Paare hinzu. Few-Shot ist konsistenter (15--30\,\% besser), kostet aber mehr Tokens.
+    \textbf{Antwort:} Zero-Shot ist günstiger. Few-Shot (3–5 Beispiele) erhöht die Zuverlässigkeit um 20-30\%, kostet aber mehr Input-Tokens.
 
-    \item \textbf{Wann setzt du Chain-of-Thought ein?}
+    \item \textbf{Wann nutzt du Chain-of-Thought (CoT)?}
 
-    \textbf{Antwort:} Bei logischen, mathematischen oder analytischen Aufgaben, die mehrere Schritte brauchen. CoT zwingt das Modell, seinen Denkprozess offenzulegen, was die Fehlerquote bei Reasoning-Aufgaben um 30--60\,\% senkt.
+    \textbf{Antwort:} Bei logischen, mathematischen oder mehrstufigen analytischen Aufgaben. Zwingt das LLM, Zwischenschritte im KV-Cache auszurollen.
 
-    \item \textbf{Wie schützt du dich vor Prompt-Injection?}
+    \item \textbf{Schutz vor Prompt-Injection in Produktion?}
 
-    \textbf{Antwort:} User-Input nie in den System-Prompt interpolieren. XML-Tags zur Isolation. System-Regeln gegen Injection. Input-Sanitization. Moderation API für Output. Defense-in-Depth.
+    \textbf{Antwort:} User-Input in `<user\_input>` XML-Tags isolieren, Input-Sanitization und Output über DLP-Scanner prüfen.
 
-    \item \textbf{Was ist Self-Consistency und wann ist es sinnvoll?}
+    \item \textbf{Self-Consistency Pattern?}
 
-    \textbf{Antwort:**} Mehrere Antworten generieren (n=5), die konsistenteste auswählen (Majority Vote). Sinnvoll bei mission-critical Entscheidungen, wo ein Fehler hohe Kosten verursacht. Kostet 5x Latenz, aber 10--20\,\% bessere Zuverlässigkeit.
+    \textbf{Antwort:} Das LLM generiert parallel 5 Antworten via Temperatur > 0. Eine Majority-Vote Logik wählt das finale Ergebnis.
 
-    \item \textbf{Wie versionierst du Prompts in Produktion?}
+    \item \textbf{Wie versionierst und verwaltest du Prompts im Team?}
 
-    \textbf{Antwort:} Prompt-Templates als .jinja2-Dateien in prompts/v{N}/. Git-Tag bei Änderungen. Automatisierte Evaluierung vor Deployment. A/B-Test in Produktion mit Rollback-Fähigkeit.
+    \textbf{Antwort:} Als Code. `.jinja2` Templates im Git-Repo, deployt in eine Model-Registry oder Feature-Store, validiert über CI/CD-Evals.
 
-    \item \textbf{Wie viele Few-Shot-Beispiele sind optimal?}
+    \item \textbf{ReAct vs einfaches Tool Calling?}
 
-    \textbf{Antwort:} 3--5 Beispiele sind der Sweet Spot. Weniger bringt kaum Verbesserung. Mehr als 10 erhöht die Token-Kosten ohne signifikanten Qualitätsgewinn. Die Beispiele sollten Edge-Cases abdecken.
+    \textbf{Antwort:} Tool Calling führt exakt ein Tool aus. ReAct evaluiert das Ergebnis in einer internen Schleife und entscheidet dynamisch über weitere Schritte.
 
-    \item \textbf{Was ist der Unterschied zwischen System-Prompt und User-Prompt?}
+    \item \textbf{Was ist "Negative Prompting" und wann versagt es?}
 
-    \textbf{Antwort:} Der System-Prompt definiert das Verhalten, die Persona und die Regeln -- er ist der "Code" des AI Systems. Der User-Prompt ist die konkrete Anfrage. Der System-Prompt wird selten geändert, der User-Prompt dynamisch befüllt.
+    \textbf{Antwort:} Anweisungen wie "Verwende keine Metaphern". Versagt oft bei LLMs, da das Konzept (Metapher) dadurch in der Attention-Matrix aktiviert wird. Besser: Positiv formulieren ("Schreibe extrem sachlich").
 
-    \item \textbf{Wie evaluierst du, ob ein Prompt gut ist?}
+    \item \textbf{Du hast 50 Few-Shot Beispiele. Alle reinladen?}
 
-    \textbf{Antwort:} Definiere ein Test-Set (50--100 Cases) mit Ground-Truth-Labels. Miss Accuracy, Precision, Recall und Token-Effizienz (Score pro Tokens). Automatisiere den Test als CI-Schritt bei jeder Prompt-Änderung.
+    \textbf{Antwort:} Nein (Token-Verschwendung und Lost-in-the-middle). Dynamisches Few-Shotting: Die User-Query embedden und via Vector-Search nur die 3 relevantesten Beispiele in den Prompt laden.
 
-    \item \textbf{Wann würdest du ReAct statt einfachem Tool Calling einsetzen?}
+    \item \textbf{Chain-of-Verification Architektur?}
 
-    \textbf{Antwort:} ReAct ist besser, wenn das Modell selbst entscheiden muss, welche Tools in welcher Reihenfolge aufgerufen werden (Multi-Step-Agenten). Einfaches Tool Calling reicht, wenn klar ist, welches Tool wann gebraucht wird.
+    \textbf{Antwort:} LLM 1 generiert Baseline-Antwort. LLM 2 generiert Verifizierungsfragen dazu. LLM 3 beantwortet diese unabhängig. LLM 4 schreibt finale, korrigierte Antwort.
 
-    \item \textbf{Ein Kollege sagt: "Ich schreibe einfach einen guten Prompt und fertig." Was sagst du?}
+    \item \textbf{Prompt-Qualität evaluieren nach Anpassungen?}
 
-    \textbf{Antwort:} Prompt Engineering ist iterative Softwareentwicklung, kein einmaliges Schreiben. Evaluierung, Versionierung und systematische Optimierung sind genauso wichtig wie beim Code. Ein "guter Prompt" ohne Tests ist ein Bug.
+    \textbf{Antwort:} Über ein Golden Dataset (Ground Truth). Automatischer CI-Run misst Accuracy, Precision und Token-Effizienz (LLM-as-a-Judge).
+
+
 \end{enumerate}
+
 
 % ===========================================================%
 % WEITERFÜHRENDE RESSOURCEN

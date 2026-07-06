@@ -645,84 +645,55 @@ und Prompt-Längen. Zeige die Kostenunterschiede der Optimierungsstufen.
 warnt bei Budget-Überschreitung und macht automatisch
 Optimierungsvorschläge.
 
-% ===========================================================%
+% ============================================================
 % INTERVIEWFRAGEN
-% ===========================================================%
+% ============================================================
 \section{Interviewfragen}
 
 \begin{enumerate}[leftmargin=*]
+    \item \textbf{Erste drei Optimierungsmaßnahmen bei hohen API-Kosten?}
 
-    \item \textbf{Ein Kunde beschwert sich über zu hohe LLM-Kosten.
-    Was sind deine ersten drei Optimierungsmassnahmen?}
+    \textbf{Antwort:} 1) Semantic Router (Mini für Standard). 2) Prompt Caching für statische Kontexte. 3) Strikte `max\_tokens` Limitierung zur DoS-Prävention.
 
-    \textbf{Antwort:} 1) Semantic Router: einfache Queries auf
-    GPT-4o-mini routen. 2) Prompt-Caching für System-Prompt und
-    Few-Shot-Beispiele. 3) Output-Tokens auf das notwendige Minimum
-    begrenzen (\texttt{max\_tokens}). Diese drei Massnahmen sparen
-    typischerweise 60--80\,\% der Kosten.
+    \item \textbf{RAG mit 50K Kontext im 128K Fenster. Antworten oft ungenau. Problem?}
 
-    \item \textbf{Dein RAG-System nutzt 50K Tokens Kontext pro Query.
-    Das Modell hat 128K Fenster. Trotzdem sind die Antworten schlecht.
-    Was ist das Problem?}
+    \textbf{Antwort:} Lost in the Middle. Lösung: Re-Ranker nutzen und den Kontext dynamisch auf die Top-K Tokens (z.B. 10K) eindampfen.
 
-    \textbf{Antwort:} Lost in the Middle. Die relevanten Dokumente
-    sind in der Mitte des Kontexts begraben. Lösung: Re-Ranking, um
-    die top-3 relevantesten Dokumente an den Anfang des Kontexts zu
-    setzen. Ausserdem: Weniger Kontext (10K statt 50K), dafür
-    relevanter.
+    \item \textbf{Monatskosten bei 100K Queries/Tag (GPT-4o-mini, 1K In, 500 Out)?}
 
-    \item \textbf{Wie berechnest du die monatlichen Kosten einer
-    LLM-Anwendung mit 100.000 täglichen Queries?}
+    \textbf{Antwort:} (1.000 * \$0.15/1M + 500 * \$0.60/1M) * 100.000 * 30 = ca. \$1.350/Monat.
 
-    \textbf{Antwort:} Formel: (Input-Tokens/Query $\times$ Input-Preis
-    + Output-Tokens/Query $\times$ Output-Preis) $\times$ Queries/Tag
-    $\times$ 30 Tage. Für ein RAG-System mit GPT-4o-mini (8K Input,
-    500 Output): (8.000 $\times$ 0,15 \$/M + 500 $\times$ 0,60 \$/M)
-    $\times$ 100.000 $\times$ 30 = ca. 4.500 \$/Monat.
+    \item \textbf{Wann lohnt sich Self-Hosting gegenüber APIs finanziell?}
 
-    \item \textbf{Wann lohnt sich Self-Hosting statt API?}
+    \textbf{Antwort:} Break-Even liegt meist ab ca. 50-100 Mio. Tokens/Tag, vorausgesetzt GPU-Abschreibung und MLOps-Personalkosten sind einkalkuliert.
 
-    \textbf{Antwort:} Ab etwa 50 Mio. Tokens/Tag. Bei geringerem
-    Volumen ist API günstiger (keine GPU-Kosten, keine Operations).
-    Bei sehr hohem Volumen (500 Mio. Tokens/Tag) kann Self-Hosting
-    5--10x günstiger sein.
+    \item \textbf{Wie evaluierst du Routing-Entscheidungen (Small vs Large Model)?}
 
-    \item \textbf{Dein Team nutzt ein Semantic Router-System.
-    Wie evaluierst du, ob die Routing-Entscheidungen korrekt sind?}
+    \textbf{Antwort:} Golden Dataset mit 500 Queries. Metrik: Routing Accuracy (gehts ans richtige Modell?) + Cost-Impact (wieviel \$ gespart?).
 
-    \textbf{Antwort:} Golden Dataset mit 500 Queries, gelabelt mit
-    der optimalen Modell-Kategorie. Metrik: Routing Accuracy
-    (Prozentsatz der korrekt gerouteten Queries). Zusätzlich
-    Kosten-Impact-Metrik: Wie viel Geld spart der Router im
-    Vergleich zu immer GPT-4o?
+    \item \textbf{Wie vermeidest du Context Window Overflows zuverlässig?}
 
-    \item \textbf{Wie stellst du sicher, dass du nie das Context
-    Window überschreitest?}
+    \textbf{Antwort:} Pre-Call-Token-Counting mit `tiktoken`. RAG-Chunks oder Chat-History dynamisch trimmen, bevor der API-Call abgesetzt wird.
 
-    \textbf{Antwort:} Pre-Call-Token-Counting mit tiktoken, bevor der
-    API-Call rausgeht. Wenn der Prompt zu lang ist: Chat-History
-    kürzen (Sliding Window) oder RAG-Kontext reduzieren. Niemals
-    einen Prompt ohne Token-Count senden.
+    \item \textbf{Prompt-Caching zeigt 0 \% Hits, obwohl der System-Prompt gleich bleibt. Fehler?}
 
-    \item \textbf{Du lädst 100 Dokumente (insgesamt 50K Tokens) in
-    einen Prompt. Das Modell ignoriert wichtige Details aus Dokument
-    47. Was ist passiert und wie behebst du es?}
+    \textbf{Antwort:} Die Reihenfolge. Dynamische Elemente (User-Input) stehen vor dem statischen System-Prompt. Prefix-Matching bricht sofort ab.
 
-    \textbf{Antwort:} Lost in the Middle -- Dokument 47 liegt genau
-    in der Mitte des Kontexts und bekommt weniger Attention.
-    Lösung: RAG mit Re-Ranking. Dokumente nach Relevanz sortieren,
-    sodass die wichtigsten an erster Stelle stehen. Maximal 5--10
-    Dokumente in den Prompt geben.
+    \item \textbf{Modell A (\$1 In/\$1 Out) vs. Modell B (\$0.50 In/\$3 Out). Welches ist für RAG günstiger?}
 
-    \item \textbf{Du setzt Prompt-Caching ein, aber das Dashboard
-    zeigt 0\,\% Cache Hits. Was ist falsch?}
+    \textbf{Antwort:} Modell B. RAG ist stark asymmetrisch (Massiv Input-Tokens für Kontext, wenig Output-Tokens für Antwort).
 
-    \textbf{Antwort:} Caching funktioniert nur bei exakt identischen
-    Präfixen. Typische Fehler: 1) Dynamische Werte im System-Prompt
-    (Timestamp, User-Name). 2) Unterschiedliche Reihenfolge der
-    Nachrichten. 3) Modell-String ändert sich (gpt-4o vs gpt-4o-2026-01).
-    Lösung: Cache-Key auf statischen Teil reduzieren.
+    \item \textbf{Ein User sendet 100x ein 120K Token Dokument und fragt "Zusammenfassung?". Kosten explodieren. Prävention?}
+
+    \textbf{Antwort:} Input-Token-Rate-Limiting pro User und Tag implementieren, nicht nur Request-Rate-Limiting.
+
+    \item \textbf{Warum verbraucht ein "JSON Mode" Output mehr Tokens als ein reiner String?}
+
+    \textbf{Antwort:} Wegen Whitespaces, Zeilenumbrüchen und Keys. Lösung: Minifiziertes JSON ohne Einrückungen anfordern.
+
+
 \end{enumerate}
+
 
 % ===========================================================%
 % WEITERFÜHRENDE RESSOURCEN

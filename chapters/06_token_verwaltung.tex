@@ -813,46 +813,49 @@ Baue ein System, das die Token-Kosten über mehrere Provider hinweg trackt und v
 \section{Interviewfragen}
 
 \begin{enumerate}[leftmargin=*]
-    \item \textbf{Ein deutsches Unternehmen migriert seine englische RAG-Wissensdatenbank komplett auf Deutsch. Die Textlänge (in Wörtern) bleibt nahezu identisch, aber die API-Kosten für die Input-Tokens steigen plötzlich um 40\,\%. Warum?}
+    \item \textbf{Deutsche RAG: Gleiche Wortzahl, 40 \% mehr Kosten. Warum?}
 
-    \textbf{Antwort:} Das ist der \glqq Tokenizer Bias\grqq{}. BPE-Tokenizer (wie TikToken von OpenAI) sind massiv auf englische Textkorpora optimiert. Typisch deutsche Konstruktionen (wie lange Komposita, z.\,B. \glqq Datenschutzgrundverordnung\grqq{}) kennt das Vokabular nicht. Das Wort zerfällt in zahlreiche kleine Sub-Tokens. Dadurch benötigt derselbe Informationsgehalt auf Deutsch signifikant mehr Tokens.
+    \textbf{Antwort:} Tokenizer Bias zulasten von Sprachen mit langen Komposita.
 
-    \item \textbf{Ein User lädt ein 4K-Bild in euren Chatbot hoch. Du nutzt die OpenAI Vision API mit \texttt{detail="high"}. Der Entwickler glaubt, das kostet einen pauschalen \glqq Image-Token-Preis\grqq{}. Wie wird das Bild tatsächlich abgerechnet?}
+    \item \textbf{4K-Bild mit `detail="high"`: Wie wird abgerechnet?}
 
-    \textbf{Antwort:} Die API verarbeitet keine 4K-Bilder direkt. Das Bild wird zunächst proportional herunterskaliert, sodass es in ein 2048x2048-Quadrat passt, und dann in 512x512 Pixel große Kacheln (Tiles) zerschnitten. Jede Kachel kostet 170 Tokens, plus 85 Tokens Grundkosten. Ein detailreiches Bild kostet also nicht pauschal, sondern generiert oft über 1.000 Tokens, was bei hohem Volumen extrem teuer wird.
+    \textbf{Antwort:} Skalierung auf 2048x2048, Zerlegung in 512x512 Kacheln (je 170 Tokens). Teuer.
 
-    \item \textbf{Du hast Prompt-Caching für euer RAG-System implementiert, um bei 15.000 Tokens Kontext Geld zu sparen. Das Dashboard zeigt jedoch eine Cache-Hit-Rate von 0\,\%. Euer Prompt-Aufbau lautet: \texttt{[User-Frage] + [RAG-Dokumente] + [System-Regeln]}. Was ist der Architekturfehler?}
+    \item \textbf{Denial-of-Wallet-Angriff über kurze Prompts. Prävention?}
 
-    \textbf{Antwort:} Das Caching bricht beim ersten abweichenden Token ab (Prefix Matching). Da die \texttt{[User-Frage]} dynamisch ist und ganz am Anfang steht, invalidiert sie den gesamten restlichen Cache für diesen Request. Die statischen, großen Blöcke müssen nach vorne: \texttt{[System-Regeln] + [RAG-Dokumente] + [User-Frage]}.
+    \textbf{Antwort:} Angreifer nutzt Prompts wie "Schreibe 50.000 Wörter". Zwingend `max\_tokens` für Output limitieren.
 
-    \item \textbf{Ein Angreifer sendet per Skript 10.000 extrem kurze Prompts (z.\,B. \glqq Hallo\grqq{}) an eure API. Du denkst: \glqq Input-Tokens sind billig, das Budget hält das aus.\grqq{} Am nächsten Tag ist euer Monatsbudget aufgebraucht. Was hat der Angreifer vermutlich getan?}
+    \item \textbf{History-Kompression bei 8K Tokens: JSON-Format wird ignoriert. Fehler?}
 
-    \textbf{Antwort:} Ein \glqq Denial-of-Wallet\grqq{}-Angriff über Output-Tokens. Der Angreifer hat vermutlich Prompts wie \glqq Schreibe mir einen Aufsatz mit 5.000 Wörtern\grqq{} gesendet. Da Output-Tokens 3- bis 10-mal teurer sind als Input-Tokens und kein hartes \texttt{max\_tokens}-Limit im Backend konfiguriert war, hat das Modell maximale Kosten pro Request verursacht.
+    \textbf{Antwort:} Der System-Prompt wurde fälschlicherweise in die dynamische Kompression (Summary) gezogen. System-Prompt muss isoliert und gepinnt bleiben.
 
-    \item \textbf{Euer Chatbot nutzt eine automatische History-Kompression: Wenn 8.000 Tokens erreicht sind, fasst ein Mini-Modell alles zusammen. Plötzlich fängt der Bot an, strikte JSON-Formatvorgaben zu ignorieren. Welcher Fehler ist bei der Kompression passiert?}
+    \item \textbf{`tiktoken` für Anthropic-Budget-Monitoring: Requests blockiert. Warum?}
 
-    \textbf{Antwort:} Die Kompressions-Logik hat versehentlich den \texttt{System-Prompt} mit in das \glqq Sliding Window\grqq{} gezogen und zusammengefasst. Dadurch wurden die harten, formatierenden Instruktionen weichgespült oder gelöscht. Der System-Prompt muss immer unangetastet bleiben und außerhalb der Kompressions-History \glqq gepinnt\grqq{} werden.
+    \textbf{Antwort:} Tokenizer sind proprietär. Tiktoken (OpenAI) zählt Claude-Tokens falsch (10–20 \% Abweichung).
 
-    \item \textbf{Du migrierst ein Skript von OpenAI zu Anthropic. Um das Budget zu überwachen, nutzt du weiterhin die \texttt{tiktoken}-Bibliothek, um die Tokens lokal zu zählen, bevor du sie an Anthropic sendest. Die Anthropic-API blockiert bald deine Requests wegen Limit-Überschreitung. Warum?}
+    \item \textbf{Pretty-Printed JSON im System-Prompt. Bewertung?}
 
-    \textbf{Antwort:} Tokenizer sind Provider-spezifisch. OpenAI nutzt TikToken (BPE), Anthropic nutzt eine Variante von SentencePiece. \texttt{tiktoken} zählt die Tokens für Claude-Modelle systematisch falsch (oft 10--20\,\% Abweichung). Man muss zwingend den Tokenizer des jeweiligen Providers nutzen (z.\,B. den Client-internen Counter von Anthropic).
+    \textbf{Antwort:} Anti-Pattern. Verbraucht 20–40 \% mehr Tokens durch Leerzeichen. Minifiziertes JSON nutzen.
 
-    \item \textbf{Ein Kollege formatiert alle JSON-Paylods im System-Prompt mit \glqq Pretty-Print\grqq{} (Einrückungen, Zeilenumbrüche), damit sie in den Logs schöner aussehen. Wie bewertest du das aus Token-Management-Sicht?}
+    \item \textbf{100.000 Rezensionen mit `stream=True` via API. Problem?}
 
-    \textbf{Antwort:} Sehr negativ. Whitespaces, Einrückungen und Zeilenumbrüche sind im Token-Vokabular oft eigene Tokens (oder verhindern effiziente Merges). Ein pretty-printed JSON kann 20--40\,\% mehr Tokens verbrauchen als ein minifiziertes JSON (\texttt{json.dumps(obj, separators=(',', ':'))}). Bei jedem Request summiert sich das zu massiven, sinnlosen Kosten.
+    \textbf{Antwort:} Streaming blockiert Durchsatz. Für asynchrone Massenverarbeitung die Batch API (50 \% Rabatt, 24h Window) nutzen.
 
-    \item \textbf{Ihr verarbeitet nachts 100.000 Kundenrezensionen. Ein Junior-Entwickler baut ein Skript mit \texttt{stream=True}, damit das System \glqq schneller und paralleler\grqq{} arbeitet. Was entgegnest du?}
+    \item \textbf{Kunde X verbraucht globales OpenAI-Limit → Kunde Y kann nicht einloggen. Lösung?}
 
-    \textbf{Antwort:} Streaming reduziert nur die wahrgenommene \textit{Time-to-First-Token} für menschliche User (UX), es erhöht aber nicht den serverseitigen Durchsatz -- im Gegenteil, es hält HTTP-Verbindungen unnötig lange offen. Für asynchrone Massenverarbeitung ohne menschlichen Empfänger muss zwingend die \glqq Batch API\grqq{} (mit 50\,\% Token-Rabatt) genutzt werden.
+    \textbf{Antwort:} Multi-Tenant-Isolation via Token Bucket im eigenen API-Gateway, bevor der Request zu OpenAI geht.
 
-    \item \textbf{Modell A kostet \$1/1M Input und \$1/1M Output. Modell B kostet \$0.50/1M Input und \$3/1M Output. Dein RAG-System liest immer 15.000 Dokumenten-Tokens und antwortet mit einem kurzen Satz (50 Tokens). Welches Modell ist günstiger?}
+    \item \textbf{User sendet Base64-codiertes Bild statt URL an Vision API. Performance-Impact?}
 
-    \textbf{Antwort:} Modell B. RAG ist extrem asymmetrisch (gewaltiger Input, winziger Output). Inputkosten Modell B: \$0.0075. Outputkosten: \$0.00015. Gesamt: \$0.00765. Modell A würde \$0.01505 kosten. Die hohen Output-Kosten von Modell B fallen wegen der Kürze der Antwort nicht ins Gewicht.
+    \textbf{Antwort:} Base64 bläht den Request-Body extrem auf (Bandbreite/Latenz). Bei großen Traffic-Mengen immer pre-signed URLs (z.B. S3) übergeben.
 
-    \item \textbf{In eurem B2B-SaaS lädt Kunde X ein riesiges Buch hoch und stellt 500 Fragen dazu. Dadurch wird das globale OpenAI-Tier-Limit eurer Firma erreicht. Kunde Y kann sich nicht mehr einloggen. Wie löst du das architektonisch?}
+    \item \textbf{Wie trackst du Token-Usage über Microservices hinweg exakt?}
 
-    \textbf{Antwort:} Es fehlt die Multi-Tenant-Token-Isolation. Das Backend darf API-Requests nicht ungeprüft durchreichen. Es benötigt eine \glqq Token Bucket\grqq{}-Implementierung pro Mandant (Tenant) in der eigenen Datenbank. Erreicht Kunde X sein individuelles Limit, wirft das Backend einen \texttt{429 Too Many Requests}, \textit{bevor} OpenAI kontaktiert wird. So bleibt das globale API-Limit für andere Kunden frei.
+    \textbf{Antwort:} Token-Usage aus der API-Response extrahieren, mit der `trace\_id` taggen und als Custom Metric an Datadog/Prometheus senden.
+
+
 \end{enumerate}
+
 
 % ===========================================================
 % WEITERFÜHRENDE RESSOURCEN

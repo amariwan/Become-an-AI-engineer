@@ -654,24 +654,47 @@ Die Lösung zu diesem Projekt findest du in den Ressourcen am Ende des Kapitels.
 \begin{enumerate}[leftmargin=*]
     \item \textbf{Der Product Manager sagt: "Der neue Prompt fühlt sich irgendwie besser an." Wie baust du dieses Bauchgefühl in eine CI/CD-Pipeline um?}
 
-    \textbf{Antwort:} Bauchgefühl (Vibe Checks) skaliert nicht. Ich implementiere eine automatisierte Eval-Pipeline: Ein "Golden Dataset" mit 100 repräsentativen Edge-Cases. Bei jedem Prompt-Update läuft eine Evaluation. Für deterministische Teile (z.\,B. JSON-Struktur) nutze ich harten Code. Für semantische Qualität nutze ich "LLM-as-a-Judge", bei dem ein starkes Modell (wie GPT-4o) den Output anhand einer fixen Rubrik bewertet. Erst wenn die Eval-Metriken grün sind, wird der Prompt gemerged.
+    \textbf{Antwort:} Vibe Checks skalieren nicht. Ich implementiere eine automatisierte Eval-Pipeline: Ein Golden Dataset mit 100 repräsentativen Edge-Cases. Für deterministische Teile (z.B. JSON) nutze ich harten Code. Für semantische Qualität nutze ich "LLM-as-a-Judge", bei dem ein starkes Modell den Output anhand einer fixen Rubrik bewertet.
 
-    \item \textbf{Ein Entwickler freut sich, dass Gemini 2.5 Pro ein riesiges Context Window hat und lädt für jede RAG-Anfrage 20 komplette PDFs in den Prompt. Die Qualität ist schlecht und die Kosten explodieren. Wie erklärst du das Problem und wie löst du es?}
+    \item \textbf{Ein Entwickler lädt für jede RAG-Anfrage 20 komplette PDFs in ein 2M-Context-Window. Die Qualität ist schlecht. Wie löst du das?}
 
-    \textbf{Antwort:} Nur weil ein Context Window riesig ist, heißt das nicht, dass das Modell alle Informationen gleich gut extrahiert ("Needle in a Haystack"-Problem) -- ganz zu schweigen von den Token-Kosten. Die Lösung: Die PDFs müssen beim Ingest gechunked und als Vektor-Embeddings in einer Vector-DB gespeichert werden. Zur Laufzeit machen wir eine hybride Suche (Vektor-Ähnlichkeit + Keyword-Search) und übergeben dem LLM nur die Top-5 relevanten Abschnitte.
+    \textbf{Antwort:} Das ist das "Needle in a Haystack"-Problem. Große Kontextfenster garantieren keine hohe Attention-Präzision. Lösung: Dokumente chunken, in eine Vector-DB laden, hybride Suche nutzen und nur die Top-5-Abschnitte als Kontext übergeben.
 
-    \item \textbf{Eure Kernanwendung fällt komplett aus, weil OpenAI (oder Anthropic) eine dreistündige API-Downtime hat. Wie designst du das System um, damit das nie wieder passiert, ohne die Codebase zu verdoppeln?}
+    \item \textbf{Eure Kernanwendung fällt aus, weil OpenAI eine API-Downtime hat. Wie designst du das System um?}
 
-    \textbf{Antwort:} Ich entkopple die Business-Logik vom spezifischen Provider. Ich nutze einen Abstraktions-Layer (z.\,B. ein AI Gateway oder Frameworks wie LiteLLM). Dort konfiguriere ich Fallback-Routen: Fällt GPT-4o mit einem 500er-Fehler aus, routet das Gateway den Request transparent zu Claude 3.5 Sonnet oder Gemini um. Voraussetzung dafür ist, dass Tool-Calling-Schemas und Prompts standardisiert sind.
+    \textbf{Antwort:} Ich nutze einen Abstraktions-Layer (z.B. LiteLLM oder ein API-Gateway) und konfiguriere Fallback-Routen. Fällt GPT-4o mit 500er-Fehler aus, wird transparent auf Claude 3.5 Sonnet geroutet.
 
-    \item \textbf{Dein AI-Agent ruft eine Wetter-API mit einem falschen Datumsformat auf. Die API wirft einen 400er-Fehler, der Agent probiert es sofort nochmal falsch und hängt in einem endlosen, extrem teuren Loop. Wie verhinderst du das architektonisch?}
+    \item \textbf{Dein Agent ruft eine Wetter-API falsch auf und hängt in einem endlosen Loop, der Kosten verursacht. Prävention?}
 
-    \textbf{Antwort:} Drei Ebenen der Sicherheit: Erstens, harte Limits (Max-Iterations) in der Agent-Loop -- z.\,B. Abbruch nach 3 Fehlversuchen. Zweitens, Tool-Parameter strikt mit Pydantic validieren, \textit{bevor} die eigentliche API aufgerufen wird. Drittens: Den Fehlercode (z.\,B. "API erwartet YYYY-MM-DD") als System-Message zurück an das LLM füttern, damit es aus dem Fehler lernt und den nächsten Call anpasst.
+    \textbf{Antwort:} 1) Harte Limits (Max-Iterations) in der Agent-Loop. 2) Tool-Parameter strikt mit Pydantic validieren *vor* dem Call. 3) Fehlercode als System-Message an das LLM zurückgeben, damit es korrigiert.
 
-    \item \textbf{Die Latenz eures KI-Features liegt bei 5 Sekunden. Ihr könnt kein kleineres Modell nehmen, weil die Antworten sonst falsch werden. Wie optimierst du die User Experience (UX) auf Engineering-Seite?}
+    \item \textbf{Latenz liegt bei 5 Sekunden. Kleineres Modell ist keine Option. Wie verbesserst du die UX auf Engineering-Seite?}
 
-    \textbf{Antwort:} Ich wechsle von Block-Responses auf Streaming (Server-Sent Events). Die "Time to First Token" (TTFT) ist entscheidend für das Wartegefühl des Users. Selbst wenn die finale Antwort 5 Sekunden dauert, sieht der User nach 300~ms das erste Wort. Zusätzlich implementiere ich semantisches Caching: Wenn ein User dieselbe Frage minimal anders formuliert, liefert das Cache-System sofort (in 50~ms) die bereits generierte Antwort aus.
+    \textbf{Antwort:} Wechsel von Block-Responses auf Server-Sent Events (Streaming), um die Time-to-First-Token (TTFT) auf <300ms zu drücken. Zusätzlich semantisches Caching für wiederkehrende Anfragen implementieren.
+
+    \item \textbf{Entscheidung: RAG-Architektur oder Agentic Workflow? Wo ziehst du die architektonische Grenze?}
+
+    \textbf{Antwort:} RAG ist deterministisch und passiv (Retrieve \& Generate) – ideal für reine Informationsabfragen. Agents sind aktiv und probabilistisch (Plan \& Execute) – sie werden nur eingesetzt, wenn das System Schreibzugriff (APIs/DBs) oder mehrstufige Entscheidungsbäume benötigt.
+
+    \item \textbf{Wie balancierst du das "Build vs. Buy"-Dilemma bei Vektordatenbanken für ein Enterprise-Projekt?}
+
+    \textbf{Antwort:} Für <1 Mio. Vektoren und Standard-RAG kaufe ich Managed Services (Pinecone/Weaviate Cloud) wegen der Time-to-Market. Ab 10+ Mio. Vektoren, strenger Data Locality (DSGVO) oder komplexen Hybrid-Search-Anforderungen hoste ich Qdrant oder Milvus selbst (Kubernetes).
+
+    \item \textbf{Das KI-Feature generiert hohe API-Kosten, aber der ROI ist unklar. Welche Business-Metriken trackst du als Engineer?}
+
+    \textbf{Antwort:} Ich implementiere Cost-per-Query, Task-Success-Rate und Time-Saved-per-User. Diese verknüpfe ich in Datadog/PostHog direkt mit den Token-Kosten, um den Net Value jedes API-Calls zu beweisen.
+
+    \item \textbf{Das Frontend-Team will direkt auf die OpenAI-API zugreifen. Warum blockierst du das?}
+
+    \textbf{Antwort:} Architektur-Anti-Pattern. Es legt API-Keys im Client offen (Security), verhindert serverseitiges Caching, verunmöglicht Rate Limiting, PII-Redaktion und Provider-Fallbacks. Kommunikation muss immer über ein eigenes Backend/Gateway laufen.
+
+    \item \textbf{Ein lokales Edge-AI-Modell auf Mobile-Devices soll Cloud-Kosten sparen. Was sind die Trade-offs?}
+
+    \textbf{Antwort:} Null API-Kosten und volle Privacy, aber extremer Battery-Drain, langsames TTFT, Beschränkung auf kleine 3B-8B Modelle (geringes Reasoning) und schwierige Over-the-Air (OTA) Updates der Modellgewichte.
+
+
 \end{enumerate}
+
 
 % ============================================================
 % WEITERFÜHRENDE RESSOURCEN

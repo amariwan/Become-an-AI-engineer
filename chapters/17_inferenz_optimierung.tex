@@ -365,36 +365,55 @@ Der Engpass der LLM-Inference ist nicht Rechenleistung, sondern Speicherbandbrei
 
 \textbf{Erfolgskriterium:} Du kannst begründen, welche Konfiguration für welchen Use-Case optimal ist.
 
-% ===========================================================%
+% ============================================================
 % INTERVIEWFRAGEN
-% ===========================================================%
+% ============================================================
 \section{Interviewfragen}
 
 \begin{enumerate}[leftmargin=*]
-    \item \textbf{Erkläre den Unterschied zwischen Prefill- und Decode-Phase. Welche ist der Engpass und warum?}
+    \item \textbf{Prefill- vs Decode-Phase. Wo liegt der Engpass?}
 
-    \textbf{Antwort:} Prefill ist parallel und compute-bound (Matrix-Multiplikation). Decode ist sequentiell und memory-bound (KV-Cache-Lookups). In Produktion ist meist Decode der Engpass, da jeder Token einzeln generiert wird. Hohe Batch-Sizes verschärfen das Problem, da der KV-Cache pro Request wächst.
+    \textbf{Antwort:} Prefill (Prompt einlesen) = parallel, compute-bound. Decode (Token-Generierung) = sequentiell, memory-bound (KV-Cache Transfer). Decode ist bei LLMs der absolute Engpass.
 
-    \item \textbf{Was ist der Unterschied zwischen GPTQ, AWQ und GGUF? Wann setzt du welches ein?}
+    \item \textbf{vLLM TTFT liegt bei 2,5s bei Batch=1. Optimierungen?}
 
-    \textbf{Antwort:} GPTQ und AWQ sind Post-Training-Quantisierungen für GPU-Inference, AWQ ist quality-besser. GGUF ist für CPU/Mixed-Inference (llama.cpp, Ollama). GPTQ/AWQ für Cloud-Deployment (vLLM), GGUF für lokale/On-Device-Inference.
+    \textbf{Antwort:} 1) Flash Attention 2/3. 2) Prefix Caching an. 3) Tensor Parallelism erhöhen. 4) INT8 KV-Cache aktivieren, um Memory-Bandwidth-Druck zu senken.
 
-    \item \textbf{Dein vLLM-Server hat eine TTFT von 2,5 Sekunden bei Batch-Grösse 1. Was sind deine ersten Optimierungen?}
+    \item \textbf{Continuous Batching \& PagedAttention auf 4x A100 (70B Modell)?}
 
-    \textbf{Antwort:} (1) Quantisierung prüfen (INT4 statt FP16). (2) Flash Attention aktivieren. (3) Prompt-Caching für System-Prompt. (4) Tensor-Parallelism auf mehr GPUs. (5) Speculative Decoding für den Decode-Schritt.
+    \textbf{Antwort:} Tensor Parallelism (TP=4). PagedAttention Block-Size auf 16 Tokens für minimale Fragmentierung. Chunked Prefill aktiv, um Compute-Bound und Memory-Bound Phasen optimal zu verschränken.
 
-    \item \textbf{Wann ist Self-Hosting billiger als die API? Welche Kosten vergessen Teams oft?}
+    \item \textbf{KV-Cache Berechnung (Max Batch Size) für Hardware-Sizing?}
 
-    \textbf{Antwort:} Break-even meist bei 1--5 Mio Tokens/Tag (API-Logik). Vergessene Kosten: GPU-Abschreibung (3 Jahre), Strom/Kühlung, Netzwerk-Storage, Personal (Wartung, Monitoring), Opportunitätskosten (Ingenieur-Stunden vs API-Setup).
+    \textbf{Antwort:} VRAM = Model Weights + KV-Cache. KV-Cache = `2 * Layers * Hidden\_Dim * Seq\_Len * 2 Bytes (FP16)`. Der Rest-VRAM bestimmt, wie viele parallele Requests in den Batch passen.
 
-    \item \textbf{Du quantisiert ein Modell auf INT4, danach sinkt die Code-Qualität massiv, während alltagssprachliche Aufgaben unverändert bleiben. Warum?}
+    \item \textbf{Speculative Decoding Draft-Model Auswahl?}
 
-    \textbf{Antwort:} Quantisierung trifft nicht alle Fähigkeiten gleich. Code-Generierung nutzt feingranulare Token-Wahrscheinlichkeiten, die unter INT4 leiden. Allgemeine Sprache ist robuster. Lösung: INT8 für Code-Modelle oder quantisierungs-aware Training.
+    \textbf{Antwort:} Das Draft-Modell muss extrem klein (schnell) sein, aber aus derselben Tokenizer/Architektur-Familie stammen wie das Target-Modell. Die Akzeptanzrate (Verification) bestimmt den Speedup.
 
-    \item \textbf{Wie berechnest du die maximale Batch-Size für deine GPU?}
+    \item \textbf{GPTQ vs AWQ vs GGUF?}
 
-    \textbf{Antwort:} VRAM = Modellgewichte + KV-Cache + Overhead. Für 70B in INT4: 35~GB Gewichte. KV-Cache pro Request: $2 \times \text{Schichten} \times \text{Hidden-Dim} \times \text{Seq-Länge} \times 2~\text{Bytes}$ (FP16). Bei 32 Schichten, 8192 Hidden, 8192 Seq-Länge: $\sim 4~\text{GB}$. Max Batch: $(80~\text{GB} - 35~\text{GB}) / 4~\text{GB} \approx 11$. Rest als Sicherheitspuffer.
+    \textbf{Antwort:} GPTQ/AWQ sind für GPU-Inference optimiert (AWQ hat meist bessere Accuracy). GGUF ist für CPU/Apple Silicon (llama.cpp) und Offloading-Strategien designt.
+
+    \item \textbf{Warum zerstört aggressive INT4 Quantisierung Python-Code Qualität?}
+
+    \textbf{Antwort:} Code-Syntax (Klammern, Indentation) verlässt sich auf fein kalibrierte Outlier-Gewichte in der Attention-Matrix. INT4 glättet diese. Abhilfe: INT8 oder Quantization-Aware-Training.
+
+    \item \textbf{MoE (Mixture of Experts) Inference-Overhead?}
+
+    \textbf{Antwort:} MoE aktiviert pro Token z.B. nur 14B von 47B Parametern (Compute billig), aber *alle* 47B Parameter müssen im schnellen VRAM vorgehalten werden (Memory extrem teuer).
+
+    \item \textbf{FlashAttention-3 Kern-Mechanik?}
+
+    \textbf{Antwort:} Tiling. Die extrem speicherintensive Attention-Matrix (\$N \times N\$) wird nie komplett im langsamen HBM der GPU materialisiert, sondern in Blöcken im schnellen SRAM berechnet (Memory I/O drastisch reduziert).
+
+    \item \textbf{CPU Offloading bei zu wenig VRAM (z.B. DeepSpeed ZeRO)?}
+
+    \textbf{Antwort:} Gewichte liegen im System-RAM und werden Block für Block via PCIe in den GPU-VRAM kopiert. Funktioniert, zerstört aber die Latenz (Tokens/s sinken massiv) durch den PCIe-Bottleneck.
+
+
 \end{enumerate}
+
 
 % ===========================================================%
 % RESSOURCEN
@@ -411,4 +430,3 @@ Der Engpass der LLM-Inference ist nicht Rechenleistung, sondern Speicherbandbrei
 \end{itemize}
 
 \textbf{Nächster Schritt:} Im nächsten Kapitel erfährst du, wie du Modelle durch Fine-Tuning an deine spezifischen Anforderungen anpasst -- von LoRA bis Full Fine-Tuning.
-\endinput

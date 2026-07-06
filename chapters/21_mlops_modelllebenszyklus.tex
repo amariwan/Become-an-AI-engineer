@@ -202,14 +202,228 @@ Jede Modelländerung sollte nachvollziehbar sein. Wichtige Artefakte sind:
 \end{itemize}
 
 % ============================================================
+% PROMPT-VERSIONIERUNG
+% ============================================================
+\section{Prompt-Versionierung in der Praxis}
+
+\subsection{Strukturierte Prompt-Ordner}
+
+Eine bewährte Struktur trennt Prompts nach Umgebung und Domäne:
+
+\begin{verbatim}
+prompts/
+  staging/
+    customer-support/
+      v1__de-escalation.jinja2
+      v2__de-escalation.jinja2
+    code-assistant/
+      v3__code-review.jinja2
+  production/
+    customer-support/
+      v2__de-escalation.jinja2
+    code-assistant/
+      v3__code-review.jinja2
+\end{verbatim}
+
+Jeder Prompt ist eine Jinja2-Vorlage, die in Git versioniert wird. Ein Wechsel der aktiven Version erfolgt durch Deployment -- nicht durch Datei-Edit.
+
+\subsection{Automatisierte Prompt-Tests}
+
+Vor dem Deployment durchläuft jeder Prompt eine automatisierte Testsuite:
+
+\begin{lstlisting}[language=Python,caption=Prompt-Test mit Golden Dataset]
+import pytest
+from jinja2 import Template
+
+GOLDEN = [
+    {"input": "Wie k\u00fcndige ich mein Abo?",
+     "expected_keywords": ["k\u00fcndigen", "Abo", "Optionen"]},
+    {"input": "Ich habe meine Rechnung nicht erhalten",
+     "expected_keywords": ["Rechnung", "erneut", "Support"]},
+]
+
+def test_prompt_golden():
+    template = Template(open("prompts/support.jinja2").read())
+    for case in GOLDEN:
+        result = template.render(query=case["input"])
+        for kw in case["expected_keywords"]:
+            assert kw in result, \
+                f"Fehlendes Schl\u00fcsselwort {kw} in Prompt-Output"
+\end{lstlisting}
+
+\subsection{Rollback-Strategie}
+
+Jeder Prompt-Deployment erzeugt einen versionierten Snapshot. Ein Rollback bedeutet: den vorherigen Snapshot als aktiv markieren und erneut deployen. Wichtig ist, dass auch die zugeh\u00f6rigen Embeddings und Konfigurationen zur\u00fcckgesetzt werden k\u00f6nnen.
+
+% ============================================================
+% KOSTENMANAGEMENT
+% ============================================================
+\section{Kostenmanagement und Budgetkontrolle}
+
+LLM-Kosten sind kein Afterthought -- sie k\u00f6nnen ein Produkt unwirtschaftlich machen.
+
+\subsection{Kostentreiber identifizieren}
+
+Die h\u00e4ufigsten Kostentreiber in LLM-Produktionen:
+
+\begin{description}[leftmargin=*,style=nextline]
+    \item[Kontextfenster] L\u00e4ngere Prompts bedeuten h\u00f6here Kosten pro Anfrage. Ein System-Prompt mit 2000 Tokens kostet bei jeder Interaktion -- unabh\u00e4ngig vom Nutzer-Prompt.
+    \item[Output-L\u00e4nge] Modelle, die ausf\u00fchrliche Antworten generieren, verbrauchen mehr Output-Tokens. Besonders kritisch bei Agenten, die mehrere Tools aufrufen.
+    \item[Fehlertoleranz] Wiederholte Anfragen durch Timeouts oder fehlerhafte Validierung vervielfachen die Kosten.
+    \item[Modellwahl] Teurere Modelle pro Token sind nicht immer n\u00f6tig -- ein Semantic Router kann einfache Anfragen an g\u00fcnstigere Modelle delegieren.
+\end{description}
+
+\subsection{Kostenbudgetierung}
+
+Setze ein mehrstufiges Budgetsystem auf:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Harter Deckel} (Hard Cap): Maximale monatliche Ausgaben. Bei \u00dcberschreitung wird auf ein g\u00fcnstigeres Modell oder Caching-only-Modus umgeschaltet.
+    \item \textbf{Weiche Warnung} (Soft Alert): Bei 80\,\% des Budgets wird ein Alarm ausgel\u00f6st.
+    \item \textbf{Pro-Kunde-Limit}: Budgetbegrenzung pro Mandant oder API-Key, um Kostenexplosion durch einzelne Nutzer zu verhindern.
+\end{enumerate}
+
+\begin{lstlisting}[language=Python,caption=Kosten-Tracker f\u00fcr LLM-API-Aufrufe]
+import time
+from dataclasses import dataclass, field
+
+@dataclass
+class CostTracker:
+    budget_limit: float
+    current_cost: float = 0.0
+    alerts: list = field(default_factory=list)
+
+    def track(self, model: str, prompt_tokens: int,
+              completion_tokens: int, prices: dict) -> None:
+        price = prices.get(model, 0)
+        cost = (prompt_tokens * price["input"]
+                + completion_tokens * price["output"]) / 1_000_000
+        self.current_cost += cost
+        ratio = self.current_cost / self.budget_limit
+        if ratio >= 0.8:
+            self.alerts.append(
+                f"Warnung: {ratio:.0%} des Budgets erreicht"
+            )
+
+    def over_budget(self) -> bool:
+        return self.current_cost >= self.budget_limit
+\end{lstlisting}
+
+\subsection{Kostenoptimierende Pattern}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Prompt Caching}: Wiederkehrende Prefix-Tokens werden gecached und nur einmal berechnet.
+    \item \textbf{Batch-Processing}: Asynchrone Anfragen zu\u2028sammenfassen reduziert API-Calls.
+    \item \textbf{Output-Limits}: \texttt{max\_tokens} strikt setzen -- auch wenn das Modell weiterreden k\u00f6nnte.
+    \item \textbf{Caching auf Applikationsebene}: Semantisch \u00e4hnliche Anfragen k\u00f6nnen ohne API-Aufruf beantwortet werden (siehe Kapitel 19).
+\end{itemize}
+
+% ============================================================
+% INCIDENT RESPONSE
+% ============================================================
+\section{Incident Response und Rollback}
+
+LLM-Produktionssysteme fallen anders aus als klassische APIs.
+
+\subsection{Typische Incidents}
+
+\begin{description}[leftmargin=*,style=nextline]
+    \item[Qualit\u00e4tseinbruch] Das Modell liefert pl\u00f6tzlich schlechtere Antworten -- durch ein Modell-Update des Providers oder Drift in den Eingabedaten.
+    \item[Kosten-Explosion] Ein fehlerhafter Prompt oder eine Endlosschleife in einem Agenten verursacht unerwartet hohe Token-Verbr\u00e4uche.
+    \item[Security Incident] Prompt Injection, Jailbreaking oder Datenexfiltration \u00fcber die Ausgabe.
+    \item[Provider-Ausfall] Der LLM-Provider ist nicht erreichbar oder liefert konsistent Fehler zur\u00fcck.
+\end{description}
+
+\subsection{Runbook-Struktur}
+
+Jeder Incident-Typ braucht ein Runbook:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Detect}: Metriken\/Alerts l\u00f6sen aus (Kostenanstieg, Fehlerrate, Qualit\u00e4tsscore)
+    \item \textbf{Triage}: Ist es ein Provider- oder Systemproblem? Betrifft es alle Nutzer oder eine Gruppe?
+    \item \textbf{Mitigate}: Fallback-Modell aktivieren, Cache leeren, Prompt auf letzte stabile Version zur\u00fccksetzen
+    \item \textbf{Resolve}: Root-Cause-Analyse, Fix deployen, Monitoring verst\u00e4rken
+    \item \textbf{Learn}: Runbook aktualisieren, Metriken nachsch\u00e4rfen, Post-Mortem schreiben
+\end{enumerate}
+
+\subsection{Fallback-Strategien}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Multi-Provider}: Bei Ausfall eines Providers auf einen zweiten umschalten (z.\,B. OpenAI \textrightarrow{} Anthropic)
+    \item \textbf{Modell-Degradation}: Bei \u00dcberlastung auf ein kleineres, g\u00fcnstigeres Modell wechseln
+    \item \textbf{Cache-Only-Modus}: Bei komplettem Provider-Ausfall nur noch gecachte Antworten ausliefern -- mit deutlichem Hinweis f\u00fcr den Nutzer
+\end{itemize}
+
+% ============================================================
 % ZUSAMMENFASSUNG
 % ============================================================
 \begin{zusammenfassung}
-MLOps macht LLM-Anwendungen produktionsreif: nicht nur durch Deployment, sondern durch Versionierung, Tests, Monitoring und Governance. Ein strukturierter Lebenszyklus reduziert Risiko, Kosten und Drift, und ermöglicht wiederholbare Verbesserungen.
+MLOps macht LLM-Anwendungen produktionsreif: nicht nur durch Deployment, sondern durch Versionierung, Tests, Monitoring, Kostenkontrolle und Incident Response. Ein strukturierter Lebenszyklus reduziert Risiko, Kosten und Drift, und erm\u00f6glicht wiederholbare Verbesserungen.
 \end{zusammenfassung}
 
 \begin{uebungen}
-    \item Beschreibe einen konkreten Ablauf, wie du ein Prompt-Update von der Review bis zum Canary-Release bringen würdest.
-    \item Nenne drei Drift-Indikatoren, die für eine Conversational AI besonders wichtig sind.
-    \item Erkläre, warum eine Model Card für API-basierte Modelle trotzdem sinnvoll ist.
+    \item Beschreibe einen konkreten Ablauf, wie du ein Prompt-Update von der Review bis zum Canary-Release bringen w\u00fcrdest.
+    \item Nenne drei Drift-Indikatoren, die f\u00fcr eine Conversational AI besonders wichtig sind.
+    \item Erkl\u00e4re, warum eine Model Card f\u00fcr API-basierte Modelle trotzdem sinnvoll ist.
+    \item Entwerfe ein Kosten-Budget-Schema f\u00fcr eine Chat-Anwendung mit drei Modellen (GPT-4o, GPT-4o-mini, Claude Haiku) und sch\u00e4tze die monatlichen Kosten bei 10.000 Anfragen pro Tag.
+    \item Schreibe ein Runbook f\u00fcr den Incident-Typ \glqq pl\u00f6tzlicher Kostenanstieg um 300\,\%\grqq{} -- von der Erkennung bis zum Post-Mortem.
+    \item Implementiere eine \texttt{fallback\_chain}-Funktion, die bei Fehler des prim\u00e4ren LLM-Providers automatisch auf ein sekund\u00e4res Modell umschaltet.
+    \item Analysiere ein Golden Dataset deiner Wahl und identifiziere, welche Testf\u00e4lle bei einem Prompt-Update besonders wahrscheinlich fehlschlagen w\u00fcrden.
 \end{uebungen}
+
+% ============================================================
+% INTERVIEWFRAGEN
+% ============================================================
+\section{Interviewfragen}
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{User-Akzeptanzrate von LLM-Code sinkt, aber Offline-Evals bleiben gr\u00fcn. Architektur-Problem?}
+
+    \textbf{Antwort:} User Behavior Drift. Statische Golden Datasets decken neue Frameworks (User-Realit\u00e4t) nicht ab. Continuous-Eval-Pipeline mit LLM-Judge auf Prod-Traffic (\glqq Shadow Scoring\grqq{}) implementieren.
+
+    \item \textbf{Inference Migration: A100 (CUDA) auf AWS Inferentia2 (Neuron). Bottleneck?}
+
+    \textbf{Antwort:} Inferentia ben\u00f6tigt Ahead-of-Time Kompilierung (TorchScript). Dynamische Prompt-L\u00e4ngen triggern Re-Kompilierungen zur Laufzeit. Inputs m\u00fcssen auf feste L\u00e4nge gepaddet/gebucketed werden.
+
+    \item \textbf{PromptOps: Wie trackst du Prompt-Iterationen sicher?}
+
+    \textbf{Antwort:} Prompts als Code in der Model-Registry (z.B. MLflow/Langfuse). Jeder Prompt-Hash ist kryptografisch an den Output, die Git-Commit-ID und die spezifischen Evals gebunden.
+
+    \item \textbf{CI/CD Rollback-Trigger f\u00fcr LLMs?}
+
+    \textbf{Antwort:} Canary-Rollout (10\% Traffic). Wenn der LLM-as-a-Judge-Score f\u00e4llt ODER die P95 Latenz um 500ms steigt, triggert der API-Gateway-Controller den sofortigen Rollback auf die Vorg\u00e4nger-Version.
+
+    \item \textbf{Feature Store f\u00fcr LLM-Kontext?}
+
+    \textbf{Antwort:} F\u00fcr Echtzeit-Personalisierung. Langsame RAG-Suchen werden durch schnelle Redis-Lookups (Feature Store liefert Alter, Premium-Status, letzte 5 K\u00e4ufe in <5ms) in den System-Prompt injiziert.
+
+    \item \textbf{Logging von Prompt-Payloads OHNE PII Verletzung in MLOps?}
+
+    \textbf{Antwort:} Logging-Middleware nutzt PII-Detection-Models (z.B. Microsoft Presidio) asynchron. IPs und Namen werden irreversibel gehasht (\texttt{USER\_7B2X}), bevor sie ins Data Warehouse (Snowflake/ClickHouse) flie\u00dfen.
+
+    \item \textbf{Wie misst du die Latenz-Perzentile isoliert vom Provider?}
+
+    \textbf{Antwort:} Client-Side Time-to-First-Token vs Backend-Round-Trip. Subtraktion der Netzwerklatenz. Wenn Provider-Latenz okay, aber TTFT schlecht, staut sich der SSE-Stream im eigenen Proxy/Gateway.
+
+    \item \textbf{Shadow Deployment f\u00fcr neues OSS-Modell?}
+
+    \textbf{Antwort:} 100\% Traffic geht ans alte Modell (User sieht das). 10\% Traffic wird asynchron dupliziert und ans neue Modell geschickt (Fire and Forget). Outputs vergleichen, ohne Prod-UX zu st\u00f6ren.
+
+    \item \textbf{Umgang mit \glqq Zombie Prompts\grqq{} im Code?}
+
+    \textbf{Antwort:} Centralized Prompt Management (CMS/Registry) via SDK anbinden. Code l\u00e4dt \texttt{client.get\_prompt("onboarding\_v2")}. Erlaubt Over-the-Air Updates ohne App-Deployment, Analytics pro Prompt-ID.
+
+    \item \textbf{Automatisiertes Model-Monitoring f\u00fcr Data Contamination (Langzeit)?}
+
+    \textbf{Antwort:} Perplexit\u00e4ts-Tracking auf einem geheimen, fixen Dataset. Sinkt die Perplexit\u00e4t bei einem Provider-Modell-Update pl\u00f6tzlich drastisch, hat das Modell die Testdaten im Update auswendig gelernt.
+\end{enumerate}
+
+\section{Ressourcen}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{MLflow}: \href{https://mlflow.org}{mlflow.org} -- Open-Source ML Lifecycle Management
+    \item \textbf{Langfuse}: \href{https://langfuse.com}{langfuse.com} -- LLM Observability \& Evaluation
+    \item \textbf{Evidently AI}: \href{https://www.evidentlyai.com}{evidentlyai.com} -- ML-Monitoring und Drift-Erkennung
+\end{itemize}
+
+\textbf{N\u00e4chster Schritt:} Im n\u00e4chsten Kapitel erf\u00e4hrst du, wie du KI-Sicherheit und Ethik in deine Produktionssysteme integrierst -- von Halluzinationen bis zur DSGVO-Konformit\u00e4t.

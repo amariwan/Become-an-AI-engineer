@@ -656,46 +656,49 @@ Baue ein System, das Produktbilder analysiert und strukturierte Metadaten extrah
 \section{Interviewfragen}
 
 \begin{enumerate}[leftmargin=*]
-    \item \textbf{Dein Code verwendet OpenAI Structured Outputs (\texttt{strict: true}). In Produktion erhältst du plötzlich eine API-Fehlermeldung, die besagt, dass das Schema abgelehnt wurde. Dabei hat das Pydantic-Schema wochenlang funktioniert. Was könnte die Ursache sein?}
+    \item \textbf{Structured Outputs (strict: true) lehnt Schema ab. Ursache?}
 
-    \textbf{Antwort:} OpenAI's \texttt{strict: true}-Feature unterstützt nicht 100\,\% des JSON-Schema-Standards. Es erlaubt beispielsweise keine rekursiven Strukturen mit unbegrenzter Tiefe, optionale Felder ohne \texttt{null}-Typ oder fehlende \texttt{additionalProperties: false}. Wenn jemand im Backend das Pydantic-Modell so angepasst hat (z.\,B. eine rekursive Baumstruktur hinzugefügt), lehnt die API das Schema beim Startup des Calls ab.
+    \textbf{Antwort:} `strict: true` unterstützt kein vollumfängliches JSON Schema (keine optionalen Felder ohne `null`, keine Rekursion).
 
-    \item \textbf{Du sendest 50.000 Dokumente pro Nacht an die Batch API. Der Job bricht nach 2 Stunden mit \glqq Failed\grqq{} ab. Wie findest du heraus, welches der 50.000 Dokumente den Fehler verursacht hat, ohne den Job neu zu starten?}
+    \item \textbf{Batch API mit 50.000 Docs failed. Wie isolierst du den Fehler?}
 
-    \textbf{Antwort:} Die Batch API liefert auch bei einem globalen Abbruch (oder nach erfolgreichem Abschluss) eine Error-File-ID zurück. Ich lade diese \texttt{error\_file} über den \texttt{files}-Endpunkt herunter. Sie enthält als JSONL-Datei genau die \texttt{custom\_id}s der Requests, die fehlgeschlagen sind, inklusive des detaillierten Error-Codes (z.\,B. Token-Limit überschritten oder Moderations-Filter ausgelöst).
+    \textbf{Antwort:} Error-File-ID aus der Batch-Response laden, die die `custom\_ids` der gefehlten Requests enthält.
 
-    \item \textbf{Ein Nutzer triggert dein Chat-UI. Du nutzt Streaming. Der Nutzer sieht sofort den ersten Token, schließt aber nach 2 Sekunden den Tab. Wie verhinderst du, dass dein Backend und die OpenAI-API die verbleibenden 2.000 Output-Tokens (und Kosten) weiter generieren?}
+    \item \textbf{User schließt Tab bei Streaming nach 2s. Wie stoppst du LLM-Kosten?}
 
-    \textbf{Antwort:} Das Backend muss Verbindungsabbrüche des Clients (z.\,B. über Request-Cancellation in FastAPI) erkennen. Tritt das auf, muss der Server aktiv den laufenden OpenAI-Stream abbrechen. In Python geschieht dies meist automatisch, wenn der Iterator zerstört wird oder man explizit \texttt{response.close()} aufruft, wodurch die HTTP-Verbindung zu OpenAI getrennt und die Generierung (sowie die Abrechnung) gestoppt wird.
+    \textbf{Antwort:} Verbindungsabbruch im Backend erkennen (z.B. FastAPI Request-Cancellation) und Stream per `response.close()` hart beenden.
 
-    \item \textbf{Du nutzt Parallel Tool Calling für einen Wetter-Agenten. Er soll das Wetter für \glqq Berlin\grqq{}, \glqq Paris\grqq{} und \glqq Rom\grqq{} abfragen. Das Modell liefert dir drei Tool Calls zurück. In welcher Reihenfolge musst du dem Modell die drei Tool-Ergebnisse zurückschicken?}
+    \item \textbf{Parallel Tool Calling: Reihenfolge der Ergebnisse?}
 
-    \textbf{Antwort:} Die Reihenfolge der zurückgesendeten Tool-Ergebnisse (Messages mit Rolle \texttt{tool}) ist egal, solange die \texttt{tool\_call\_id} exakt mit der ID übereinstimmt, die das Modell für den jeweiligen Call generiert hat. Wichtig ist nur, dass \textit{alle} Ergebnisse der parallelen Tool Calls in der Historie stehen, bevor ich die API das nächste Mal aufrufe, da sie sonst einen Validierungsfehler wirft.
+    \textbf{Antwort:} Reihenfolge ist irrelevant, solange die `tool\_call\_id` exakt gematcht wird und alle in der History stehen.
 
-    \item \textbf{Euer System-Prompt ist 10.000 Tokens lang. Ein Kollege schlägt vor, ein Fine-Tuning auf \texttt{gpt-4o-mini} zu machen, um die 10.000 Tokens System-Prompt zu sparen. Wann geht diese Rechnung wirtschaftlich auf?}
+    \item \textbf{10K System-Prompt: Fine-Tuning auf gpt-4o-mini statt Prompting. Wirtschaftlich?}
 
-    \textbf{Antwort:} Das muss man spitz kalkulieren. Fine-Tuning-Modelle kosten im Betrieb pro Token oft das 2- bis 3-fache des Basismodells. Wenn ich durch den Wegfall des System-Prompts 10.000 Input-Tokens spare, aber meine User-Requests und Outputs plötzlich zum 3-fachen Preis abgerechnet werden, kann das Fine-Tuning ab einer gewissen Output-Länge teurer sein als das Basismodell mit langem (im Idealfall gecachetem) System-Prompt.
+    \textbf{Antwort:} Selten. Fine-Tuned Modelle kosten pro Token oft das 2-3fache. Mit Prompt Caching ist der lange System-Prompt meist günstiger.
 
-    \item \textbf{Eine App nimmt vom User generierte Bilder an und reicht sie an die Vision API weiter. Nach drei Tagen wird euer OpenAI-Account wegen Richtlinienverstößen gesperrt. Was war der Architekturfehler?}
+    \item \textbf{App reicht User-Bilder an Vision API — Account nach 3 Tagen gesperrt. Architekturfehler?}
 
-    \textbf{Antwort:} Es fehlte die Content-Moderation. Bevor nutzergenerierter Content an die Chat Completions API gesendet wird, muss er durch die kostenlose \texttt{moderations} API geschickt werden (bei Bildern aktuell durch Pre-Filtering oder dedizierte Safety-Tools). Schickt man ungefiltert NSFW-Inhalte an GPT-4o, triggert das die internen OpenAI-Schutzmechanismen und führt zur automatischen Account-Sperre.
+    \textbf{Antwort:} Fehlende Moderation. Bilder müssen vor dem LLM-Call durch die Moderations-API auf NSFW/Gewalt geprüft werden.
 
-    \item \textbf{Ihr nutzt \texttt{temperature=0.0} für maximale Vorhersagbarkeit bei einem Extraktions-Task. Trotzdem weicht der Output bei denselben Eingaben ab und zu minimal ab. Welche zwei Parameter musst du zusätzlich setzen, um echten Determinismus zu erzwingen?}
+    \item \textbf{`temperature=0.0`, Output weicht trotzdem ab. Wie Determinismus erhöhen?}
 
-    \textbf{Antwort:} Ich muss einen festen \texttt{seed} (z.\,B. \texttt{seed=42}) setzen. Zusätzlich sollte ich den \texttt{system\_fingerprint} in der Response überprüfen. Wenn OpenAI im Hintergrund das Modell aktualisiert oder Hardware-Änderungen vornimmt, ändert sich der Fingerprint. Echter Determinismus ist bei LLMs auf API-Ebene trotz \texttt{seed} und Temp 0.0 nie zu 100\,\% mathematisch garantiert.
+    \textbf{Antwort:} `seed` Parameter setzen und den `system\_fingerprint` in der Response überwachen. (100\% Determinismus gibt es bei GPUs nie).
 
-    \item \textbf{Ihr habt ein dynamisches RAG-System. Ihr nutzt das OpenAI-Prompt-Caching, aber das Dashboard zeigt 0\,\% Cache Hits. Euer Prompt-Aufbau lautet: \texttt{[User-Frage] + [RAG-Kontext] + [System-Instruktion]}. Warum funktioniert das Caching nicht?}
+    \item \textbf{Prompt-Caching bei [User-Frage] + [RAG] + [System]. Fehler?}
 
-    \textbf{Antwort:} Der Prompt ist falsch herum aufgebaut. Prompt-Caching (KV-Cache) matcht exakte Präfixe (von vorne nach hinten). Da die User-Frage bei jedem Request anders ist, bricht das Caching bereits beim ersten Token ab. Die korrekte Reihenfolge für maximale Cache-Hits lautet: \texttt{[Statischer System-Prompt] + [Langer RAG-Kontext] + [Dynamische User-Frage]}.
+    \textbf{Antwort:} Invalidiert Prefix sofort. Korrekt: [System] + [RAG] + [User-Frage].
 
-    \item \textbf{Ein Kollege nutzt \texttt{presence\_penalty=2.0}, damit das Modell beim Generieren von Code nicht immer die gleichen Variablennamen verwendet. Das Modell fängt plötzlich an, völlig unleserliche, erfundene Python-Keywords zu halluzinieren. Was ist passiert?}
+    \item \textbf{`presence\_penalty=2.0` für Python-Code. Modell halluziniert. Warum?}
 
-    \textbf{Antwort:} \texttt{presence\_penalty} bestraft Tokens, die bereits im Kontext aufgetreten sind. Bei Code müssen Schlüsselwörter (wie \texttt{def}, \texttt{return}, \texttt{if}, \texttt{self}) zwingend wiederholt werden. Setzt man den Penalty zu hoch, zwingt man das Modell förmlich dazu, bekannte, syntaktisch korrekte Wörter zu meiden und \glqq kreative\grqq{} (also syntaktisch falsche) Alternativen zu erfinden. Bei Code-Tasks sollten Penalties meist auf 0 bleiben.
+    \textbf{Antwort:} Penalty bestraft Wiederholungen. Bei Code sind Schlüsselwörter (def, return) essenziell. Für Code: Penalties auf 0 setzen.
 
-    \item \textbf{Ihr habt eine Fallback-Kette: \texttt{OpenAI -> Anthropic}. Ein Request gegen OpenAI wirft einen \texttt{400 Bad Request} (z.\,B. weil das JSON-Schema invalide ist). Soll das System jetzt den Fallback zu Anthropic triggern?}
+    \item \textbf{400 Bad Request bei OpenAI → Fallback zu Anthropic triggern?}
 
-    \textbf{Antwort:} Nein. Ein Fallback darf nur bei serverseitigen Fehlern (\texttt{500}, \texttt{502}, \texttt{503}) oder Rate Limits (\texttt{429}) ausgelöst werden. Ein \texttt{400}-Fehler ist ein \textit{Client-Fehler} (mein Payload ist falsch). Sende ich diesen fehlerhaften Payload an Provider B, wird dieser ihn höchstwahrscheinlich aus demselben Grund ablehnen. Das verschwendet Zeit und Latenz.
+    \textbf{Antwort:} Nein. 400 ist ein Client-Fehler (falsches Schema/Auth). Der Fallback würde auch fehlschlagen. Fallbacks nur bei 5xx oder 429.
+
+
 \end{enumerate}
+
 % ===========================================================%
 % WEITERFÜHRENDE RESSOURCEN
 % ===========================================================%

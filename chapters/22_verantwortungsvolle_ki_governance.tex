@@ -157,14 +157,192 @@ Ein kleines Governance-Board kann den Unterschied machen:
 Ein verantwortungsbewusster AI Engineer dokumentiert nicht nur technische Entscheidungen, sondern auch die erwarteten Auswirkungen auf Nutzerinnen und Stakeholder.
 
 % ============================================================
+% EU AI ACT
+% ============================================================
+\section{Der EU AI Act und regulatorische Anforderungen}
+
+Der EU AI Act (2024) ist die weltweit erste umfassende Regulierung für KI-Systeme. Als AI Engineer musst du die Grundzüge verstehen, da sie direkte Auswirkungen auf Architektur und Betrieb haben.
+
+\subsection{Risikoklassen}
+
+Der EU AI Act teilt KI-Systeme in vier Risikoklassen ein:
+
+\begin{description}[leftmargin=*,style=nextline]
+    \item[Inakzeptables Risiko] Systeme, die verboten sind -- z.\,B. Social Scoring durch Regierungen oder manipulative KI-Spielzeuge.
+    \item[Hochrisiko] Systeme mit erheblichen Auswirkungen auf Gesundheit, Sicherheit oder Grundrechte -- z.\,B. KI in der Medizintechnik, Personalauswahl oder Kreditwürdigkeit.
+    \item[Begrenztes Risiko] Systeme mit Transparenzpflichten -- z.\,B. Chatbots, die als solche erkennbar sein müssen.
+    \item[Minimales Risiko] Alle übrigen KI-Systeme -- unterliegen nur Verhaltenskodizes.
+\end{description}
+
+\subsection{Praktische Auswirkungen}
+
+Für ein LLM-basiertes Produkt bedeutet das:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Transparenzpflicht}: Nutzer müssen wissen, dass sie mit einer KI interagieren.
+    \item \textbf{Dokumentationspflicht}: Technische Dokumentation des Systems, seiner Datenquellen und seiner Grenzen.
+    \item \textbf{Menschliche Aufsicht}: Bei Hochrisiko-Systemen muss ein Mensch eingreifen können.
+    \item \textbf{Conformity Assessment}: Für Hochrisiko-Systeme ist eine Konformitätsbewertung erforderlich.
+\end{itemize}
+
+\begin{lstlisting}[language=Python,caption=Transparenz-Hinweis in einer Chat-API]
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+app = FastAPI()
+
+@app.post("/chat")
+async def chat(request: Request):
+    body = await request.json()
+    response = await llm_chat(body["message"])
+
+    return JSONResponse({
+        "reply": response,
+        "meta": {
+            "ai_generated": True,
+            "model": "gpt-4o",
+            "disclaimer":
+                "Diese Antwort wurde von einer KI generiert."
+                " Bitte überprüfe kritische Informationen."
+        }
+    })
+\end{lstlisting}
+
+% ============================================================
+% INCIDENT RESPONSE
+% ============================================================
+\section{Incident Response und Meldewege}
+
+Governance bedeutet auch, auf Vorfälle vorbereitet zu sein. Ein Incident kann ein Bias-Vorfall, ein Datenschutzverstoß oder ein Sicherheitsproblem sein.
+
+\subsection{Meldekette}
+
+Jedes KI-Projekt braucht eine definierte Meldekette:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Erkennung}: Automatisierte Metriken oder Nutzer-Feedback lösen einen Alarm aus.
+    \item \textbf{Bewertung}: Das Incident-Team bewertet Schweregrad (Datenschutz? Bias? Sicherheit?) und Betroffene.
+    \item \textbf{Eskalation}: Bei schwerwiegenden Vorfällen wird die Geschäftsführung und ggf. die Aufsichtsbehörde informiert.
+    \item \textbf{Maßnahmen}: Das System wird angehalten, zurückgesetzt oder mit zusätzlichen Guardrails versehen.
+    \item \textbf{Bericht}: Ein Incident Report dokumentiert Ursache, Auswirkung und Maßnahmen.
+\end{enumerate}
+
+\subsection{Bewertungsmatrix}
+
+\begin{description}[leftmargin=*,style=nextline]
+    \item[Gering] Einzelner fehlerhafter Output ohne Schaden -- Korrektur im nächsten Release.
+    \item[Mittel] Systematischer Bias oder wiederholte Fehler -- temporäre Abschaltung des Features, erneutes Training.
+    \item[Hoch] Datenschutzverstoß oder Diskriminierung -- sofortige Abschaltung, Behördenmeldung, PR-Statement.
+    \item[Kritisch] Personenschaden oder Grundrechtsverletzung -- vollständige Systemabschaltung, rechtliche Schritte.
+\end{description}
+
+\subsection{Prävention durch Monitoring}
+
+Bevor ein Incident eskaliert, sollte er durch Monitoring auffallen:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Bias-Dashboards}: Vierteljährliche Audits der Output-Verteilung nach demografischen Gruppen
+    \item \textbf{Feedback-Loops}: Nutzer können problematische Antworten melden
+    \item \textbf{Drift-Metriken}: Veränderungen im Antwortverhalten über Zeit
+\end{itemize}
+
+% ============================================================
+% BERICHTWESEN
+% ============================================================
+\section{Stakeholder-Kommunikation und Berichtswesen}
+
+Governance lebt von Transparenz -- gegenüber internen Teams, der Geschäftsführung und externen Prüfern.
+
+\subsection{Berichtstypen}
+
+\begin{description}[leftmargin=*,style=nextline]
+    \item[Monatliches KI-Update] Statusbericht für das Produktteam: Kosten, Quality Scores, Incidents, offene Punkte.
+    \item[Quartalsweiser Governance-Report] Für Geschäftsführung und Ethik-Board: Bias-Audit-Ergebnisse, Compliance-Status, Roadmap.
+    \item[Jährlicher Compliance-Bericht] Für Aufsichtsbehörden und externe Prüfer: Vollständige Dokumentation aller KI-Systeme, Risikobewertungen und Konformitätserklärungen.
+\end{description}
+
+\subsection{Kennzahlen für das Berichtswesen}
+
+Ein effektives Governance-Reporting enthält:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Model Performance}: Accuracy, Halluzinationsrate, Latenz, Kosten pro Anfrage
+    \item \textbf{Fairness-Metriken}: Abweichungen in der Antwortqualität über Nutzergruppen hinweg
+    \item \textbf{Incident Report}: Anzahl, Schweregrad, Reaktionszeit, behobene vs. offene Vorfälle
+    \item \textbf{Compliance-Status}: Offene Audit-Empfehlungen, regulatorische Änderungen am Horizont
+    \item \textbf{Feedback-Analyse}: Nutzerzufriedenheit, Beschwerden, Feature-Wünsche
+\end{itemize}
+
+% ============================================================
 % ZUSAMMENFASSUNG
 % ============================================================
 \begin{zusammenfassung}
-Responsible AI macht KI-Projekte vertrauenswürdiger und sicherer. Governance ist kein Bürokratie-Overhead, sondern ein praktisches Framework, das Fairness, Transparenz und rechtliche Absicherung mit Produktionsstabilität verbindet.
+Responsible AI macht KI-Projekte vertrauenswürdiger und sicherer. Governance ist kein Bürokratie-Overhead, sondern ein praktisches Framework, das Fairness, Transparenz, regulatorische Compliance und rechtliche Absicherung mit Produktionsstabilität verbindet.
 \end{zusammenfassung}
 
 \begin{uebungen}
     \item Beschreibe drei konkrete Governance-Gates, die du bei einem KI-Projekt einführen würdest.
     \item Nenne zwei Bias-Quellen und eine Maßnahme, um jeweils eine davon zu reduzieren.
     \item Erkläre, welche Informationen in einer Model Card stehen sollten.
+    \item Ordne ein KI-Chatsystem für medizinische Erstberatung einer EU-AI-Act-Risikoklasse zu und begründe deine Wahl.
+    \item Entwirf ein Incident-Runbook für den Fall eines festgestellten Gender-Bias in den Antworten eines Recruiting-Chatbots.
+    \item Erstelle eine Scorecard mit fünf Fairness-Metriken für ein KI-System deiner Wahl.
+    \item Skizziere einen quartalsweisen Governance-Report für ein Finanz-KI-System: Welche Kennzahlen, welche Zielgruppen, welche Entscheidungen?
 \end{uebungen}
+
+% ============================================================
+% INTERVIEWFRAGEN
+% ============================================================
+\section{Interviewfragen}
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Enterprise-Kunde fordert restlose Löschung aus der Vector-DB (Recht auf Vergessenwerden). Lösung?}
+
+    \textbf{Antwort:} Cryptographic Erasure. Jedes Tenant-Dokument wird vor dem Embedding mit individuellem KMS-Key verschlüsselt. Bei Kündigung wird der Key zerstört, Embeddings sind sofort unlesbar (Data Shredding).
+
+    \item \textbf{Auditable Chain-of-Custody für Finanz-LLMs?}
+
+    \textbf{Antwort:} Immutable WORM-Storage. \texttt{trace\_id} verknüpft System-Prompt Hash, abgerufene RAG-Dokumenten-Hashes, User-Input und Model-Output. Signiert via HMAC gegen nachträgliche Manipulation.
+
+    \item \textbf{EU AI Act: Risikoklasse von RAG-HR-Tools?}
+
+    \textbf{Antwort:} "High Risk" (Beschäftigung/Personal). Erfordert striktes Bias-Auditing, menschliche Aufsicht (Human-in-the-Loop), Logging-Pflichten und Registrierung in EU-Datenbank.
+
+    \item \textbf{EU AI Act: Transparenzpflicht für Chatbots (Limited Risk)?}
+
+    \textbf{Antwort:} Nutzer müssen aktiv und unmissverständlich darüber informiert werden, dass sie mit einer KI interagieren (System-Disclaimer im UI), bevor die Interaktion startet.
+
+    \item \textbf{Vendor Lock-in bei Embedding-Modellen verhindern?}
+
+    \textbf{Antwort:} Rohdaten in Postgres halten und Indexierungs-Pipelines für Batch-Re-Processing (Wechsel auf Modell B) vorhalten.
+
+    \item \textbf{Open-Source Lizenz-Fallstricke (Llama 3 vs Apache 2.0)?}
+
+    \textbf{Antwort:} Llama 3 hat MAU-Limits (700 Mio) und verbietet die Nutzung seiner Outputs zum Trainieren konkurrierender KI-Modelle. Apache 2.0 (Mistral) ist voll kommerziell frei.
+
+    \item \textbf{Copyright Infringement beim Fine-Tuning interner Modelle?}
+
+    \textbf{Antwort:} "Fair Use" ist bei gewerblicher LLM-Nutzung extrem umstritten. Niemals externe, urheberrechtlich geschützte Werke scrapen. Nur intern lizenziertes oder gekauftes Data-Material fine-tunen.
+
+    \item \textbf{Interne Red-Teaming Compliance für Enterprise-Releases?}
+
+    \textbf{Antwort:} Vor Release muss ein unabhängiges QA-Team den Release Candidate systematisch mit Adversarial Prompts (OWASP LLM Top 10) bombardieren. Report wird ans C-Level eskaliert.
+
+    \item \textbf{SLA Management für KI-Features verhandeln?}
+
+    \textbf{Antwort:} SLA nicht auf "Korrektheit" abschließen, sondern auf "System-Verfügbarkeit", "Time-to-First-Token" und "RAG-Retrieval-Hit-Rate" (deterministische IT-Metriken).
+
+    \item \textbf{Data Residency (DSGVO) bei Nutzung von OpenAI via Microsoft Azure?}
+
+    \textbf{Antwort:} Explizites EU-Region-Deployment wählen UND Opt-Out-Formular für Data-Abuse-Monitoring unterschreiben, damit Microsoft Prompts/Outputs nicht 30 Tage zwecks Abuse-Checks auf Servern zwischenspeichert.
+\end{enumerate}
+
+\section{Ressourcen}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{EU AI Act}: \href{https://artificialintelligenceact.eu}{artificialintelligenceact.eu} -- Der offizielle EU AI Act Text
+    \item \textbf{NIST AI Risk Management Framework}: \href{https://www.nist.gov/ai-rmf}{nist.gov/ai-rmf} -- Framework für KI-Risikomanagement
+    \item \textbf{Microsoft Presidio}: \href{https://microsoft.github.io/presidio}{microsoft.github.io/presidio} -- Open-Source PII-Redaktion
+\end{itemize}
+
+\textbf{Nächster Schritt:} Im nächsten Kapitel -- KI-Sicherheit -- tauchst du tief in Angriffsvektoren, Threat Modeling und praktische Abwehrmechanismen für LLM-Produktionssysteme ein.

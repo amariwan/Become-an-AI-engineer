@@ -742,16 +742,49 @@ Füge Readiness-Probes und Kubernetes-Manifeste für das Deployment hinzu.
 \section{Interviewfragen}
 
 \begin{enumerate}[leftmargin=*]
-    \item Wie würdest du eine LLM-Anwendung für 10.000 tägliche User deployen?
-    \item Erkläre den Unterschied zwischen vertikaler und horizontaler Skalierung bei LLM-Services.
-    \item Wie würdest du die Kosten einer LLM-Anwendung um 50\% reduzieren?
-    \item Was machst du, wenn die OpenAI-API ausfällt und dein Produkt davon abhängt?
-    \item Welche Metriken würdest du in einem LLM-Produktionssystem überwachen?
-    \item Vergleiche API-basiertes Deployment mit Self-hosted Deployment. Wann nimmst du was?
-    \item Wie implementierst du Readiness-Probes f\"ur eine LLM-API, die kurzzeitig ausfallen kann?
-    \item Dein LLM-Service hat nach einem Deployment plötzlich 5x h\"ohere Latenz. Was sind deine ersten Debug-Schritte?
-    \item Wie würdest du einen Multi-Region-Failover f\"ur einen LLM-Service designen?
+    \item \textbf{LLM-Anwendung für 10.000 User deployen. Architektur?}
+
+    \textbf{Antwort:} Stateless Container via Kubernetes (EKS). API-Gateway (Apisix) für Rate Limiting. LiteLLM als Backend-Proxy für Provider-Load-Balancing und Async-Logging via ClickHouse.
+
+    \item \textbf{Vertikale vs Horizontale Skalierung bei LLMs?}
+
+    \textbf{Antwort:} Vertikal (mehr VRAM) ist zwingend, um das Modell überhaupt in den Speicher zu laden. Horizontal (mehr Nodes) fängt den RPS-Durchsatz (Concurrency) ab.
+
+    \item \textbf{Latenz steigt nach Deployment 5x. Erste Debug-Schritte?}
+
+    \textbf{Antwort:} Distributed Tracing (OpenTelemetry) prüfen. Bottlenecks: KV-Cache-Eviction durch lange Prompts, DB-I/O-Latenz oder endlos generierende Tokens wegen fehlendem Max-Limit.
+
+    \item \textbf{Readiness-Probes für eine LLM-API?}
+
+    \textbf{Antwort:} Health-Endpoint pingt Vector-DB *und* macht einen 1-Token-Generierungstest ("Antworte OK"). Bei Fail wird der Pod vom Traffic isoliert.
+
+    \item \textbf{Wie designst du Multi-Region Failover für RAG?}
+
+    \textbf{Antwort:} Active-Active Setup hinter Global Load Balancer. Vektordatenbank asynchron replizieren. Session-State (Chat History) in globalem Redis/DynamoDB halten.
+
+    \item \textbf{Streaming Load Balancer Problem?}
+
+    \textbf{Antwort:} SSE-Verbindungen (Server-Sent Events) sind long-lived. Standard-Load-Balancer verteilen schlecht. Lösung: Layer-7 Balancing mit Least-Connections Algorithmus.
+
+    \item \textbf{Cold Start bei Serverless LLMs (z.B. AWS SageMaker Serverless)?}
+
+    \textbf{Antwort:} Das Laden von 150GB Gewichten in den VRAM dauert Minuten. Serverless ist für synchrone LLMs tot. Provisioned Concurrency (immer laufende GPUs) ist zwingend.
+
+    \item \textbf{Tracking von Token-Limits pro Tenant in Echtzeit?}
+
+    \textbf{Antwort:} Token-Bucket-Algorithmus in Redis. Nach jedem API-Call wird der zurückgelieferte Token-Verbrauch asynchron vom Mandanten-Bucket subtrahiert.
+
+    \item \textbf{Semantic Caching Deployment?}
+
+    \textbf{Antwort:} Dedizierter Microservice *vor* dem LLM-Gateway. Nutzt schnelles lokales Embedding-Modell und Vektor-Suche in Redis (RedisVL) mit 95\% Confidence-Threshold.
+
+    \item \textbf{Welche 3 Metriken im Dashboard sind nachts um 3 Uhr Pager-würdig?}
+
+    \textbf{Antwort:} 1) Error Rate der Provider-API > 5\%. 2) Time-to-First-Token (TTFT) P95 > 2 Sekunden. 3) Token-Budget Spend-Rate Threshold überschritten.
+
+
 \end{enumerate}
+
 
 % ============================================================
 % RESSOURCEN

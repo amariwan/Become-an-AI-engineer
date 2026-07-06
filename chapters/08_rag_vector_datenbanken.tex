@@ -514,7 +514,6 @@ def multi_query_retrieval(query: str, retriever, llm,
             seen.add(d.page_content)
             unique.append(d)
     return unique[:top_k]
-\end{subtract}
 \end{lstlisting}
 
 \subsection{RAPTOR (Recursive Abstractive Processing)}
@@ -841,52 +840,55 @@ Baue ein RAG-System, das Kundenanfragen zu einem fiktiven E-Commerce-Produktkata
 
 \textbf{Erfolgskriterium:} Hit Rate @ 5 > 0,9, Faithfulness > 0,85. Keine Daten von Tenant A landen in Tenant Bs Antworten. HyDE verbessert Hit Rate um mindestens 5\,\%.
 
-% ===========================================================%
+% ============================================================
 % INTERVIEWFRAGEN
-% ===========================================================%
+% ============================================================
 \section{Interviewfragen}
 
 \begin{enumerate}[leftmargin=*]
-    \item \textbf{Erkläre die vier Phasen von RAG.}
+    \item \textbf{Vier Phasen einer RAG-Pipeline?}
 
-    \textbf{Antwort:} (1) Indexing -- Dokumente chunken und embedden. (2) Retrieval -- ANN-Suche im Vector-Index. (3) Augmentation -- Retrieved Chunks in den Prompt einfügen. (4) Generation -- LLM generiert Antwort mit Kontext.
+    \textbf{Antwort:} 1) Indexing (Chunken/Embedden). 2) Retrieval (Vektor-Suche). 3) Augmentation (Kontext in Prompt packen). 4) Generation (LLM-Antwort).
 
-    \item \textbf{Wann verwendest du RAG, wann Fine-Tuning?}
+    \item \textbf{Cosine Similarity vs MMR (Maximal Marginal Relevance)?}
 
-    \textbf{Antwort:} RAG für Faktenwissen und aktuelle Daten (Dokumente, Datenbanken). Fine-Tuning für Stil, Format und Ton (Markenstimme, Antwort-Struktur). In der Praxis oft kombiniert: Fine-Tuning für das Verhalten, RAG für den Inhalt.
+    \textbf{Antwort:} Cosine liefert hochähnliche, aber oft redundante Ergebnisse. MMR bestraft Redundanz und erzwingt diverse Informationsabdeckung.
 
-    \item \textbf{Was ist der Unterschied zwischen Cosine Similarity und MMR?}
+    \item \textbf{Schlechte RAG-Antworten — Debugging-Reihenfolge?}
 
-    \textbf{Antwort:} Cosine Similarity findet die ähnlichsten Chunks, die aber oft redundant sind (alle zum selben Thema). MMR (Maximum Marginal Relevance) bestraft Redundanz -- die Top-K-Ergebnisse decken verschiedene Aspekte ab.
+    \textbf{Antwort:} 1) Retrieval prüfen (Hit Rate @ K). 2) Chunk-Qualität sichten. 3) LLM-Prompt isoliert testen. (Der Fehler liegt meist beim Retrieval, nicht beim LLM).
 
-    \item \textbf{Wie gehst du vor, wenn ein RAG-System schlechte Antworten liefert?}
+    \item \textbf{HyDE (Hypothetical Document Embeddings)?}
 
-    \textbf{Antwort:} Systematische Analyse: (1) Liegt es am Retrieval (Hit Rate messen)? (2) Liegt es an der Chunk-Qualität (Chunks prüfen)? (3) Liegt es am LLM (Prompt ohne RAG testen)? (4) Schrittweise optimieren: Retrieval $\rightarrow$ Chunking $\rightarrow$ Prompt $\rightarrow$ Modell.
+    \textbf{Antwort:} LLM generiert eine fiktive Antwort auf die Query. Diese Antwort (statt der Query) wird geembeddet, um das semantische Gap bei kurzen User-Suchbegriffen zu schließen.
 
-    \item \textbf{Was ist HyDE und wann hilft es?}
+    \item \textbf{Tenant-Isolation in RAG-Systemen sicherstellen?}
 
-    \textbf{Antwort:} HyDE generiert eine hypothetische Antwort, embeddet diese statt der Query, und sucht damit. Hilft, wenn die Query kurz ist (2--5 Wörter) und nicht genug semantischen Kontext für gutes Embedding liefert.
+    \textbf{Antwort:} Niemals dem LLM überlassen. Harte Metadaten-Filter (Tenant-ID) *vor* der Vector-Similarity-Search auf Datenbankebene anwenden.
 
-    \item \textbf{Wie implementierst du Tenant-Isolation in RAG?}
+    \item \textbf{Cross-Encoder Re-Ranker Architektur?}
 
-    \textbf{Antwort:} Metadaten-Filter auf Tenant-ID. Jeder Chunk bekommt beim Indexieren eine Tenant-ID als Metadatum. Der Retriever filtert vor der Similarity-Suche nach der Tenant-ID des anfragenden Users.
+    \textbf{Antwort:} Bi-Encoder sucht schnell die Top-100. Cross-Encoder füttert Query+Dokument gemeinsam durch Attention-Layers für hochpräzises, aber rechenintensives Re-Ranking der Top-5.
 
-    \item \textbf{Welche Chunking-Strategie empfiehlst du für PDF-Handbücher?}
+    \item \textbf{VectorDB wächst auf 100 Mio Chunks, RAM läuft voll. Skalierungs-Strategie?}
 
-    \textbf{Antwort:} Recursive Chunking auf Kapitel-Ebene (512 Tokens, 64 Overlap) basierend auf Heading-Hierarchie. Die Überschriftenstruktur wird als Metadatum mitgegeben. Das ermöglicht dem LLM, die Quelle korrekt zu zitieren.
+    \textbf{Antwort:} Product Quantization (PQ) + Scalar Quantization (SQ) zur 80\%igen RAM-Reduktion, gepaart mit Two-Stage-Retrieval (grob im RAM, exakt auf SSD).
 
-    \item \textbf{Was ist ein Cross-Encoder Re-Ranker und warum ist er wichtig?}
+    \item \textbf{Wie wählst du Chunk-Size und Overlap?}
 
-    \textbf{Antwort:} Ein Cross-Encoder bewertet Query-Dokument-Paare gemeinsam (im Gegensatz zu Bi-Encodern, die Query und Dokument getrennt embedden). Er ist genauer, aber zu langsam für die initiale Suche. Deshalb: Bi-Encoder für die Vorauswahl, Cross-Encoder für die finale Sortierung.
+    \textbf{Antwort:} Deterministisch, nicht raten. Chunk-Size basierend auf dem Embedding-Modell-Limit (z.B. 512 Tokens). Overlap (10-20\%) zur Erhaltung des semantischen Kontexts an Schnittkanten.
 
-    \item \textbf{Wie misst du die Qualität eines RAG-Systems?}
+    \item \textbf{GraphRAG vs VectorRAG: Wann wechselst du?}
 
-    \textbf{Antwort:} Hit Rate @ K (ist die relevante Info in den Top-K?), MRR (wie weit oben?), Faithfulness (wie viel der Antwort ist durch Quellen belegt?), Answer Relevance (beantwortet die Antwort die Frage?). Ein Test-Set mit 50+ annotierten Query-Dokument-Paaren ist die Basis.
+    \textbf{Antwort:} VectorRAG versagt bei globalen Zusammenhängen ("Was ist das Leitthema über alle Dokumente?"). GraphRAG extrahiert Entitäten/Beziehungen (Knowledge Graph) für holistische Queries.
 
-    \item \textbf{Dein RAG-System hat 95\,\% Hit Rate, aber die Antworten sind trotzdem schlecht. Was ist los?}
+    \item \textbf{Selbst-Querying Retriever?}
 
-    \textbf{Antwort:} Das Retrieval ist gut, aber die Augmentation/Generation ist das Problem. Mögliche Ursachen: (1) Der Prompt sagt nicht klar, dass nur der Kontext verwendet werden soll. (2) Das LLM halluziniert trotz Kontext. (3) Die Chunks enthalten zu viele irrelevante Details. (4) Der Re-Ranker sortiert nicht optimal.
+    \textbf{Antwort:} LLM übersetzt natürliche Sprache ("Zeige PDFs von 2023 über AI") in eine strukturierte Query mit Metadaten-Filtern (`year=2023`, `tag=AI`) *plus* Vector-Search.
+
+
 \end{enumerate}
+
 
 % ===========================================================%
 % WEITERFÜHRENDE RESSOURCEN
