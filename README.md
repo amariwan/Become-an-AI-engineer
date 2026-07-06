@@ -61,7 +61,7 @@ docker exec become-ai-book latexmk -xelatex -outdir=_build main.tex
 
 ## 📄 Lizenz
 
-[CC BY-NC-SA 4.0](LICENSE) — Free to share and adapt, nicht kommerziell.
+[CC BY-SA 4.0](LICENSE) — Open Source: frei teilbar und weiterverarbeitbar, auch kommerziell.
 
 ---
 
