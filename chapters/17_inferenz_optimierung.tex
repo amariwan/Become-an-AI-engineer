@@ -405,7 +405,7 @@ Der Engpass der LLM-Inference ist nicht Rechenleistung, sondern Speicherbandbrei
 
     \item \textbf{FlashAttention-3 Kern-Mechanik?}
 
-    \textbf{Antwort:} Tiling. Die extrem speicherintensive Attention-Matrix (\$N \times N\$) wird nie komplett im langsamen HBM der GPU materialisiert, sondern in Blöcken im schnellen SRAM berechnet (Memory I/O drastisch reduziert).
+    \textbf{Antwort:} Tiling. Die extrem speicherintensive Attention-Matrix ($N \times N$) wird nie komplett im langsamen HBM der GPU materialisiert, sondern in Blöcken im schnellen SRAM berechnet (Memory I/O drastisch reduziert).
 
     \item \textbf{CPU Offloading bei zu wenig VRAM (z.B. DeepSpeed ZeRO)?}
 
