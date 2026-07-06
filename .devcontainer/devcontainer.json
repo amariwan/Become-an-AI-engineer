@@ -1,0 +1,54 @@
+{
+    "name": "Become an AI Engineer \u2014 LaTeX Buchprojekt",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "forwardPorts": [],
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "James-Yu.latex-workshop",
+                "eamodio.gitlens",
+                "ms-python.python",
+                "streetsidesoftware.code-spell-checker-german"
+            ],
+            "settings": {
+                "latex-workshop.latex.recipes": [
+                    {
+                        "name": "XeLaTeX \u2192 BibLaTeX \u2192 XeLaTeX\u00d72",
+                        "tools": [
+                            "xelatex-bib"
+                        ]
+                    }
+                ],
+                "latex-workshop.latex.tools": [
+                    {
+                        "name": "xelatex-bib",
+                        "command": "latexmk",
+                        "args": [
+                            "-pdfxe",
+                            "-interaction=nonstopmode",
+                            "-synctex=1",
+                            "-outdir=%OUTDIR%",
+                            "%DOCFILE%"
+                        ]
+                    }
+                ],
+                "files.eol": "\n",
+                "editor.formatOnSave": false,
+                "code-spell-checker.language": [
+                    "en-US",
+                    "de-DE"
+                ]
+            }
+        }
+    },
+    "remoteEnv": {
+        "PATH": "/usr/local/bin:${containerEnv:PATH}"
+    },
+    "postCreateCommand": [
+        "/bin/bash",
+        "-c",
+        "echo '=== LaTeX Buchprojekt initialized ===' && tex --version | head -1 && which xelatex && latexmk -pdfxe master.tex 2>&1 | tail -8 && if [ -f _build/master.pdf ]; then     echo \"\u2713 PDF generated: _build/master.pdf\"; else     echo \"\u2717 Build failed \u2014 check logs above.\"; fi"
+    ]
+}

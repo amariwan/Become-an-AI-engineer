@@ -1,0 +1,770 @@
+\chapter{Deployment, Observability und Sicherheit}
+
+\label{chap:deployment_observability}
+
+% ============================================================
+% LERNZIELE
+% ============================================================
+\begin{lernziele}
+Nach diesem Kapitel kannst du:
+\begin{itemize}
+    \item Eine LLM-Anwendung als FastAPI-Microservice deployen
+    \item Latenz-Optimierungstechniken wie Streaming, Caching und Modell-Tiering anwenden
+    \item Fehler-Toleranz mit Retry, Fallback und Circuit-Breaker implementieren
+    \item Observability mit Metriken, Logging und Tracing aufbauen
+    \item Ein Deployment mit Docker und CI/CD automatisieren
+\end{itemize}
+\end{lernziele}
+
+% ============================================================
+% MOTIVATION
+% ============================================================
+\section{Motivation}
+
+Eine LLM-Anwendung in Produktion zu bringen unterscheidet sich grundlegend vom klassischen Software-Deployment. In einer traditionellen Web-App ist das Verhalten deterministisch: Gleicher Input, gleicher Output. Bei LLMs ist das nicht der Fall -- und das hat weitreichende Konsequenzen.
+
+Drei Herausforderungen machen LLM-Deployment einzigartig:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{External Dependencies}: Deine App hängt von der API-Verfügbarkeit ab (OpenAI, Anthropic). Wenn die API ausfällt, fällt deine App mit aus. Du hast keine direkte Kontrolle über die Latenz oder Verfügbarkeit.
+    \item \textbf{Kosten-Kontrolle}: Jeder Request kostet Geld. Ohne Monitoring explodieren die Kosten bei Popularität. Ein unerwarteter Traffic-Spike kann innerhalb von Stunden tausende Euro kosten.
+    \item \textbf{Probabilistisches Verhalten}: Dein Test kann heute bestehen und morgen trotzdem falsche Antworten liefern. Deterministische Unit-Tests allein reichen nicht -- du brauchst kontinuierliche Evaluation in der Produktion.
+\end{enumerate}
+
+% ============================================================
+% GRUNDLAGEN
+% ============================================================
+\section{Grundlagen -- Deployment-Arten für LLMs}
+
+Es gibt vier grundlegende Deployment-Modelle für LLM-Anwendungen:
+
+\begin{description}[leftmargin=*,style=nextline]
+    \item[API-basiert (Managed)] Du rufst eine externe API auf (OpenAI, Anthropic, Google). Kein Modell-Hosting notwendig. Pay-per-Token. Einfachster Einstieg, aber Vendor-Lock-in und Latenz-abhängig.
+    \item[Self-hosted Open Source] Du hostest ein Open-Source-Modell (Llama, Mistral, Qwen) auf eigener Infrastruktur. Volle Kontrolle, keine Datenverlassen den Server. Aber hohe Infrastruktur-Kosten (GPUs).
+    \item[Managed Inference (Cloud)] Du nutzt einen Inference-Anbieter (Together AI, Fireworks, Groq), der Open-Source-Modelle als API anbietet. Kompromiss aus Kontrolle und Einfachheit.
+    \item[Edge Deployment] Das Modell läuft auf dem Endgerät (Smartphone, Laptop). Minimale Latenz, keine Internetverbindung nötig. Aber stark limitierte Modellgrösse.
+\end{description}
+
+\subsection{Entscheidungsmatrix}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXXXX}
+\toprule
+\textbf{Kriterium} & \textbf{API} & \textbf{Self-hosted} & \textbf{Cloud Inference} & \textbf{Edge} \\
+\midrule
+Setup-Aufwand & Sehr gering & Sehr hoch & Gering & Mittel \\
+Latenz & 200--2000ms & 50--500ms & 100--1000ms & 10--100ms \\
+Kosten pro Query & Mittel--Hoch & Niedrig (fix) & Niedrig--Mittel & Sehr gering \\
+Kontrolle & Gering & Voll & Mittel & Voll \\
+Datenhoheit & Extern & Intern & Extern & Lokal \\
+Skalierung & Automatisch & Manuell & Automatisch & Gerätebasiert \\
+\bottomrule
+\end{tabularx}
+\caption{Vergleich der Deployment-Modelle für LLMs}
+\end{table}
+
+% ============================================================
+% ARCHITEKTUR
+% ============================================================
+\section{Architektur einer LLM-Produktionsanwendung}
+
+Eine produktionsreife LLM-Anwendung besteht aus mehreren Schichten:
+
+\begin{verbatim}
++------------------+     +------------------+     +------------------+
+|    Frontend      |---->|   API Gateway    |---->|  LLM-Service     |
+| (Streamlit,      |     | (Rate Limit,     |     | (FastAPI,        |
+|  React, Mobile)  |     |  Auth, Routing)  |     |  Fallback)       |
++------------------+     +------------------+     +--------+---------+
+                                                            |
+                                              +-------------+-------------+
+                                              |             |             |
+                                        +-----v------+ +--v--------+ +-v--------+
+                                        |  Cache     | |  Vector   | | Tracing  |
+                                        |  (Redis)   | |  DB       | |(Langfuse)|
+                                        +------------+ +-----------+ +----------+
+\end{verbatim}
+
+Jede Schicht hat spezifische Aufgaben:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Frontend}: UI für User-Interaktion, sendet Requests an API Gateway
+    \item \textbf{API Gateway}: Authentifizierung, Rate Limiting, Request-Validierung, Routing
+    \item \textbf{LLM-Service}: Kernlogik, Prompt-Konstruktion, LLM-Aufruf, Response-Parsing
+    \item \textbf{Cache}: Zwischenspeichert häufige Queries, reduziert API-Kosten und Latenz
+    \item \textbf{Vector DB}: Speichert und retrievet Embeddings für RAG
+    \item \textbf{Tracing}: Protokolliert jeden Request für Debugging und Kosten-Tracking
+\end{enumerate}
+
+% ============================================================
+% THEORIE
+% ============================================================
+\section{Theorie -- Latenz, Throughput und Kosten}
+
+\subsection{Latenz-Komponenten}
+
+Die Gesamtlatenz eines LLM-Requests setzt sich aus mehreren Komponenten zusammen:
+
+\begin{equation}
+T_{total} = T_{network} + T_{queue} + T_{prompt} + T_{generation} + T_{post}
+\end{equation}
+
+\begin{description}[leftmargin=*,style=nextline]
+    \item[$T_{network}$] Netzwerk-Latenz zwischen Client und API. Bei Cloud-APIs typisch 50--200ms. Standort-Wahl (us-east vs. eu-west) macht bis zu 100ms Unterschied.
+    \item[$T_{queue}$] Wartezeit auf dem Server. Bei hoher Auslastung der API können Requests Minuten in der Queue hängen. Rate Limiting verstärkt diesen Effekt.
+    \item[$T_{prompt}$] Zeit für die Verarbeitung des Inputs (Pre-fill). Skaliert linear mit der Prompt-Länge. Ein 10K-Token-Prompt dauert ca. 5--15x länger als ein 1K-Token-Prompt.
+    \item[$T_{generation}$] Zeit für die Generierung des Outputs. Skaliert linear mit der Anzahl Output-Tokens und quadratisch mit der Kontextlänge (Attention). Streaming reduziert die Wahrnehmung, nicht die tatsächliche Dauer.
+    \item[$T_{post}$] Post-Processing: Output-Parsing, Safety-Checks, Logging. Typisch < 10ms.
+\end{description}
+
+\subsection{Das Cost-Performance-Triangle}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{XXXX}
+\toprule
+\textbf{Strategie} & \textbf{Qualität} & \textbf{Latenz} & \textbf{Kosten} \\
+\midrule
+Kleineres Modell (4o-mini statt 4o) & -- & ++ & ++ \\
+Längerer Prompt (mehr Kontext) & + & -- & -- \\
+Caching aktivieren & = & ++ & ++ \\
+Streaming aktivieren & = & + (gefühlt) & = \\
+Batching von Requests & = & = & ++ \\
+Speculative Decoding & = & ++ & = \\
+\bottomrule
+++ starke Verbesserung, + leichte Verbesserung, = neutral, -- Verschlechterung
+\caption{Trade-offs zwischen Qualität, Latenz und Kosten}
+\end{tabularx}
+\end{table}
+
+% ============================================================
+% PRAXIS
+% ============================================================
+\section{FastAPI + Docker -- der Standard-Stack}
+
+Der einfachste Weg, eine LLM-Anwendung als Microservice zu deployen:
+
+\begin{lstlisting}[language=Python, caption=FastAPI-Microservice mit Caching und Rate Limiting]
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+import openai
+import hashlib
+import time
+from typing import Optional
+
+app = FastAPI(title="AI-Assistant API", version=1.0.0)
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
+cache = {}
+
+@app.post("/chat")
+@limiter.limit("10/minute")
+async def chat(request: Request, user_input: str):
+    """Chat-Endpoint mit Caching und Kosten-Tracking."""
+
+    cache_key = hashlib.md5(user_input.encode()).hexdigest()
+    if cache_key in cache and time.time() - cache[cache_key]["ts"] < 300:
+        return {"response": cache[cache_key]["response"], "cached": True}
+
+    try:
+        start = time.time()
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": get_system_prompt()},
+                {"role": "user", "content": user_input},
+            ],
+            temperature=0.1,
+            max_tokens=1024,
+        )
+        latency_ms = (time.time() - start) * 1000
+
+        result = response.choices[0].message.content
+
+        cache[cache_key] = {
+            "response": result,
+            "ts": time.time(),
+        }
+
+        print(f"[METRIC] latency={latency_ms:.0f}ms tokens={response.usage.total_tokens}")
+
+        return {"response": result, "cached": False, "latency_ms": latency_ms}
+
+    except openai.RateLimitError:
+        raise HTTPException(status_code=429, detail="Rate Limit erreicht.")
+    except openai.APIConnectionError:
+        raise HTTPException(status_code=503, detail="KI-Dienst nicht verfuegbar.")
+
+@app.get("/health")
+async def health():
+    """Health-Check fuer Load Balancer."""
+    return {"status": "healthy", "model": "gpt-4o-mini"}
+\end{lstlisting}
+
+\subsection{Docker-Konfiguration}
+
+\begin{lstlisting}[language=bash, caption=Multi-Stage Dockerfile für LLM-Service]
+FROM python:3.12-slim AS builder
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+FROM python:3.12-slim AS runtime
+
+WORKDIR /app
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY . .
+
+EXPOSE 8000
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+\end{lstlisting}
+
+% ============================================================
+% LATENZ
+% ============================================================
+\section{Latenz-Optimierung in der Produktion}
+
+Latenz ist die wichtigste UX-Metrik bei LLM-Anwendungen:
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXr}
+\toprule
+\textbf{Technik} & \textbf{Wirkung} & \textbf{Aufwand} \\
+\midrule
+Streaming-Response & Time-to-first-token < 200ms & Niedrig \\
+Caching (Redis) & 30--50\% Reduktion API-Calls & Mittel \\
+Modell-Tiering & 4o-mini statt 4o: 2x schneller, 5x günstiger & Niedrig \\
+Speculative Decoding & Kleines Modell errät Antwort, grosses validiert & Hoch \\
+Batching / Parallel Calls & Mehrere Anfragen gleichzeitig & Mittel \\
+Context-Kompaktion & Kürzere Prompts = schnellere Response & Niedrig \\
+\bottomrule
+\end{tabularx}
+\caption{Latenz-Optimierungstechniken}
+\end{table}
+
+\subsection{Streaming implementieren}
+
+\begin{lstlisting}[language=Python, caption=Streaming-Response für Echtzeit-Feedback]
+from fastapi.responses import StreamingResponse
+
+async def stream_chat(user_input: str):
+    """Streaming-Endpoint mit SSE (Server-Sent Events)."""
+    stream = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": user_input}],
+        stream=True,
+    )
+
+    async def generate():
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                yield f"data: {chunk.choices[0].delta.content}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+@app.post("/chat/stream")
+async def chat_stream(request: Request, user_input: str):
+    return await stream_chat(user_input)
+\end{lstlisting}
+
+% ============================================================
+% FEHLER-TOLERANZ
+% ============================================================
+\section{Fehler-Toleranz und Fallbacks}
+
+LLM-APIs fallen aus. Rate Limits werden erreicht:
+
+\begin{lstlisting}[language=Python, caption=Fehlertolerante LLM-Aufrufe mit Retry und Fallback]
+import asyncio
+from tenacity import retry, stop_after_attempt,
+    wait_exponential, retry_if_exception_type
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(
+        (openai.RateLimitError, openai.APIConnectionError)),
+    reraise=True,
+)
+async def robust_chat(messages: list[dict]) -> str:
+    """LLM-Aufruf mit automatischem Retry und Fallback."""
+
+    try:
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                temperature=0.1,
+                max_tokens=1024,
+            ),
+            timeout=30.0
+        )
+        return response.choices[0].message.content
+
+    except openai.RateLimitError:
+        # Fallback 1: Modell wechseln
+        response = await client.chat.completions.create(
+            model="gpt-4o",
+            messages=messages,
+        )
+        return response.choices[0].message.content
+
+    except openai.APIConnectionError:
+        # Fallback 2: Kleineres Modell
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            temperature=0.3,
+        )
+        return response.choices[0].message.content
+\end{lstlisting}
+
+\subsection{Circuit-Breaker-Pattern}
+
+Bei wiederholten API-Fehlern verhindert ein Circuit-Breaker weitere Versuche und gibt stattdessen eine Fallback-Antwort:
+
+\begin{lstlisting}[language=Python, caption=Circuit-Breaker für LLM-API-Ausfälle]
+import time
+from enum import Enum
+
+class CircuitState(Enum):
+    CLOSED = "closed"       # Normalbetrieb
+    OPEN = "open"           # API down, keine Versuche
+    HALF_OPEN = "half_open" # Test-Request erlaubt
+
+class LLMCircuitBreaker:
+    def __init__(self, failure_threshold: int = 5,
+                 recovery_timeout: float = 60.0):
+        self.state = CircuitState.CLOSED
+        self.failure_count = 0
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.last_failure_time = 0.0
+
+    def call(self, llm_func, *args, **kwargs):
+        if self.state == CircuitState.OPEN:
+            if time.time() - self.last_failure_time > self.recovery_timeout:
+                self.state = CircuitState.HALF_OPEN
+            else:
+                return self.fallback_response()
+
+        try:
+            result = llm_func(*args, **kwargs)
+            if self.state == CircuitState.HALF_OPEN:
+                self.state = CircuitState.CLOSED
+                self.failure_count = 0
+            return result
+        except Exception as e:
+            self.failure_count += 1
+            self.last_failure_time = time.time()
+            if self.failure_count >= self.failure_threshold:
+                self.state = CircuitState.OPEN
+            return self.fallback_response()
+
+    def fallback_response(self):
+        return {"response": "Service voruebergehend nicht "
+                            "verfuegbar. Bitte spaeter erneut versuchen.",
+                "cached": False, "fallback": True}
+
+breaker = LLMCircuitBreaker(failure_threshold=3, recovery_timeout=30)
+result = breaker.call(robust_chat, [{"role": "user", "content": "Hallo"}])
+\end{lstlisting}
+
+% ============================================================
+% OBSERVABILITY
+% ============================================================
+\section{Observability -- Produktion überwachen}
+
+Observability ruht auf drei Säulen:
+
+\begin{description}[leftmargin=*,style=nextline]
+    \item[Metriken] Numerische Messwerte über Zeit: Requests/Minute, P95-Latenz, Cost/Query, Error Rate. Instrumentiere jeden Request mit Prometheus-kompatiblen Metriken.
+    \item[Logging] Strukturierte Ereignis-Aufzeichnung: Jeder LLM-Call mit Prompt, Response, Latenz, Kosten. Verwende strukturiertes JSON-Logging für maschinenlesbare Logs.
+    \item[Tracing] Request-Kontext über verteilte Systeme hinweg: Ein User-Request durchläuft API-Gateway, LLM-Service, Vector-DB, Cache. Tracing verbindet diese Spans zu einem Gesamtbild.
+\end{description}
+
+\begin{lstlisting}[language=Python, caption=Strukturiertes Logging mit Metriken für Prometheus]
+import structlog
+import time
+from prometheus_client import Counter, Histogram, Gauge
+
+# Prometheus-Metriken
+LLM_REQUESTS = Counter(
+    "llm_requests_total", "Total LLM requests",
+    ["model", "status"]
+)
+LLM_LATENCY = Histogram(
+    "llm_latency_seconds", "LLM request latency",
+    ["model"], buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0]
+)
+LLM_COST = Counter(
+    "llm_cost_total", "Total LLM cost in EUR",
+    ["model"]
+)
+
+logger = structlog.get_logger()
+
+def monitored_llm_call(model: str, messages: list) -> str:
+    """LLM-Aufruf mit Metriken und Logging."""
+    start = time.time()
+
+    try:
+        response = client.chat.completions.create(
+            model=model, messages=messages
+        )
+        latency = time.time() - start
+        tokens = response.usage.total_tokens
+        cost = calculate_cost(model, tokens)
+
+        # Prometheus-Metriken aktualisieren
+        LLM_REQUESTS.labels(model=model, status="success").inc()
+        LLM_LATENCY.labels(model=model).observe(latency)
+        LLM_COST.labels(model=model).inc(cost)
+
+        # Strukturiertes Logging
+        logger.info("llm_call_completed",
+            model=model,
+            latency_s=round(latency, 3),
+            tokens=tokens,
+            cost_eur=round(cost, 5),
+            prompt_tokens=response.usage.prompt_tokens,
+            completion_tokens=response.usage.completion_tokens,
+        )
+
+        return response.choices[0].message.content
+
+    except Exception as e:
+        latency = time.time() - start
+        LLM_REQUESTS.labels(model=model, status="error").inc()
+        logger.error("llm_call_failed",
+            model=model,
+            latency_s=round(latency, 3),
+            error=str(e),
+        )
+        raise
+\end{lstlisting}
+
+% ============================================================
+% BEST PRACTICES
+% ============================================================
+\section{Best Practices für LLM-Deployment}
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Immer Timeout setzen}: LLM-APIs können minutenlang hängen. Ohne Timeout blockiert dein ganzer Stack. Setze 10--30s Timeout für jeden Request.
+    \item \textbf{Caching von Anfang an}: Bei 60\% der Support-Fragen sind die Antworten ähnlich. Ein Redis-Cache spart 30--50\% API-Kosten.
+    \item \textbf{Multi-Provider-Strategie}: Hänge dich nicht an einen einzigen API-Anbieter. Baue ein Abstraktions-Layer, das zwischen OpenAI, Anthropic und Open-Source-Modellen wechseln kann.
+    \item \textbf{Health-Check implementieren}: Load Balancer brauchen einen Health-Endpoint. Der sollte auch die LLM-API-Verfügbarkeit prüfen.
+    \item \textbf{Rate Limiting auf mehreren Ebenen}: API-Gateway-Ebene (pro IP) und LLM-Service-Ebene (pro API-Key). Verhindert Kosten-Explosion bei Traffic-Spikes.
+    \item \textbf{Staging-Umgebung}: Niemals direkt in Produktion deployen. Eine Staging-Umgebung mit identischer Architektur fängt die meisten Fehler.
+    \item \textbf{Canary-Deployments}: Neue Prompt-Versionen nur für 5\% der User freischalten, dann hochskalieren.
+\end{enumerate}
+
+% ============================================================
+% ANTI-PATTERNS
+% ============================================================
+\section{Anti-Patterns -- was du vermeiden solltest}
+
+\begin{description}[leftmargin=*,style=nextline]
+    \item[Kein Timeout gesetzt] Ohne Timeout blockiert dein Request ewig und frisst Resources. Ein LLM-Request kann bei Überlast Minuten dauern. Immer 10--30s Timeout.
+    \item[API-Ausfall ignoriert] Wenn OpenAI down ist, sollte deine App eine Fallback-Nachricht zeigen statt einem 500er Error. Graceful Degradation ist kein Nice-to-have.
+    \item[Caching vergessen] Ein Redis-Cache ist kein Micro-Optimization, sondern ein fundamentales Architektur-Element. Ohne Cache zahlst du für jede identische Query neu.
+    \item[Monolith ohne Trennung] LLM-Logik, Business-Logik und Datenbank-Zugriff in einer Datei. Das skaliert nicht. Trenne in Service-Layer.
+    \item[Hardcodierte Prompt-Templates] Prompt-Templates im Source-Code bedeuten ein Re-Deploy für jede Text-Änderung. Nutze Config-Dateien oder eine Datenbank.
+    \item[Fehlende Kosten-Alarme] Ohne Budget-Alarme kann ein einziger Bug oder ein Traffic-Spike tausende Euro verbrauchen. Setze Schwellwerte und Alarmierung.
+\end{description}
+
+% ============================================================
+% PERFORMANCE
+% ============================================================
+\section{Performance und Skalierung}
+
+\subsection{Horizontal Scaling}
+
+LLM-Services sind typischerweise stateless und horizontal skalierbar:
+
+\begin{lstlisting}[language=bash, caption=Docker Compose für skalierbaren LLM-Service]
+version: "3.8"
+services:
+  llm-service:
+    build: .
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REDIS_URL=redis://redis:6379
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "512M"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+\end{lstlisting}
+
+\subsection{Kosten-Kontrolle}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\textbf{Technik} & \textbf{Ersparnis} \\
+\midrule
+Caching mit Redis & 30--50\% \\
+Modell-Tiering (Mini statt Full) & 80--90\% \\
+Prompt-Optimierung (kürzere Prompts) & 20--40\% \\
+Prompt-Caching (Anthropic/OpenAI Feature) & 50--90\% \\
+Batching von Requests & 20--30\% \\
+Context-Window-Management & 10--20\% \\
+\bottomrule
+\end{tabularx}
+\caption{Kostenspar-Techniken für LLM-Produktionssysteme}
+\end{table}
+
+% ===========================================================%
+% CODE -- Kubernetes-Deployment
+% ============================================================
+\section{Codebeispiele -- Deployment-Optimierung}
+
+\subsection{Multi-Region-Failover}
+
+Ein produktionsreifes System überlebt einen Region- oder Provider-Ausfall:
+
+\begin{lstlisting}[language=Python, caption={Multi-Region- und Multi-Provider-Failover}, label=lst:multiregion]
+import random
+from abc import ABC, abstractmethod
+
+class LLMProvider(ABC):
+    """Abstrakte Basis fur alle LLM-Provider."""
+
+    @abstractmethod
+    def complete(self, prompt: str) -> str:
+        ...
+
+class OpenAIProvider(LLMProvider):
+    def complete(self, prompt: str) -> str:
+        # Implementierung mit openai.Client()
+        ...
+
+class AnthropicProvider(LLMProvider):
+    def complete(self, prompt: str) -> str:
+        # Implementierung mit anthropic.Client()
+        ...
+
+class LocalProvider(LLMProvider):
+    def complete(self, prompt: str) -> str:
+        # Ollama / vLLM lokal
+        ...
+
+class FailoverRouter:
+    """Router mit Multi-Provider-Failover."""
+
+    def __init__(self, providers: list[LLMProvider]):
+        self.providers = providers
+        self.failed: set[int] = set()
+
+    def complete(self, prompt: str,
+                 max_retries: int = 3) -> str:
+        for attempt in range(max_retries):
+            for i, provider in enumerate(self.providers):
+                if i in self.failed:
+                    continue
+                try:
+                    return provider.complete(prompt)
+                except Exception:
+                    self.failed.add(i)
+                    continue
+        raise RuntimeError("Alle Provider ausgefallen")
+
+# Nutzung
+router = FailoverRouter([
+    OpenAIProvider(),      # Primar: OpenAI
+    AnthropicProvider(),   # Fallback 1: Anthropic
+    LocalProvider(),       # Fallback 2: Lokal
+])
+\end{lstlisting}
+
+\subsection{Health-Check-Endpoint mit Readiness-Probe}
+
+\begin{lstlisting}[language=Python, caption={Health-Check mit API-Readiness}, label=lst:healthcheck]
+from fastapi import FastAPI
+import httpx
+
+app = FastAPI()
+
+@app.get("/health")
+async def health():
+    """Standard-Healthcheck."""
+    return {"status": "ok"}
+
+@app.get("/ready")
+async def readiness():
+    """Readiness-Check: Testet, ob die LLM-API erreichbar ist."""
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            # Leichter Test-Call, minimale Kosten
+            resp = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": "Bearer sk-..."},
+                json={
+                    "model": "gpt-4o-mini",
+                    "messages": [{"role": "user",
+                                  "content": "ping"}],
+                    "max_tokens": 1,
+                },
+            )
+            if resp.status_code == 200:
+                return {"status": "ready", "llm": "reachable"}
+    except Exception:
+        pass
+    return {"status": "not_ready", "llm": "unreachable"}
+\end{lstlisting}
+
+\subsection{Kubernetes-Deployment-Manifest}
+
+\begin{lstlisting}[language=Python, caption={Kubernetes-Deployment für LLM-Service (YAML)}]
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: llm-service
+# spec:
+#   replicas: 3
+#   strategy:
+#     rollingUpdate:
+#       maxSurge: 1
+#       maxUnavailable: 0
+#   template:
+#     spec:
+#       containers:
+#         - name: llm-service
+#           image: llm-service:latest
+#           env:
+#             - name: OPENAI_API_KEY
+#               valueFrom:
+#                 secretKeyRef:
+#                   name: llm-secrets
+#                   key: openai-key
+#           resources:
+#             requests:
+#               memory: "512Mi"
+#               cpu: "500m"
+#             limits:
+#               memory: "1Gi"
+#               cpu: "1000m"
+#           livenessProbe:
+#             httpGet: {path: /health, port: 8000}
+#           readinessProbe:
+#             httpGet: {path: /ready, port: 8000}
+\end{lstlisting}
+
+% ============================================================
+% SICHERHEIT
+% ============================================================
+\section{Sicherheit im Deployment}
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{API-Keys sicher verwahren}: Nutze Secrets-Manager (AWS Secrets Manager, HashiCorp Vault, GitHub Secrets). Niemals Keys im Code oder in Docker-Images.
+    \item \textbf{Network Isolation}: Der LLM-Service sollte nur über das API-Gateway erreichbar sein. Kein direkter Zugriff aus dem Internet.
+    \item \textbf{Input Validation vor dem LLM-Call}: Validieren, dass Inputs nicht zu lang sind (max\_tokens), keine Injection-Versuche enthalten und kein PII unmaskiert übergeben wird.
+    \item \textbf{Rate Limiting}: Schütze dich vor versehentlicher Kosten-Explosion und vor absichtlichem Abuse. Limits pro User/IP/API-Key.
+    \item \textbf{Audit-Logging}: Jeder LLM-Call wird protokolliert: Wer hat was gefragt, welche Antwort kam, was hat es gekostet. Unverzichtbar für Compliance.
+    \item \textbf{Dependency-Scanning}: Scan deine Dependencies regelmässig auf bekannte Sicherheitslücken (pip audit, Snyk, Dependabot).
+\end{enumerate}
+
+% ============================================================
+% ZUSAMMENFASSUNG
+% ============================================================
+\begin{zusammenfassung}
+\begin{itemize}[leftmargin=*]
+    \item FastAPI + Docker ist der Standard-Stack für LLM-Microservices
+    \item Streaming und Caching sind die effektivsten Latenz-Kosten-Sparer
+    \item Retry mit exponentiellem Backoff und Fallback-Modelle sind Pflicht
+    \item Circuit-Breaker verhindert unnötige API-Calls bei Ausfällen
+    \item Prometheus + Grafana + strukturiertes Logging = Observability
+    \item Multi-Provider-Strategie verhindert Vendor-Lock-in
+\end{itemize}
+\end{zusammenfassung}
+
+% ============================================================
+% MERKE
+% ============================================================
+\begin{merke}
+LLM-Deployment ist nicht wie klassisches Web-Deployment. External Dependencies, probabilistisches Verhalten und Kosten pro Request erfordern neue Patterns: Circuit-Breaker, Caching, Multi-Provider-Fallback und kontinuierliches Cost-Monitoring.
+\end{merke}
+
+% ============================================================
+% PRAXISPROJEKT
+% ============================================================
+\section{Praxisprojekt -- Produktionsreifer LLM-Service mit Dashboard}
+
+\textbf{Ziel:} Deploye einen LLM-Chat-Service mit FastAPI, Docker, Redis-Caching und Prometheus-Monitoring.
+
+\textbf{Aufgaben:}
+\begin{enumerate}[leftmargin=*]
+    \item Erstelle einen FastAPI-Endpoint mit Rate Limiting (slowapi)
+    \item Implementiere Redis-Caching mit TTL (30 Minuten)
+    \item Füge Prometheus-Metriken für Requests, Latenz, Kosten hinzu
+    \item Konfiguriere Docker Compose mit 3 Replicas des Services
+    \item Richte Grafana-Dashboard ein: Latenz, Cost/Query, Error Rate
+    \item Baue einen Circuit-Breaker für API-Ausfälle
+\end{enumerate}
+
+\textbf{Erweiterung:} Füge einen Multi-Provider-Fallback hinzu (OpenAI -> Anthropic -> lokales Modell).
+Füge Readiness-Probes und Kubernetes-Manifeste für das Deployment hinzu.
+
+% ============================================================
+% INTERVIEWFRAGEN
+% ============================================================
+\section{Interviewfragen}
+
+\begin{enumerate}[leftmargin=*]
+    \item Wie würdest du eine LLM-Anwendung für 10.000 tägliche User deployen?
+    \item Erkläre den Unterschied zwischen vertikaler und horizontaler Skalierung bei LLM-Services.
+    \item Wie würdest du die Kosten einer LLM-Anwendung um 50\% reduzieren?
+    \item Was machst du, wenn die OpenAI-API ausfällt und dein Produkt davon abhängt?
+    \item Welche Metriken würdest du in einem LLM-Produktionssystem überwachen?
+    \item Vergleiche API-basiertes Deployment mit Self-hosted Deployment. Wann nimmst du was?
+    \item Wie implementierst du Readiness-Probes f\"ur eine LLM-API, die kurzzeitig ausfallen kann?
+    \item Dein LLM-Service hat nach einem Deployment plötzlich 5x h\"ohere Latenz. Was sind deine ersten Debug-Schritte?
+    \item Wie würdest du einen Multi-Region-Failover f\"ur einen LLM-Service designen?
+\end{enumerate}
+
+% ============================================================
+% RESSOURCEN
+% ============================================================
+\section{Ressourcen}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{FastAPI Documentation}: \href{https://fastapi.tiangolo.com}{fastapi.tiangolo.com}
+    \item \textbf{Prometheus \& Grafana}: prometheus.io, grafana.com -- Metriken und Dashboards
+    \item \textbf{Tenacity}: \href{https://github.com/jd/tenacity}{github.com/jd/tenacity} -- Retry-Library für Python
+    \item \textbf{Docker Compose}: \href{https://docs.docker.com/compose/}{docs.docker.com/compose}
+    \item \textbf{OpenAI Production Best Practices}: \href{https://platform.openai.com/docs/guides/production-best-practices}{platform.openai.com}
+    \item \textbf{LLM Deployment Patterns (Anthropic)}: \href{https://docs.anthropic.com/en/docs/quickstart}{docs.anthropic.com}
+\end{itemize}
+
+\textbf{Nächster Schritt:} Im nächsten Kapitel geht es um AI Safety und Ethics -- Themen die in der Praxis oft unterschätzt werden, aber kritisch sind für jeden produktiven KI-Einsatz.

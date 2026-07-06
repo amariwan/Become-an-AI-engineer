@@ -1,0 +1,65 @@
+# LaTeX build artifacts
+_build/
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.synctex(busy)
+*.nav
+*.snm
+*.vrb
+*.idx
+*.ind
+*.ilg
+*.xdv
+*.pdfsync
+*.synctex.gz
+*.run.xml
+
+# Temporary files
+*~
+*.bak
+*.tmp
+*.swp
+*.swo
+
+# Editor directories and files
+.vscode/
+.idea/
+*.tmproj
+*.vscodeignore
+
+# Local agent metadata
+.agent-sync/
+.claude/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python virtual environments
+venv/
+.env/
+.envrc
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Node modules (in case any frontend tooling is added)
+node_modules/
+
+# GitHub Actions artifacts
+*.log
+
+# Misc
+scripts
+skills
+templates
+hooks
+agents.md

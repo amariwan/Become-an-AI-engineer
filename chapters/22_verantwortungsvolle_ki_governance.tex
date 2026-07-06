@@ -1,0 +1,170 @@
+\chapter{Responsible AI und Governance}
+
+\label{chap:responsible_ai_governance}
+
+% ============================================================
+% LERNZIELE
+% ============================================================
+\begin{lernziele}
+Nach diesem Kapitel kannst du:
+\begin{itemize}
+    \item die Kernprinzipien von Responsible AI erklären
+    \item Governance-Modelle für KI-Produkte beschreiben
+    \item Bias-, Fairness- und Transparenz-Prüfungen planen
+    \item Datenschutz und Compliance im KI-Kontext bewerten
+    \item Audit-Trails und Verantwortlichkeiten in KI-Projekten etablieren
+\end{itemize}
+\end{lernziele}
+
+% ============================================================
+% MOTIVATION
+% ============================================================
+\section{Motivation}
+
+KI-Systeme sind nicht nur technische Artefakte. Sie beeinflussen Menschen, Gesellschaft und Geschäftsprozesse. Deshalb reicht es nicht, dass ein Modell funktioniert: Es muss auch verlässlich, erklärbar und rechtskonform sein.
+
+Responsible AI sorgt dafür, dass KI-Projekte nicht nur aus technischer Sicht erfolgreich sind, sondern auch ethisch verantwortbar, transparent und rechtlich abgesichert.
+
+% ============================================================
+% GRUNDLAGEN
+% ============================================================
+\section{Was ist Responsible AI?}
+
+Responsible AI umfasst vier zentrale Säulen:
+
+\begin{description}[leftmargin=*,style=nextline]
+    \item[Fairness] Systeme dürfen nicht systematisch bestimmte Personen oder Gruppen benachteiligen.
+    \item[Transparenz] Entscheidungen müssen nachvollziehbar und dokumentiert sein.
+    \item[Verantwortung] Es muss klar sein, wer für Modell- und Datenentscheidungen haftet.
+    \item[Sicherheit] KI-Systeme müssen vor Missbrauch, Manipulation und Datenlecks geschützt werden.
+\end{description}
+
+\subsection{Abgrenzung zu Safety und Security}
+
+Responsible AI ergänzt AI Safety und KI-Sicherheit. Während Safety vor allem das Verhalten und die Risiken der Modelle betrachtet und Security den technischen Schutz adressiert, verbindet Responsible AI:
+
+\begin{itemize}[leftmargin=*]
+    \item ethische Prinzipien,
+    \item organisatorische Prozesse und
+    \item regulatorische Anforderungen.
+\end{itemize}
+
+% ============================================================
+% GOVERANCE
+% ============================================================
+\section{Governance-Struktur für KI-Projekte}
+
+Ein wirksames Governance-Setup definiert Rollen, Prozesse und Kontrollpunkte. Typische Rollen sind:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{KI-Verantwortlicher} (Model Owner): Entscheidung über Modellwahl und Betriebsparameter
+    \item \textbf{Data Steward}: Verantwortung für Datenqualität, Datenschutz und Bias-Checks
+    \item \textbf{Ethik-Reviewer}: Prüft Fairness, Transparenz und gesellschaftliche Auswirkungen
+    \item \textbf{Security Owner}: Verantwortlich für Zugriffskontrolle, Secrets und Angriffsschutz
+\end{itemize}
+
+\subsection{Governance-Gates}
+
+Governance wird wirksam durch klare Gates im Lebenszyklus:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Design Review} vor dem ersten Prototyp
+    \item \textbf{Bias- und Datenschutz-Review} vor dem Release
+    \item \textbf{Monitoring-Gate} bei Produktionsrollout
+    \item \textbf{Regelmäßige Re-Reviews} im Betrieb
+\end{itemize}
+
+% ============================================================
+% BIAS UND FAIRNESS
+% ============================================================
+\section{Bias- und Fairness-Prüfungen}
+
+Bias entsteht spätestens dann, wenn Trainingsdaten oder Prompts systematisch bestimmte Gruppen bevorzugen oder benachteiligen.
+
+\subsection{Drei Bias-Quellen}
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Datenbias} -- Verzerrte Trainings- oder Referenzdaten
+    \item \textbf{Promptbias} -- Suggestive oder unvollständige Fragestellung
+    \item \textbf{Modellbias} -- Inherent im vortrainierten Modell vorhandene Vorurteile
+\end{enumerate}
+
+\subsection{Praktische Prüfungen}
+
+Beispiele zur Prüfung:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Subgruppen-Tests}: Antworten nach Geschlecht, Sprache, Region oder Alter auswerten
+    \item \textbf{Counterfactual-Analysen}: Vergleich gleicher Eingaben mit nur einem geänderten Attribut
+    \item \textbf{Rubric-Reviews}: Output anhand definierter Kriterien wie Fairness, Respekt und Neutralität bewerten
+\end{itemize}
+
+% ============================================================
+% TRANSPARENZ UND ERKLÄRBARKEIT
+% ============================================================
+\section{Transparenz und Erklärbarkeit}
+
+Transparenz bedeutet nicht, dass jedes Token erklärt werden muss. Es geht um klare Antworten auf Fragen wie:
+
+\begin{itemize}[leftmargin=*]
+    \item Warum wurde dieses Modell ausgewählt?
+    \item Welche Daten wurden für die Referenzquelle verwendet?
+    \item Welche Grenzen hat das System?
+\end{itemize}
+
+Eine einfache Maßnahme ist die \textbf{Model Card} mit Angaben zu Einsatzgebiet, bekannten Limitationen und erwarteten Verhaltensweisen.
+
+% ============================================================
+% DATENSCHUTZ UND COMPLIANCE
+% ============================================================
+\section{Datenschutz und Compliance}
+
+KI-Projekte müssen Datenschutzgesetze erfüllen, insbesondere wenn personenbezogene Daten verarbeitet werden.
+
+\subsection{Wichtige Prinzipien}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Datenminimierung}: nur die Daten erfassen, die tatsächlich benötigt werden
+    \item \textbf{Zweckbindung}: klar definieren, wofür die Daten genutzt werden
+    \item \textbf{Speicherbegrenzung}: Daten nur so lange aufbewahren, wie nötig
+    \item \textbf{Anonymisierung/Pseudonymisierung}: personenbezogene Daten soweit möglich entkoppeln
+\end{itemize}
+
+\subsection{Audit-fähige Logs}
+
+Audit-Trails sollten alle relevanten Entscheidungen und Änderungen festhalten:
+
+\begin{itemize}[leftmargin=*]
+    \item Prompt-Änderungen und Versionen
+    \item Modell- und Daten-Releases
+    \item Reviewer-Entscheidungen und Freigaben
+    \item Produktionsmetriken, die auf Bias oder Drift hinweisen
+\end{itemize}
+
+% ============================================================
+% PRAXISBEISPIEL
+% ============================================================
+\section{Verankern im Alltag}
+
+Ein kleines Governance-Board kann den Unterschied machen:
+
+\begin{itemize}[leftmargin=*]
+    \item wöchentliche Review-Meetings für neue KI-Features
+    \item klar definierte Scorecards für Fairness und Datenschutz
+    \item feste Verfahren für Incident-Reports und Nachbesserungen
+\end{itemize}
+
+Ein verantwortungsbewusster AI Engineer dokumentiert nicht nur technische Entscheidungen, sondern auch die erwarteten Auswirkungen auf Nutzerinnen und Stakeholder.
+
+% ============================================================
+% ZUSAMMENFASSUNG
+% ============================================================
+\begin{zusammenfassung}
+Responsible AI macht KI-Projekte vertrauenswürdiger und sicherer. Governance ist kein Bürokratie-Overhead, sondern ein praktisches Framework, das Fairness, Transparenz und rechtliche Absicherung mit Produktionsstabilität verbindet.
+\end{zusammenfassung}
+
+\begin{uebungen}
+    \item Beschreibe drei konkrete Governance-Gates, die du bei einem KI-Projekt einführen würdest.
+    \item Nenne zwei Bias-Quellen und eine Maßnahme, um jeweils eine davon zu reduzieren.
+    \item Erkläre, welche Informationen in einer Model Card stehen sollten.
+\end{uebungen}

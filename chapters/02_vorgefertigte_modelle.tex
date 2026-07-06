@@ -1,0 +1,895 @@
+\chapter{Pre-trained Models -- Warum wir nicht mehr bei Null anfangen}
+\label{chap:pretrained_models}
+
+% ============================================================
+% LERNZIELE
+% ============================================================
+\begin{lernziele}
+Nach diesem Kapitel kannst du:
+\begin{itemize}
+    \item Das Konzept des Pre-Trainings und Transfer Learnings erklären und von Fine-Tuning abgrenzen
+    \item Die drei zentralen Vorteile pre-trained Models (Kosten, Geschwindigkeit, State-of-the-Art) benennen und begründen
+    \item Die Grenzen pre-trained Models (Halluzinationen, Kontextfenster, Knowledge Cutoffs) bewerten
+    \item Die neun Kategorien von Foundation Models unterscheiden und die richtige für eine Aufgabe auswählen
+    \item Closed-Source- und Open-Source-Modelle anhand von Kriterien wie Kosten, Datenhoheit und Transparenz vergleichen
+    \item Eine fundierte Entscheidung treffen, ob ein pre-trained Model per API oder ein lokal gehostetes Open-Source-Modell die richtige Wahl ist
+\end{itemize}
+\end{lernziele}
+
+% ============================================================
+% MOTIVATION
+% ============================================================
+\section{Motivation}
+
+Die Entwicklung der künstlichen Intelligenz lässt sich in drei Phasen unterteilen. Vor 2018 dominierte der Ansatz, für jede Aufgabe ein eigenes Modell von Grund auf zu trainieren. Ein Unternehmen, das eine KI für Kunden-Service brauchte, stellte Datenwissenschaftler ein, sammelte zehntausende annotierte Beispiele und trainierte wochenlang auf GPUs. Das Ergebnis war ein spezialisiertes Modell, das genau eine Aufgabe konnte -- und mit jeder neuen Aufgabe wieder von vorne begann.
+
+Dieses Modell ist aus mehreren Gründen gescheitert: Es war zu teuer (ein einziger Trainingsdurchlauf kostete zehntausende Euro), zu langsam (Monate von der Idee zur Produktion) und nicht skalierbar (jede neue Aufgabe erforderte ein neues Modell).
+
+Der Durchbruch kam mit der Erkenntnis, dass ein auf riesigen Textmengen vortrainiertes Modell allgemeine Sprachfähigkeiten erwirbt -- Grammatik, Faktenwissen, Reasoning -- die sich auf fast jede spezifische Aufgabe übertragen lassen. Heute, 2026, ist dieser Ansatz der Standard. Kein ernstzunehmendes KI-System wird mehr von Grund auf trainiert.
+
+% ============================================================
+% GRUNDLAGEN
+% ============================================================
+\section{Grundlagen -- Zentrale Konzepte}
+
+\subsection{Pre-Training und Foundation Models}
+
+Ein Foundation Model ist ein neuronales Netzwerk, das auf einem breiten Datensatz (oft mehrere Terabyte Text) mit einem selbstüberwachten Lernverfahren trainiert wurde. Das häufigste Verfahren ist die \textbf{Next-Token-Prediction}: Das Modell lernt, das nächste Wort in einer Sequenz vorherzusagen.
+
+\begin{verbatim}
+  Eingabe: "Die Katze sitzt auf der"
+  Ziel:     "Matte"
+  Training: Modell sagt "Matte" vorher -> Fehler berechnen -> Gewichte anpassen
+\end{verbatim}
+
+Dieser scheinbar einfache Prozess zwingt das Modell, ein tiefes Verständnis für Sprache zu entwickeln: Syntax (Satzbau), Semantik (Bedeutung), Weltwissen (Fakten) und sogar logische Zusammenhänge.
+
+\subsection{Transfer Learning}
+
+\textbf{Transfer Learning} bezeichnet die Technik, ein auf einer allgemeinen Aufgabe trainiertes Modell auf eine spezifische Aufgabe anzupassen. Der entscheidende Vorteil: Das allgemeine Wissen muss nicht neu erlernt werden, es wird übertragen (transferiert). Man unterscheidet:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Feature Extraction}: Das vortrainierte Modell wird als fester Feature-Extraktor genutzt. Die Gewichte bleiben eingefroren, nur ein kleiner Klassifikationskopf wird trainiert. Früher Standard (BERT-Ära), heute selten.
+    \item \textbf{Fine-Tuning}: Alle oder ein Teil der Modellgewichte werden auf der Zielaufgabe weitertrainiert. Dadurch passt sich das Modell spezifischen Domänen an (z.\,B. Rechts- oder Medizinsprache).
+    \item \textbf{Adapter / LoRA}: Eine parametereffiziente Variante des Fine-Tunings. Statt aller Gewichte werden nur kleine Adapter-Module trainiert. Die Basisgewichte bleiben eingefroren. Standard 2026.
+    \item \textbf{Prompt-Tuning / In-Context Learning}: Kein Training. Das Modell wird durch Beispiele im Prompt auf die Aufgabe eingestimmt. Der häufigste Ansatz im AI Engineering.
+\end{itemize}
+
+\subsection{Fine-Tuning vs. Prompt-Tuning}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXX}
+\toprule
+\textbf{Kriterium} & \textbf{Fine-Tuning} & \textbf{Prompt-Tuning} \\
+\midrule
+Datenbedarf & 1.000+ annotierte Beispiele & 0--5 Beispiele (Few-Shot) \\
+Training nötig? & Ja (GPU-Stunden) & Nein \\
+Flexibilität pro Anfrage & Fest (ein Modell = eine Aufgabe) & Beliebig (Prompt pro Anfrage) \\
+Kosten bei Änderung & Neues Training & Neuer Prompt \\
+Domänenanpassung & Stark & Mittel \\
+\bottomrule
+\end{tabularx}
+\caption{Fine-Tuning vs. Prompt-Tuning im Vergleich}
+\label{tab:fine-vs-prompt}
+\end{table}
+
+\subsection{Weitere Fachbegriffe}
+
+\begin{description}[leftmargin=*,style=nextline]
+    \item[Token] Die kleinste Verarbeitungseinheit eines LLMs. Ein Token ist nicht identisch mit einem Wort -- deutsche Wörter benötigen durchschnittlich 1,8 Tokens, englische 1,3 Tokens.
+    \item[Scaling Law] Ein beobachteter Zusammenhang zwischen Modellgröße, Datenmenge und Trainingszeit. Größere Modelle benötigen exponentiell mehr Daten, liefern aber überproportional bessere Ergebnisse -- bis zu einem Optimum.
+    \item[Emergent Ability] Eine Fähigkeit, die erst ab einer bestimmten Modellgröße auftritt und nicht explizit antrainiert wurde. Beispiele: Chain-of-Thought Reasoning, In-Context Learning, Tool Use. Diese Fähigkeiten sind nicht vorhersagbar -- sie erscheinen sprunghaft.
+    \item[Knowledge Cutoff] Das Datum, bis zu dem die Trainingsdaten eines Modells aktuell sind. Ein Modell mit Knowledge Cutoff 2024 hat keinerlei Wissen über Ereignisse danach.
+    \item[Halluzination] Die Erzeugung faktisch inkorrekter Inhalte. Kein LLM kann zwischen \glqq gelerntem Wissen\grqq{} und \glqq Erfundenem\grqq{} unterscheiden.
+\end{description}
+
+% ============================================================
+% DAS KONZEPT DER FOUNDATION MODELS (existiert)
+% ============================================================
+\section{Das Konzept der Foundation Models}
+
+Vor 2018 war es normal, dass man für jede KI-Aufgabe ein eigenes Modell trainierte. Heute ist das so ineffizient wie heute noch jemand eine Website von Hand in HTML schreibt statt ein Framework zu verwenden -- technisch möglich, aber wahnsinnig verschwenderisch mit Zeit und Ressourcen.
+
+\textbf{Pre-trained Models} (auch Foundation Models genannt) sind große Sprachmodelle, die auf massiven Textkorpora vortrainiert wurden und deren Wissen man für spezifische Aufgaben weiter nutzen kann -- ohne jedes Mal neu trainieren zu müssen. Das Prinzip heißt \textit{Transfer Learning}: Ein Modell, das auf einer großen allgemeinen Aufgabe (nächstes Wort vorhersagen) trainiert wurde, liefert eine starke Initialisierung für unzählige Downstream-Aufgaben.
+
+\subsection*{Wie funktioniert Pre-training?}
+
+Der Prozess ist verblüffend einfach -- und dennoch revolutionär:
+
+\begin{enumerate}[leftmargin=*]
+    \item Man nimmt ein riesiges Textkorpus (z.\,B. das ganze Internet, bereinigt)
+    \item Man trainiert ein neuronales Netzwerk darauf, das nächste Wort in einem Satz vorherzusagen
+    \item Das Modell lernt dabei Grammatik, Faktenwissen, Stil und sogar logisches Reasoning -- quasi als Side Effect
+\end{enumerate}
+
+Das Resultat sind Modelle wie GPT-4o, Claude, Gemini oder Llama -- sie alle wurden auf diese Weise vortrainiert. Die eigentliche Kunst liegt dann im \textbf{Fine-Tuning} und der \textbf{Integration} dieser Foundation Models in Anwendungslogik.
+
+% ABBILDUNG: Pre-Training bis Inference Pipeline
+\begin{verbatim}
+Phase 1: Pre-Training
++--------------------+     +------------------+
+|  Internet-Korpus   | --> |  Next-Token-      |
+|  (Petabytes Text)  |     |  Prediction       |
++--------------------+     +--------+---------+
+                                    |
+                          +---------v----------+
+                          |  Foundation Model   |
+                          |  (roh, generalisiert)|
+                          +---------+----------+
+                                    |
+               +--------------------+--------------------+
+               |                    |                    |
+     Phase 2a: Fine-Tuning   Phase 2b: Prompt-Tuning  Phase 2c: RAG
+               |                    |                    |
+     +---------v---------+  +------v-------+   +-------v--------+
+     | Domänen-spezifisch |  | In-Context   |   | Externes Wissen |
+     | (Recht, Medizin)   |  | Learning     |   | (Dokumente, DB) |
+     +-------------------+  +--------------+   +----------------+
+               |                    |                    |
+               +--------------------+--------------------+
+                                    |
+                          +---------v----------+
+                          |  Production-LLM     |
+                          |  (angepasst)        |
+                          +--------------------+
+\end{verbatim}
+
+% ===========================================================%
+% MODELL-TYPOLOGIE (NEU)
+% ============================================================
+\section{Modell-Typologie -- Die neun Kategorien}
+
+Nicht alle Foundation Models sind gleich. 2026 hat sich eine klare Typologie
+herausgebildet, die bestimmt, welches Modell für welche Aufgabe geeignet ist.
+Als AI Engineer musst du diese Kategorien kennen, denn die Wahl des falschen
+Modelltyps ist einer der häufigsten Kosten- und Qualitätsfehler.
+
+\subsection{1. Base Models (Pre-Trained Only)}
+
+Ein Base Model ist das rohe Ergebnis des Pre-Trainings -- ein reiner
+Next-Token-Prädiktor ohne Instruction-Following. Es kann Texte
+vervollständigen, aber nicht gezielt Fragen beantworten.
+
+\begin{lstlisting}[language=Python, caption={Base Model -- reine Textgeneration}, label=lst:base-model]
+# Base Model (ohne Chat-Template)
+# Eingabe:  "Die Hauptstadt von Frankreich ist"
+# Ausgabe:  "Paris. Sie liegt an der Seine und ist"
+# -- nicht: "Die Hauptstadt von Frankreich ist Paris."
+\end{lstlisting}
+
+Base Models sind 2026 selten im direkten Einsatz. Sie dienen als
+Ausgangspunkt für Fine-Tuning oder als Zwischenschritt in der
+Forschung. Bekannte Vertreter: Llama 3 Base, Mistral Base, Pythia.
+
+\textbf{Einsatz:} Nur als Foundation für eigenes Fine-Tuning.
+Niemals direkt in Produktion.
+
+\subsection{2. Instruction-Tuned Models}
+
+Ein Instruction-Tuned Model wurde nach dem Pre-Training auf einem Datensatz
+von Instruktion-Antwort-Paaren feinjustiert (supervised fine-tuning, SFT).
+Es versteht Aufforderungen wie \glqq Fasse den folgenden Text zusammen\grqq{}
+und befolgt sie.
+
+\begin{lstlisting}[language=Python, caption={Instruction-Tuned Model}, label=lst:instruction-model]
+# Instruction-Tuned Model
+# System: "Du bist ein hilfreicher Assistent."
+# User:   "Fasse die Hauptstadt von Frankreich in einem Satz zusammen."
+# Output: "Die Hauptstadt von Frankreich ist Paris."
+\end{lstlisting}
+
+Dies ist der mit Abstand häufigste Modelltyp im AI Engineering 2026.
+Alle kommerziellen APIs (GPT-4o, Claude, Gemini) sind instruction-tuned.
+Open-Source-Modelle enden oft auf \glqq -Instruct\grqq{} (Llama 3 Instruct,
+Mistral Instruct, Qwen Instruct).
+
+\textbf{Einsatz:} Standard für Chat, Textgeneration, Extraktion,
+Zusammenfassung, Übersetzung.
+
+\subsection{3. Reasoning Models}
+
+Reasoning Models sind instruction-tuned, aber zusätzlich auf mehrschrittiges
+logisches Denken optimiert. Sie generieren eine interne Gedankenkette (Chain
+of Thought), bevor sie die finale Antwort ausgeben.
+
+\begin{lstlisting}[language=Python, caption={Reasoning Model -- Chain-of-Thought}, label=lst:reasoning-model]
+# Reasoning Model (z.B. o3, DeepSeek-R1)
+# User: "Wenn ein Zug mit 80 km/h fahrt und 120 km
+#        zurucklegen muss, wie lange braucht er?"
+# Internes CoT:
+#   Schritt 1: Zeit = Strecke / Geschwindigkeit
+#   Schritt 2: t = 120 km / 80 km/h
+#   Schritt 3: t = 1,5 Stunden
+# Output: 1,5 Stunden
+\end{lstlisting}
+
+Bekannte Vertreter: OpenAI o1/o3, DeepSeek-R1, Gemini 2.5 Pro
+Thinking, Claude 4 Opus.
+
+\textbf{Einsatz:} Mathematik, Logik, Code-Review, komplexe
+Planungsaufgaben, Multi-Step-Reasoning. Für einfache Aufgaben
+(Extraktion, einfache Klassifikation) überdimensioniert.
+
+\subsection{4. Code Models}
+
+Code Models sind auf Quellcode spezialisiert -- entweder als Base Model oder
+instruction-tuned. Sie beherrschen Syntax, APIs und idiomatische Patterns
+für zahlreiche Programmiersprachen.
+
+\begin{lstlisting}[language=Python, caption={Code Model -- Generierung}, label=lst:code-model]
+# Code Model (z.B. DeepSeek-Coder, CodeLlama)
+# Prompt: "Schreibe eine Python-Funktion, die
+#          eine Liste von Zahlen sortiert."
+# Output: def sort_numbers(numbers: list[float]) -> list[float]:
+#             return sorted(numbers)
+\end{lstlisting}
+
+Bekannte Vertreter: DeepSeek-Coder V3, CodeLlama 70B, Qwen 2.5 Coder.
+
+\textbf{Einsatz:} Codegenerierung, Vervollständigung, Bug-Fixing,
+Refactoring, Testgenerierung. Oft als IDE-Plugin integriert (Cursor,
+Codeium, Continue.dev).
+
+\subsection{5. Multimodale Modelle}
+
+Multimodale Modelle verarbeiten mehrere Eingabeformate -- Text, Bilder,
+Audio, Video -- in einem einzigen Modell. Sie nutzen einen gemeinsamen
+Encoder, der alle Modalitäten in denselben semantischen Raum projiziert.
+
+\begin{lstlisting}[language=Python, caption={Multimodales Modell -- Bildanalyse}, label=lst:multimodal]
+import openai
+
+response = openai.chat.completions.create(
+    model="gpt-4o",
+    messages=[
+        {"role": "user", "content": [
+            {"type": "text", "text": "Was steht auf diesem Schild?"},
+            {"type": "image_url",
+             "image_url": {"url": "https://example.com/schild.jpg"}}
+        ]}
+    ]
+)
+\end{lstlisting}
+
+Bekannte Vertreter: GPT-4o, Claude 4, Gemini 2.5 Flash, Llama 3.2
+Vision 90B.
+
+\textbf{Einsatz:} Dokumentenanalyse, Diagramm-Verständnis,
+Bildbeschreibung, Videoanalyse, UI-Testing.
+
+\subsection{6. Small Language Models (SLM)}
+
+SLMs sind Modelle unter 7 Milliarden Parametern, die auf Effizienz
+optimiert sind. Sie laufen auf Consumer-Hardware, Edge-Geräten oder
+sogar im Browser (via WebGPU).
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXXX}
+\toprule
+\textbf{Modell} & \textbf{Parameter} & \textbf{VRAM} & \textbf{Einsatzort} \\
+\midrule
+Phi-3 (Microsoft) & 3,8 Mrd. & 2\,GB & Smartphone, Laptop \\
+Gemma 2 (Google) & 2,6 Mrd. & 1,5\,GB & Browser, CPU \\
+TinyLlama & 1,1 Mrd. & 1\,GB & Embedded, IoT \\
+Qwen 2.5 Coder 1.5B & 1,5 Mrd. & 1\,GB & Code-Vervollständigung \\
+\bottomrule
+\end{tabularx}
+\caption{Kleine Modelle für Edge- und Mobile-Deployment}
+\label{tab:slm-modelle}
+\end{table}
+
+\textbf{Einsatz:} On-Device-Inference, Echtzeitanwendungen,
+Datenschutzkritische Umgebungen, Simple Klassifikation.
+
+\subsection{7. Mixture-of-Experts-Modelle (MoE)}
+
+MoE-Modelle bestehen aus vielen spezialisierten Sub-Netzwerken (Experts)
+und einem Router, der für jeden Token nur einen Bruchteil der Experten
+aktiviert. Dadurch erreichen sie die Kapazität großer Modelle bei den
+Kosten kleinerer.
+
+\begin{verbatim}
+Token "der"                     Token "Algorithmus"
+            |                               |
+    +-------v--------+            +----------v----------+
+    |    Router      |            |       Router        |
+    +----+----+-----+            +-----+----+----+-----+
+         |    |                          |    |    |
+    [Expert A] [Expert C]          [Expert B] [Expert D]
+    (Grammatik) (Alltag)          (Fachtext) (Logik)
+\end{verbatim}
+
+Bekannte Vertreter: Mixtral 8x7B, Mixtral 8x22B, DeepSeek-V3, Qwen 2.5
+MoE, GPT-4 (vermutlich).
+
+\textbf{Einsatz:} Kostensensitive Produktionssysteme, die nahe an der
+Qualität eines großen dichten Modells liegen müssen. Besonders geeignet
+für hohe Durchsatzanforderungen.
+
+\subsection{8. Embedding Models}
+
+Embedding Models sind eine eigenständige Klasse. Sie erzeugen aus Text
+einen dichten Vektor (Embedding), der die semantische Bedeutung
+repräsentiert. Diese Vektoren werden in Vektor-Datenbanken gespeichert
+und für Ähnlichkeitssuchen (RAG) genutzt.
+
+\begin{lstlisting}[language=Python, caption={Embedding-Modell -- Vektorisierung}, label=lst:embedding]
+import openai
+
+response = openai.embeddings.create(
+    model="text-embedding-3-large",
+    input="Was ist ein Transformer?",
+)
+vector = response.data[0].embedding  # 3072-dim Vektor
+\end{lstlisting}
+
+Bekannte Vertreter: OpenAI text-embedding-3-large/small, Cohere
+Embed v3, BGE-M3, E5-mistral-7b-instruct.
+
+\textbf{Einsatz:} RAG (Retrieval-Augmented Generation),
+Semantische Suche, Duplikatserkennung, Clustering,
+Empfehlungssysteme.
+
+\subsection{9. Open-Weight vs. Proprietary}
+
+Diese Kategorie ist ein Querschnitt: Jedes Modell ist entweder
+Open-Weight (frei verfügbare Gewichte) oder Proprietary (nur via
+API).
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXX}
+\toprule
+\textbf{Kriterium} & \textbf{Open-Weight} & \textbf{Proprietary} \\
+\midrule
+Gewichte verfügbar & Ja & Nein \\
+Fine-Tuning & Vollständig & Nur via API \\
+Auditierbarkeit & Voll & Keine \\
+Kostenstruktur & Infrastruktur & Pro-Token \\
+Beispiele & Llama, Qwen, Mistral & GPT-4o, Claude, Gemini \\
+\bottomrule
+\end{tabularx}
+\caption{Open-Weight vs. Proprietary Modelle}
+\label{tab:open-weight-proprietary}
+\end{table}
+
+\subsection{Wahl der richtigen Kategorie}
+
+Die folgende Übersicht hilft bei der Entscheidung:
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\textbf{Anforderung} & \textbf{Modellkategorie} \\
+\midrule
+Chat-Assistent & Instruction-Tuned \\
+Mathe/Logik/Rätsel & Reasoning \\
+Codegenerierung & Code Model \\
+Bild+Dokumentenanalyse & Multimodal \\
+Edge/Smartphone/Offline & SLM \\
+Hoher Durchsatz bei guter Qualität & MoE \\
+Semantische Suche/RAG & Embedding \\
+Eigenes Fine-Tuning & Open-Weight Base (z.B. Llama Base) \\
+\bottomrule
+\end{tabularx}
+\caption{Zuordnung von Anforderungen zu Modellkategorien}
+\label{tab:model-choice-typology}
+\end{table}
+
+% ===========================================================%
+% VORTEILE (existiert)
+% ============================================================
+\section{Vorteile von Pre-trained Models}
+
+Warum sind pre-trained Models die Grundlage moderner AI-Engineering-Arbeit?
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Kostenersparnis}: Ein GPT-4o-Aufruf kostet Bruchteile eines Cents. Ein eigenes Modell zu trainieren und zu betreiben kostet Zehntausende Euro.
+    \item \textbf{Geschwindigkeit}: Vom Prompt zur Antwort in Sekunden -- keine wochenlange Training-Pipeline mehr.
+    \item \textbf{Fortschritt ohne eigenes Training}: Die Models sind bereits state-of-the-art. Du profitierst vom Fortschritt der Großprojekte (Anthropic, Google, Meta).
+    \item \textbf{Multimodalität}: Moderne Modelle verstehen Text, Bilder, Audio -- alles in einem Modell.
+    \item \textbf{Fortschrittliche Fähigkeiten}: Chain-of-Thought Reasoning, Tool-Use, JSON-Ausgabe -- Features, die man vor 2 Jahren noch selbst bauen musste.
+\end{itemize}
+
+% ===========================================================%
+% THEORIE
+% ============================================================
+\section{Theorie -- Warum Pre-Training funktioniert}
+
+\subsection{Scaling Laws}
+
+Die Forschung von Kaplan et al. (2020) und Hoffmann et al. (2022, Chinchilla Paper) hat gezeigt, dass die Leistung von LLMs mit drei Faktoren skaliert:
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\textbf{Faktor} & \textbf{Beobachtung} \\
+\midrule
+Modellgröße (Parameter) & Mehr Parameter -> bessere Performance, aber mit abnehmendem Grenznutzen \\
+Datenmenge (Tokens) & Mehr Trainingsdaten -> bessere Performance, insbesondere wenn das Modell untertrainiert ist \\
+Rechenbudget (FLOPs) & Das optimale Verhältnis von Parametern zu Tokens ist etwa 20 Tokens pro Parameter (Chinchilla-Optimum) \\
+\bottomrule
+\end{tabularx}
+\caption{Scaling Laws für Large Language Models}
+\label{tab:scaling-laws}
+\end{table}
+
+Die praktische Konsequenz: Die meisten Foundation Models sind \glqq untertrainiert\grqq{} im Sinne des Chinchilla-Optimums -- sie haben mehr Parameter, als bei ihrem Trainingsbudget optimal wäre. In der Praxis bedeutet das: Ein kleineres, aber besser trainiertes Modell kann ein größeres, schlechter trainiertes Modell übertreffen.
+
+\subsection{Emergente Fähigkeiten}
+
+Emergente Fähigkeiten sind das überraschendste Phänomen der LLM-Forschung. Bestimmte Fähigkeiten treten erst ab einer bestimmten Modellgröße auf und sind in kleinen Modellen (unter 1 Mrd. Parameter) nicht vorhanden:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{In-Context Learning}: Die Fähigkeit, aus wenigen Beispielen im Prompt zu lernen, ohne die Gewichte zu ändern
+    \item \textbf{Chain-of-Thought Reasoning}: Mehrschrittiges logisches Denken durch Zwischenschritte
+    \item \textbf{Instruction Following}: Die Fähigkeit, komplexe natürliche Instruktionen zu befolgen
+\end{itemize}
+
+Diese Fähigkeiten sind nicht geplant oder explizit antrainiert -- sie entstehen als \glqq Spillover\grqq{} aus der schieren Größe des Modells und der Datenmenge.
+
+\subsection{Wann verwendet man pre-trained Models?}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Immer}, wenn ein vortrainiertes Modell die Aufgabe lösen kann (95\,\% der Fälle)
+    \item \textbf{Fast immer}, wenn Zeit und Kosten eine Rolle spielen
+    \item \textbf{Nicht}, wenn die Aufgabe extrem spezifisch ist und keinerlei allgemeines Sprachverständnis erfordert (z.\,B. reine Regex-Ersetzung)
+    \item \textbf{Nicht}, wenn minimale Latenz und maximale Kontrolle erforderlich sind (Echtzeitsysteme, Embedded)
+\end{itemize}
+
+\subsection{Trade-offs}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\textbf{Entscheidung} & \textbf{Trade-off} \\
+\midrule
+Großes Modell vs. kleines Modell & Größer = besser, aber teurer und langsamer \\
+API vs. Self-Hosted & API = einfacher, Self-Hosted = günstiger bei Volumen \\
+Generalist vs. Spezialist & Generalist = flexibler, Spezialist = besser in der Domäne \\
+Aktualität vs. Stabilität & Neues Modell = besser, aber Breaking-Risiko \\
+\bottomrule
+\end{tabularx}
+\caption{Trade-offs bei der Modellauswahl}
+\label{tab:model-tradeoffs}
+\end{table}
+
+% ===========================================================%
+% LIMITATIONEN (existiert)
+% ============================================================
+\section{Limitationen und Fallen}
+
+Pre-trained Models sind mächtig, aber keine Zauberstäbe. Als AI Engineer musst du ihre Grenzen kennen:
+
+\begin{description}[leftmargin=0pt]
+    \item[Halluzinationen:] Die Modelle erfinden Fakten mit absolutem Selbstvertrauen. In 2026 verbessert durch System-Prompts und RAG, aber nie vollständig eliminiert.
+
+    \item[Kontext-Fenster-Beschränkung:] Auch ein Modell mit 1M Token Kontext kann nicht jedes Buch auf einmal verarbeiten. Die relevanten Informationen müssen erst gefunden werden (RAG).
+
+    \item[Knowledge Cutoffs:] Ein in 2024 trainiertes Modell kennt keine Ereignisse von 2025/2026. Das ist ein fundamentales Problem für aktuelle Wissensabfragen.
+
+    \item[Sprachgewichte:] Die meisten Foundation Models sind auf Englisch vortrainiert. Deutsche Textqualität ist gut, aber nicht auf demselben Niveau wie Englisch.
+
+    \item[Verlust der Kontrolle:] Bei Fine-Tuning von Black-Box-Modellen (OpenAI) verliert man Transparenz. Man weiß nicht, welche Daten im Training waren und wie das Modell konkret entscheidet.
+\end{description}
+
+% ===========================================================%
+% ARCHITEKTUR
+% ============================================================
+\section{Architektur -- Modell-Auswahl-Architektur}
+
+Die Entscheidung für ein Modell ist eine Architekturentscheidung. Das folgende Diagramm zeigt den Entscheidungsbaum und die Infrastruktur-Komponenten:
+
+% ABBILDUNG: Modell-Auswahl-Entscheidungsbaum
+\begin{verbatim}
+                +-----------------------+
+                |   Anforderung klar?    |
+                +----------+------------+
+                           |
+              +-----------+-----------+
+              |                       |
+           (Ja)                    (Nein)
+              |                       |
+    +---------v---------+  +----------v----------+
+    |  Datenhoheit nötig?|  |  Prototyp mit API   |
+    +---------+---------+  |  (GPT-4o-mini)       |
+              |             +---------------------+
+     +--------+--------+
+     |                 |
+   (Ja)             (Nein)
+     |                 |
++----v----+      +-----v------+
+| Open    |      |  Schnell?   |
+| Source  |      +-----+------+
++----+----+            |
+     |          +------+------+
+     |          |             |
+     |       (Ja)          (Nein)
+     |          |             |
+     |   +------v------+  +---v--------+
+     |   | GPT-4o-mini |  | GPT-4o /   |
+     |   | (lokal)     |  | Claude 4   |
+     |   +-------------+  +------------+
+     |
++-----v-----+
+| Ollama /   |
+| vLLM       |
++------------+
+\end{verbatim}
+
+% ===========================================================%
+% PRAXIS
+% ============================================================
+\section{Praxisbeispiele aus der Industrie}
+
+\subsection{Automotive -- Technische Dokumentation}
+
+Ein deutscher Automobilhersteller betreibt einen KI-Assistenten für die Werkstatt-Dokumentation. 500.000 Seiten technische Handbücher müssen für Monteure erschlossen werden.
+
+\textbf{Problem:} Die Handbücher sind auf Deutsch, enthalten viele Fachtermini und unterliegen der Geheimhaltung. Eine Cloud-API scheidet aus.
+
+\textbf{Lösung:} Lokal gehostetes Llama 3 (70B) mit RAG auf den Handbüchern. Fine-Tuning auf Werkstatt-Sprache. Der Prompt enthält eine strukturierte Anforderung (Fehlercode $\rightarrow$ mögliche Ursachen $\rightarrow$ Prüfschritte).
+
+\textbf{Ergebnis:} 40\,\% schnellere Diagnose, keine sensiblen Daten verlassen das Werk.
+
+\subsection{Gesundheitswesen -- KI-gestützte Befundung}
+
+Ein Krankenhaus in Österreich setzt ein Foundation Model ein, um radiologische Befunde in Laienverständliche Zusammenfassungen zu übersetzen.
+
+\textbf{Herausforderung:} Das Modell muss auf Deutsch arbeiten, medizinische Termini korrekt expandieren und darf keine Halluzinationen produzieren (Haftungsfrage).
+
+\textbf{Lösung:} GPT-4o mit eng gefasstem System-Prompt, JSON-Struktur-Output, RAG auf medizinischen Leitlinien. Jede Zusammenfassung wird von einem Arzt gegengezeichnet.
+
+\textbf{Lektion:} In regulierten Umgebungen ist das LLM ein Assistenzsystem, kein Entscheider. Die Validierung liegt beim Menschen.
+
+\subsection{E-Commerce -- Multilinguale Produktdaten}
+
+Ein Online-Händler mit 3 Millionen Artikeln betreibt 12 Sprachversionen seines Shops. Statt 12 Redaktionsteams setzt er ein pre-trained Model ein:
+
+\begin{itemize}[leftmargin=*]
+    \item Stammdaten (DE) $\rightarrow$ LLM $\rightarrow$ 12 Sprachen
+    \item Qualitätssicherung: Kreuzvalidierung durch Rückübersetzung
+    \item Kosten: 0,3 Cent pro Artikel und Sprache
+    \item Ergebnis: 95\,\% sprachlich korrekt, 20\,\% höhere Conversion in Nicht-DE-Märkten
+\end{itemize}
+
+% ===========================================================%
+% OPEN SOURCE VS CLOSED SOURCE (existiert)
+% ============================================================
+\section{Open Source vs. Closed Source -- die aktuelle Lage 2026}
+
+Die Wahl zwischen Open-Source- und Closed-Source-Modellen ist eine der wichtigsten Entscheidungen als AI Engineer:
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXX}
+\toprule
+\textbf{Aspekt} & \textbf{Closed Source (OpenAI, Anthropic)} & \textbf{Open Source (Llama, Mistral, Qwen)} \\
+\midrule
+Verfügbarkeit & Nur via API & Lokal lauffähig, keine Abhängigkeit \\
+Kosten & Pro-Token-Abrechnung & Kostenlos, nur Infrastrukturkosten \\
+Customisierung & Begrenzt (Fine-Tuning API) & Vollständiger Zugriff auf Gewichte \\
+Datenhoheit & Daten verlassen den eigenen Server & Alles bleibt on-premise \\
+Modell-Transparenz & Black Box & Volle Transparenz, Audit möglich \\
+Flexibilität & An API-Beschränkungen gebunden & Frei anpassbar, kein Vendor Lock-in \\
+\bottomrule
+\end{tabularx}
+\caption{Open Source vs. Closed Source -- die wichtigsten Trade-offs}
+\label{tab:open-vs-closed}
+\end{table}
+
+\textbf{Praxis-Tipp 2026:} Die Lücke schließt sich rasant. Qwen und Llama sind in vielen Benchmarks bereits besser oder gleichauf mit GPT-4o. Wer Datenhoheit braucht (DSGVO, Healthcare, Finance), wird kaum um Open Source herumkommen.
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXXX}
+\toprule
+\textbf{Kriterium} & \textbf{Llama 3 (Meta)} & \textbf{Mistral Large} & \textbf{Qwen 2.5 (Alibaba)} \\
+\midrule
+Parameter & 70B / 405B & 123B & 72B / 110B \\
+Kontextfenster & 128K & 128K & 128K \\
+Sprachqualität DE & Gut & Sehr gut & Mittel \\
+Benchmark (MMLU) & 86,4 & 84,0 & 85,6 \\
+Lizenz & Custom (frei) & Apache 2.0 & Apache 2.0 \\
+\bottomrule
+\end{tabularx}
+\caption{Vergleich führender Open-Source-Modelle (Stand 2026)}
+\label{tab:oss-modelle}
+\end{table}
+
+% ===========================================================%
+% CODEBEISPIELE (existiert)
+% ============================================================
+\section{Codebeispiele}
+
+\subsection{Closed Source vs. Open Source im Vergleich}
+
+Hier siehst du denselben Use-Case -- eine Produktbeschreibung generieren -- sowohl mit einem Closed-Source-API als auch lokal mit einem Open-Source-Modell via Ollama:
+
+\begin{lstlisting}[language=Python, caption={Closed Source (OpenAI) vs. Open Source (Ollama) im Vergleich}, label=lst:closed-vs-open]
+# === Variante A: Closed Source (OpenAI API) ===
+import openai
+
+def generate_product_description(product_name: str, features: list[str]) -> str:
+    response = openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system",
+             "content": "Du bist ein Marketing-Assistent."},
+            {"role": "user",
+             "content": f"Produkt: {product_name}\n"
+                        f"Merkmale: {', '.join(features)}\n"
+                        f"Schreibe eine ansprechende Beschreibung "
+                        f"in 3-4 Satzen."}
+        ],
+        temperature=0.7,
+    )
+    return response.choices[0].message.content
+
+# === Variante B: Open Source (Ollama lokal) ===
+import requests
+
+def generate_product_description_local(
+    product_name: str, features: list[str]
+) -> str:
+    response = requests.post(
+        "http://localhost:11434/api/generate",
+        json={
+            "model": "llama3.2",
+            "prompt": f"Produkt: {product_name}\n"
+                      f"Merkmale: {', '.join(features)}\n"
+                      f"Schreibe eine ansprechende Beschreibung "
+                      f"in 3-4 Satzen.",
+            "stream": False,
+        },
+    )
+    return response.json()["response"]
+\end{lstlisting}
+
+% ===========================================================%
+% BEST PRACTICES
+% ============================================================
+\section{Best Practices}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Starte mit einem kleinen Modell}: GPT-4o-mini oder Llama 3 (8B) reichen für 80\,\% der Aufgaben. Nutze teure Modelle nur, wenn das kleine Modell versagt.
+    \item \textbf{Teste mehrere Modelle systematisch}: Ein Modell, das auf deinem Use-Case gut aussieht, kann in der Praxis durch ein anderes übertroffen werden. Baue einen Modell-Vergleichs-Benchmark.
+    \item \textbf{Dokumentiere Knowledge Cutoffs}: Jedes Modell hat ein Ablaufdatum. Vermerke das Cutoff-Datum im System-Prompt oder in der Metadatenbank.
+    \item \textbf{Versioniere dein Modell}: Nutze explizite Modell-Strings (gpt-4o-2026-01-15), nicht generische (gpt-4o). API-Provider ändern das zugrundeliegende Modell hinter generischen Namen.
+    \item \textbf{Plane Fallbacks}: Wenn OpenAI ausfällt, muss Anthropic einspringen können. Baue Multi-Provider-Unterstützung von Tag 1 ein.
+\end{itemize}
+
+% ===========================================================%
+% ANTI-PATTERNS
+% ============================================================
+\section{Anti-Patterns}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Das Modell kann alles}: Nein. Kontextfenster, Knowledge Cutoff und Halluzinationsanfälligkeit sind reale Probleme, die Architektur-Entscheidungen erzwingen.
+    \item \textbf{Auf teure Modelle für simple Tasks setzen}: Ein GPT-4o-mini reicht oft, wo man ein teures GPT-4o verwendet. Kostenfalle!
+    \item \textbf{Fine-Tuning als Zauberlösung}: Fine-Tuning hilft bei Style und Formatierung, aber nicht bei grundlegendem Wissen -- dafür brauchst du RAG.
+    \item \textbf{Modell-Lock-in}: Nur ein Modell-Provider. Fällt dieser aus, steht das gesamte System. Baue Multi-Provider-Strategien.
+    \item \textbf{Ignorieren von Licensing}: Open-Source-Modelle haben teils restriktive Lizenzen (Llama: Custom, nicht kommerziell für bestimmte Größen). Prüfe die Lizenz vor dem Deployment.
+    \item \textbf{Veraltete Modelle in Produktion}: Ein vor 12 Monaten deploytes Modell ist 2026 wahrscheinlich veraltet. Plane regelmäßige Modell-Updates ein.
+\end{itemize}
+
+% ===========================================================%
+% PERFORMANCE
+% ============================================================
+\section{Performance und Kosten}
+
+\subsection{Modelle nach Größe und Geschwindigkeit}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXXX}
+\toprule
+\textbf{Modell} & \textbf{Parameter} & \textbf{Latenz (1.000 Tokens)} & \textbf{Tokens/s} \\
+\midrule
+GPT-4o-mini & k.\,A. & 300--600 ms & \~{}200 \\
+GPT-4o & k.\,A. & 800--2000 ms & \~{}80 \\
+Claude 4 Sonnet & k.\,A. & 600--1500 ms & \~{}100 \\
+Llama 3 (8B) & 8 Mrd. & 100--300 ms (lokal) & \~{}500 \\
+Llama 3 (70B) & 70 Mrd. & 500--1500 ms (lokal) & \~{}100 \\
+Qwen 2.5 (72B) & 72 Mrd. & 400--1200 ms (lokal) & \~{}120 \\
+\bottomrule
+\end{tabularx}
+\caption{Latenzvergleich verschiedener Modelle (Richtwerte)}
+\label{tab:model-latenz}
+\end{table}
+
+\subsection{Inference-Optimierung}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Quantisierung}: Reduziert die Modellgröße um 50--75\,\% bei minimalem Qualitätsverlust (INT8, FP4).
+    \item \textbf{Batch-Inference}: Mehrere Anfragen gleichzeitig verarbeiten statt nacheinander. Faktor 3--5x Durchsatzsteigerung.
+    \item \textbf{Speculative Decoding}: Ein kleines Modell generiert einen Draft, den das große Modell verifiziert. Bis zu 2x schneller.
+    \item \textbf{KV-Cache}: Wiederverwendung von Zwischenzuständen bei wiederholten Prompts. Standard bei allen API-Providern.
+\end{itemize}
+
+\subsection{Token-Kosten pro Million Tokens (2026)}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lrr}
+\toprule
+\textbf{Modell} & \textbf{Input (pro Mio. Tokens)} & \textbf{Output} \\
+\midrule
+GPT-4o-mini & 0,15 \$ & 0,60 \$ \\
+GPT-4o & 2,50 \$ & 10,00 \$ \\
+Claude 4 Sonnet & 3,00 \$ & 15,00 \$ \\
+Claude 4 Opus & 15,00 \$ & 75,00 \$ \\
+Gemini 2.5 Flash & 0,08 \$ & 0,30 \$ \\
+Llama 3 (lokal) & 0,00 \$ (Strom) & 0,00 \$ (Strom) \\
+\bottomrule
+\end{tabularx}
+\caption{API-Kosten pro Million Tokens (Stand 2026)}
+\label{tab:api-kosten}
+\end{table}
+
+% ===========================================================%
+% SICHERHEIT
+% ============================================================
+\section{Sicherheit}
+
+\subsection{Supply-Chain-Risiken bei Pre-trained Models}
+
+Pre-trained Models sind wie jede andere Software-Abhängigkeit -- sie können Sicherheitsrisiken enthalten:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Backdoored Models}: Ein Angreifer könnte ein Modell mit einem versteckten Trigger trainieren. Bei Eingabe des Triggers verhält sich das Modell böswillig.
+    \item \textbf{Datenschutz im Training}: Die Trainingsdaten können personenbezogene Daten enthalten. Ein Modell kann diese unter bestimmten Bedingungen reproduzieren (Extraction Attack).
+    \item \textbf{License Compliance}: Ein auf GitHub geh ostetes Modell unterliegt der Lizenz des Repositories. Die kommerzielle Nutzung kann eingeschränkt sein.
+\end{itemize}
+
+\subsection{Gegenmaßnahmen}
+
+\begin{itemize}[leftmargin=*]
+    \item Beziehe Modelle nur von vertrauenswürdigen Quellen (Hugging Face Verified, offizielle API-Provider)
+    \item Prüfe die Modell-Hashes (SHA-256) gegen offizielle Werte
+    \item Führe ein Security Review des Modells durch (Red Teaming vor Produktion)
+    \item Dokumentiere die Herkunft jedes verwendeten Modells (Model Card)
+\end{itemize}
+
+% ===========================================================%
+% ZUSAMMENFASSUNG (existiert, erweitert)
+% ============================================================
+\section{Zusammenfassung}
+
+\begin{itemize}[leftmargin=*]
+    \item Pre-trained Models sind auf einem riesigen Textkorpus vortrainiert und liefern ihr Wissen durch Prompting zurück -- nicht durch neues Training
+    \item Die drei Großvorteile: Kostenersparnis, Geschwindigkeit und sofortiger Zugang zu State-of-the-Art-Fähigkeiten
+    \item Wichtige Grenzen: Halluzinationen, Kontextbeschränkungen, Knowledge Cutoffs und Sprachgewichte
+    \item Open Source (Llama, Qwen, Mistral) schließt die Lücke zu Closed Source -- bei Datenhoheit ist es oft die bessere Wahl
+    \item Scaling Laws und Emergenz erklären, warum größere Modelle qualitativ besser sind -- aber auch teurer
+    \item Die Kunst als AI Engineer liegt nicht im Training von Modellen, sondern in der cleveren Integration und dem Management ihrer Grenzen
+\end{itemize}
+
+% ===========================================================%
+% MERKE-BOX
+% ============================================================
+\begin{merke}
+\begin{itemize}
+    \item \textbf{Pre-Training ist Commodity}: 2026 kauft man Foundation Models, man trainiert sie nicht
+    \item \textbf{Transfer Learning ist der Schlüssel}: Ein Modell, das Text versteht, kann fast jede spezifische Aufgabe lösen
+    \item \textbf{Grenzen kennen ist wichtiger als Stärken}: Halluzinationen und Knowledge Cutoffs definieren die Architektur
+    \item \textbf{Open Source ist keine Alternative mehr -- es ist der Standard für Datenhoheit}
+    \item \textbf{Modell-Entscheidung ist eine Architekturentscheidung}: API vs. Self-Hosted bestimmt Kosten, Latenz und Sicherheit
+\end{itemize}
+\end{merke}
+
+% ===========================================================%
+% PRAXISPROJEKT
+% ============================================================
+\section{Praxisprojekt}
+
+\subsection{Aufgabe: Modell-Vergleichs-Benchmark}
+
+Baue ein Skript, dass drei verschiedene Modelle auf derselben Aufgabe vergleicht: die Extraktion von Termin-Vorschlägen aus E-Mails.
+
+\textbf{Anforderungen:}
+\begin{itemize}[leftmargin=*]
+    \item Verwende GPT-4o-mini, ein lokales Ollama-Modell (z.\,B. llama3.2) und einen dritten Anbieter deiner Wahl (Claude, Gemini)
+    \item Jedes Modell erhält dieselbe Beispiel-E-Mail und soll Datum, Uhrzeit, Ort und Teilnehmer extrahieren
+    \item Vergleiche die Ergebnisse auf Korrektheit, Vollständigkeit und Latenz
+    \item Gib eine Tabelle mit den Ergebnissen aus
+\end{itemize}
+
+\textbf{Testdaten:}
+\begin{verbatim}
+Betreff: Projekttreffen Q2
+Hallo zusammen,
+wir treffen uns am 15.04.2026 um 14:30 Uhr
+im Konferenzraum Berlin. Bitte bestätigt bis
+zum 10.04.2026.
+Teilnehmer: Anna, Ben, Clara, David
+\end{verbatim}
+
+\textbf{Erfolgskriterium:} Alle drei Modelle extrahieren die vier Felder korrekt. Du kannst die Unterschiede in Latenz und Output-Qualität benennen.
+
+% ============================================================
+% INTERVIEWFRAGEN
+% ============================================================
+\section{Interviewfragen}
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Ein Kunde möchte ein Llama-3-Modell per Fine-Tuning mit den PDF-Handbüchern seiner Firma trainieren, damit das Modell Fragen dazu beantworten kann. Warum rätst du ihm davon ab und was schlägst du stattdessen vor?}
+
+    \textbf{Antwort:} Fine-Tuning ist hervorragend geeignet, um den \textit{Stil}, das Format oder den Tonfall eines Modells anzupassen. Es ist aber ein sehr schlechtes und unzuverlässiges Werkzeug, um einem Modell neues, abrufbares Faktenwissen beizubringen (Halluzinationsgefahr). Stattdessen schlage ich eine RAG-Architektur vor: Die Handbücher kommen in eine Vektor-Datenbank und werden zur Laufzeit als Kontext in den Prompt geladen. Das ist günstiger, aktueller und man kann die Quellen präzise referenzieren.
+
+    \item \textbf{Du hast ein Modell mit einem riesigen Kontextfenster von 1 Million Tokens zur Verfügung. Du wirfst 50 lange Dokumente in den Prompt, aber das Modell übersieht entscheidende Details aus der Mitte der Dokumente. Welches Phänomen ist das und wie löst du es?}
+
+    \textbf{Antwort:} Das ist das \glqq Lost in the Middle\grqq{}- oder \glqq Needle in a Haystack\grqq{}-Phänomen. LLMs schenken dem Anfang und dem Ende eines sehr langen Prompts mehr Attention als der Mitte. Die Lösung: Trotz großem Kontextfenster sollte man die Input-Dokumente filtern und ranken (z.\,B. via Re-Ranking-Modellen), um dem LLM nur die 5 bis 10 wirklich relevantesten Dokumente zu übergeben, statt blind das gesamte Fenster auszunutzen.
+
+    \item \textbf{Ein Startup aus dem Healthcare-Bereich hat strenge DSGVO-Auflagen und darf keine Cloud-APIs nutzen. Sie haben nur begrenztes Budget für Hardware (z.\,B. eine einzelne starke GPU). Welche Modell-Strategie fährst du?}
+
+    \textbf{Antwort:} Ich setze auf stark quantisierte Open-Source-Modelle (z.\,B. Llama 3 8B oder Mistral in einer INT4- oder INT8-Quantisierung). Diese Modelle passen in den VRAM einer handelsüblichen GPU (wie einer RTX 4090) oder laufen sogar auf der CPU (mit llama.cpp). So bleiben alle Patientendaten zu 100\,\% lokal bei überschaubaren Hardwarekosten.
+
+    \item \textbf{Dein Team nutzt das teuerste Flagship-Modell für jede User-Anfrage. Du sollst die Kosten um 70\,\% senken, ohne die Qualität der komplexen Antworten zu gefährden. Was ist dein Architektur-Ansatz?}
+
+    \textbf{Antwort:} Ich implementiere ein \glqq Semantic Router\grqq{}-Pattern. Ich schalte ein sehr schnelles, günstiges Modell (wie GPT-4o-mini) vor. Dieses klassifiziert die Anfrage: Ist es eine simple Standardfrage, beantwortet das kleine Modell sie direkt. Nur wenn die Anfrage als \glqq komplex\grqq{} eingestuft wird, routet das System sie an das teure Flagship-Modell weiter.
+
+    \item \textbf{Du übernimmst ein Projekt, bei dem das API-Modell \glqq gpt-4o\grqq{} im Code hart verdrahtet ist. Nach ein paar Monaten beschweren sich die User plötzlich über schlechtere Qualität, obwohl am Code nichts geändert wurde. Was ist passiert?}
+
+    \textbf{Antwort:} Der Provider hat hinter dem Alias \glqq gpt-4o\grqq{} stillschweigend ein neues Modell-Gewichts-Update ausgerollt. Um dieses API-Risiko zu verhindern, pinne ich Modelle in Produktion immer an spezifische Versionen (z.\,B. \glqq gpt-4o-2026-05-13\grqq{}). So bleibt das Verhalten deterministisch.
+
+    \item \textbf{Ein lokal gehostetes Open-Source-Modell ist bei der Verarbeitung deutscher Support-Tickets fast doppelt so langsam und verbraucht deutlich mehr Tokens als bei englischen Tickets, obwohl die Texte exakt gleich lang sind. Woran liegt das architektonisch?}
+
+    \textbf{Antwort:} Das liegt am Tokenizer (meist Byte-Pair Encoding), dessen Vokabular primär auf englische Korpora optimiert ist. Deutsche Wörter (besonders Komposita) werden in viel mehr kleine Sub-Tokens zerschnitten. Die Lösung: Ein Modell mit einem multilingual optimierten Tokenizer wählen (z.\,B. Qwen oder Mistral) oder Input vorab maschinell übersetzen.
+
+    \item \textbf{Du evaluierst ein neues Open-Source-Modell. Es bricht alle Rekorde auf öffentlichen Benchmarks (MMLU, HumanEval), versagt aber bei euren echten Produktionsdaten komplett. Was ist der wahrscheinlichste Grund?}
+
+    \textbf{Antwort:} \glqq Data Contamination\grqq{} (Datenkontamination). Die öffentlichen Benchmark-Daten waren (versehentlich oder absichtlich) Teil des massiven Pre-Training-Korpus des Modells. Es hat die Antworten der Benchmarks schlicht auswendig gelernt, anstatt generelles Reasoning zu entwickeln. Evaluierungen dürfen in Produktion nur auf einem geheimen, unternehmensinternen Golden Dataset stattfinden.
+
+    \item \textbf{Euer Agenten-System schickt in jedem Turn den riesigen, 10.000 Tokens langen System-Prompt (Regeln + Tool-Definitionen) an die API. Die Kosten sind astronomisch. Wie löst du das auf API-Ebene und lokal?}
+
+    \textbf{Antwort:} Ich nutze \glqq Prompt Caching\grqq{}. Bei Providern wie Anthropic oder OpenAI kann man statische Prompt-Teile cachen, sodass sie im KV-Cache der Server verbleiben und nur zu einem Bruchteil der Kosten berechnet werden. Lokal (z.\,B. mit vLLM) aktiviere ich ebenfalls \textit{Prefix Caching} und achte darauf, dass der Präfix (System-Prompt) in jedem Request exakt identisch angeordnet bleibt.
+
+    \item \textbf{Du hostest ein großes Modell (70B) lokal. Es liefert die nötige Qualität, generiert aber nur 15 Tokens pro Sekunde -- zu langsam für euren Voice-Bot. Neue GPUs sind nicht im Budget. Welche Inference-Technik nutzt du?}
+
+    \textbf{Antwort:} Ich setze \glqq Speculative Decoding\grqq{} ein. Dabei lasse ich ein sehr kleines Modell (z.\,B. eine 8B-Variante) die nächsten Tokens extrem schnell \glqq erraten\grqq{} (Drafting). Das große 70B-Modell läuft parallel und verifiziert diese Token-Kette nur noch in einem einzigen Batch-Schritt. Das erhöht die Output-Geschwindigkeit (Tokens/s) massiv bei exakt gleicher Qualität.
+
+    \item \textbf{Du migrierst einen funktionierenden Prompt, der komplexes \glqq Chain-of-Thought\grqq{}-Reasoning nutzt, von einem 70B-Modell auf ein winziges 3B-Modell für Edge-Devices. Das kleine Modell halluziniert wild, obwohl das JSON-Format stimmt. Warum?}
+
+    \textbf{Antwort:} Das liegt am Fehlen von \glqq Emergent Abilities\grqq{}. Die Fähigkeit zu echtem, mehrschrittigem Chain-of-Thought-Reasoning entsteht erst ab einer bestimmten Modellgröße und Trainingstiefe. Kleine Modelle können zwar die Syntax von Gedankengängen imitieren (das Format), haben aber nicht die interne Repräsentation, um logisch korrekte Zwischenschritte abzuleiten.
+\end{enumerate}
+
+% ===========================================================%
+% WEITERFÜHRENDE RESSOURCEN
+% ============================================================
+\section{Weiterführende Ressourcen}
+
+\subsection{Papers}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Attention Is All You Need} (Vaswani et al., 2017): Der fundamentale Paper, der die Transformer-Architektur einführte.
+    \item \textbf{Language Models are Few-Shot Learners} (Brown et al., 2020): GPT-3 Paper, der In-Context Learning und Scaling Laws populär machte.
+    \item \textbf{Training Compute-Optimal Large Language Models} (Hoffmann et al., 2022): Das Chinchilla-Paper über das optimale Verhältnis von Parametern zu Tokens.
+    \item \textbf{Emergent Abilities of Large Language Models} (Wei et al., 2022): Systematische Untersuchung emergenter Fähigkeiten.
+    \item \textbf{LoRA: Low-Rank Adaptation of Large Language Models} (Hu et al., 2021): Grundlage für parametereffizientes Fine-Tuning.
+\end{itemize}
+
+\subsection{Dokumentationen}
+
+\begin{itemize}[leftmargin=*]
+    \item OpenAI Platform Docs: \href{https://platform.openai.com/docs}{platform.openai.com/docs}
+    \item Ollama: \href{https://ollama.ai}{ollama.ai} -- Lokales Hosting von Open-Source-Modellen
+    \item Hugging Face Model Hub: \href{https://huggingface.co/models}{huggingface.co/models}
+    \item Meta Llama: \href{https://llama.meta.com}{llama.meta.com}
+\end{itemize}
+
+\subsection{Open-Source-Projekte}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{vLLM}: Hochperformanter Inference-Server für Open-Source-Modelle
+    \item \textbf{LM Studio}: Desktop-Anwendung zum lokalen Ausführen von Modellen
+    \item \textbf{llama.cpp}: C++-Implementierung für Inference auf CPU/GPU
+    \item \textbf{Together.ai}: API für Open-Source-Modelle als Alternative zu OpenAI
+\end{itemize}
+
+\textbf{Nächster Schritt:} Jetzt kennen wir das Konzept pre-trained Models. Im folgenden Kapitel vergleichen wir die wichtigsten Anbieter und Modelle der aktuellen Landschaft.

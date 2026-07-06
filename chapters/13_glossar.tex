@@ -1,0 +1,308 @@
+\chapter{Glossar -- Common Terminology}
+
+\label{chap:glossar}
+
+\begin{lernziele}
+Dieses Glossar dient als alphabetisches Nachschlagewerk für alle wichtigen Begriffe, Abkürzungen und Konzepte, die in diesem Buch verwendet werden. Nutze es, wenn du auf einen Begriff stösst, den du nicht kennst oder vertiefen möchtest.
+\end{lernziele}
+
+\section{A}
+
+\textbf{AGI (Artificial General Intelligence)}: KI mit menschenähnlicher allgemeiner Intelligenz -- ein Modell, das beliebige intellektuelle Aufgaben gleich gut wie ein Mensch löst. Bisher existiert AGI nicht; alle aktuellen Modelle sind Narrow AI.
+
+\textbf{AI Act}: Die EU-Verordnung 2024/1689 zur Regulierung von Künstlicher Intelligenz. Kategorisiert KI-Systeme nach Risikoklassen (minimal, limited, high, unacceptable) und definiert Konformitätsanforderungen.
+
+\textbf{AI Red Teaming}: Strukturierte Sicherheitstests, bei denen versucht wird, ein KI-System zu manipulieren oder Schwachstellen auszunutzen. Kombiniert automatisierte Tools (Garak, PyRIT) mit manuellen Tests.
+
+\textbf{Alignment}: Der Prozess, ein KI-Modell auf menschliche Werte und Intentionen auszurichten. Methoden: RLHF, Constitutional AI, DPO. Ein nicht-aligniertes Modell kann hochintelligent, aber gefährlich sein.
+
+\textbf{API (Application Programming Interface)}: Schnittstelle zur programmatischen Interaktion mit einem Dienst -- z.B. die OpenAI Chat API zum Senden von Prompts und Empfangen von Antworten.
+
+\textbf{Attention}: Der Mechanismus in Transformer-Modellen, der jedem Wort im Input eine Gewichtung gibt und so den Kontext des Modells steuert. Das Herzstück aller modernen LLMs.
+
+\textbf{Attention-Cost}: Die Rechenkosten der Attention-Mechanismen, die quadratisch mit der Sequenzlänge skalieren -- der Haupttreiber für Latenz und Kosten bei langen Prompts.
+
+\textbf{Autoregressive Generation}: Die Eigenschaft von LLMs, Tokens nacheinander zu generieren, wobei jeder neue Token auf allen vorherigen aufbaut. Daher: Output-Token sind teurer als Input-Token.
+
+\section{B}
+
+\textbf{Base Model / Foundation Model}: Das vortrainierte Basismodell vor jeglicher Feinabstimmung (Fine-Tuning) oder Alignment. Beispiel: Llama 3.1 70B ist das Base Model, die darauf feinabgestimmte Variante heisst z.B. Llama 3.1 Instruct.
+
+\textbf{BLEU (Bilingual Evaluation Understudy)}: NLP-Metrik, die die N-Gramm-Überlappung zwischen generiertem und Referenztext misst. Ursprünglich für Maschinenübersetzung entwickelt. Schwäche: Bestraft paraphrasierte, aber korrekte Antworten.
+
+\textbf{BM25}: Ein klassischer Text-Retrieval-Algorithmus für Suchmaschinen -- oft in Kombination mit Embeddings (hybride Suche) in RAG-Systemen verwendet.
+
+\textbf{BPE (Byte-Pair Encoding)}: Die am weitesten verbreitete Tokenisierungsmethode. Zerlegt Text in Subwörter basierend auf der Häufigkeit von Zeichenpaaren. Grundlage von GPT-Tokenizern.
+
+\section{C}
+
+\textbf{Chain-of-Thought (CoT)}: Eine Prompting-Technik, bei der das Modell Schritt-für-Schritt nachdenkt, bevor es antwortet -- verbessert die Qualität bei logischen und analytischen Aufgaben signifikant.
+
+\textbf{Chat Completions API}: OpenAIs Interface für Interaktion mit GPT-Modellen via Message-Passing (system/user/assistant). Das Standard-Interface für LLM-Integrationen.
+
+\textbf{Chunking}: Der Prozess, grosse Dokumente in kleinere Textabschnitte (Chunks) zu zerlegen -- der erste Schritt bei der RAG-Indexierung.
+
+\textbf{Circuit Breaker}: Ein Architekturmuster, das bei wiederholten Fehlern einer externen Abhängigkeit (z.B. LLM-API) automatisch weitere Anfragen blockiert und eine Fallback-Antwort liefert.
+
+\textbf{Claude}: Anthropics Familie von LLMs (Opus, Sonnet, Haiku). Die Alternative zu OpenAIs GPT-Reihe.
+
+\textbf{Context Window / Kontextfenster}: Die maximale Anzahl von Tokens, die ein Modell auf einmal verarbeiten kann -- z.B. 128K Tokens bei GPT-4o oder 200K bei Claude 4 Sonnet.
+
+\textbf{Constitutional AI}: Anthropics Methode für Alignment, bei dem das Modell gegen eine schriftliche Verfassung (Constitution) trainiert wird. Das Modell lernt, eigene Outputs gegen diese Prinzipien zu prüfen und zu korrigieren.
+
+\textbf{Cosine Similarity}: Ein Mass für die Ähnlichkeit zwischen zwei Vektoren (Embeddings). Werte nahe 1 bedeuten hohe Ähnlichkeit, Werte nahe 0 keine. Die Standard-Metrik für semantische Suche in Vector Databases.
+
+\textbf{Cutoff Date}: Das Datum, bis zu dem ein Modell im Training Daten gesehen hat. Ein Modell mit Cutoff Januar 2026 weiss nichts über Ereignisse ab Februar 2026.
+
+\section{D}
+
+\textbf{Data Poisoning}: Ein Angriff, bei dem manipulierte Daten in den Trainingsdatensatz eines Modells eingeschleust werden, um sein Verhalten gezielt zu beeinflussen.
+
+\textbf{Decoder}: Der Teil eines Transformer-Modells, der Text generiert (im Gegensatz zum Encoder, der Text repräsentiert). Decoder-only-Modelle wie GPT-4o, Claude und Llama sind der aktuelle Standard.
+
+\textbf{Deep Learning}: Ein Teilbereich des ML, der neuronale Netze mit vielen Schichten verwendet -- die Grundlage aller modernen LLMs.
+
+\textbf{DPO (Direct Preference Optimization)}: Eine Alternative zu RLHF für Alignment. Statt eines Reward-Modells wird direkt auf menschlichen Präferenzen trainiert. Einfacher, stabiler und oft genauso effektiv.
+
+\section{E}
+
+\textbf{Embedding}: Ein Vektor (Liste von Floats), in den ein Text durch ein Embedding-Modell umgewandelt wird. Ähnliche Texte haben ähnliche Embeddings -- die Grundlage semantischer Suche.
+
+\textbf{EOS (End of Sequence)}: Das spezielle Token, das signalisiert, dass eine Generation endet -- das Modell hat seine Antwort beendet.
+
+\textbf{EU AI Act}: Siehe AI Act.
+
+\textbf{Eval / Evaluation}: Der Prozess, die Qualität eines LLM-Systems systematisch zu messen. Umfasst Golden Datasets, LLM-as-a-Judge, Metriken und Monitoring.
+
+\section{F}
+
+\textbf{Few-Shot Prompting}: Eine Prompting-Technik, bei der dem Modell mehrere Beispiel-Eingabe-Ausgabe-Paare mitgegeben werden -- der Standard für konsistente Produktivsysteme.
+
+\textbf{FIM (Fill-in-the-Middle)}: Eine Fähigkeit von Code-LLMs, mitten in einem Dokument zu generieren statt nur am Ende. Wichtig für IDEs wie GitHub Copilot.
+
+\textbf{Fine-Tuning}: Das Anpassen eines vortrainierten Modells auf eine spezifische Aufgabe oder Domäne -- durch zusätzliches Training auf eigenen Daten, ohne das gesamte Modell von null zu trainieren.
+
+\textbf{Foundation Model}: Siehe Base Model.
+
+\textbf{Function Calling / Tool Use}: Die Fähigkeit eines LLMs, strukturierte Funktionsaufrufe zu generieren, die dann von einem externen System ausgeführt werden. Grundlage jeder Agenten-Architektur.
+
+\section{G}
+
+\textbf{Garak}: Open-Source-Tool für automatisierte LLM-Sicherheitstests. Prüft ein Modell systematisch auf Jailbreak-Resistenz, Halluzinationen, Toxizität und weitere Risikokategorien.
+
+\textbf{Gemini}: Googles Familie von LLMs (Ultra, Pro, Flash, Nano). Besonders stark in Multimodalität und dem längsten Kontextfenster (bis 1M Tokens).
+
+\textbf{Golden Dataset}: Eine Sammlung von Input-Output-Paaren mit bekannten, korrekten Antworten -- der Standard für reproduzierbare Prompt-Evaluation.
+
+\textbf{GPT (Generative Pre-trained Transformer)}: Die von OpenAI entwickelte Modellfamilie. GPT-4o (Omni) ist 2026 das meistgenutzte Multimodal-Modell.
+
+\textbf{GPU (Graphics Processing Unit)}: Ursprünglich für Grafikberechnung entwickelt, heute das Standard-Hardware für KI-Training und -Inference. NVIDIA H100/B200 sind 2026 die führenden KI-GPUs.
+
+\textbf{Guardrails}: Ein Framework oder eine Schicht, die die Ausgabe eines LLMs gegen definierte Regeln validiert und bei Verstössen eingreift (blockieren, umformulieren, eskalieren).
+
+\section{H}
+
+\textbf{Halluzination}: Wenn ein LLM falsche oder erfundene Informationen als Fakten ausgibt. Das Modell erfindet Inhalte mit absolutem Selbstvertrauen -- kein Bug, sondern inhärente Eigenschaft generativer Modelle.
+
+\textbf{HITL (Human-in-the-Loop)}: Ein Workflow, bei dem ein Mensch bei kritischen Entscheidungen eingreift oder die finale Freigabe gibt. Pflicht bei Hochrisiko-KI-Systemen.
+
+\textbf{Hybrid Search}: Kombination aus Keyword-Suche (BM25) und semantischer Suche (Embeddings) in Vector Databases -- löst die Schwächen der reinen Ansätze auf.
+
+\section{I}
+
+\textbf{Inference}: Der Prozess, bei dem ein trainiertes Modell eine Vorhersage trifft oder Text generiert -- im Gegensatz zum Training. Inference ist der Betriebsmodus in der Produktion.
+
+\textbf{Instruction Tuning}: Das Fine-Tuning eines Base Models auf Anweisungsbefolgung (Instruction-Following). Der Schritt, der aus einem Base Model ein Chat-Modell macht.
+
+\textbf{IOU (Input/Output Unit)}: Kosteneinheit bei LLM-APIs. Input-Tokens sind günstiger (ca. Faktor 3--5) als Output-Tokens.
+
+\section{J}
+
+\textbf{Jailbreak}: Ein Angriff, der die Safety-Restriktionen eines LLMs umgeht. Beispiele: "Do Anything Now" (DAN), Rollenspiel-Jailbreaks, Payload-Splitting.
+
+\textbf{JSON Mode}: Ein API-Modus, der das LLM zwingt, gültiges JSON auszugeben. Ermöglicht strukturierte Outputs ohne Parser-Fehler.
+
+\section{K}
+
+\textbf{Knowledge Cutoff}: Siehe Cutoff Date.
+
+\textbf{KVCache (Key-Value Cache)}: Ein Cache-Mechanismus in Transformer-Modellen, der die berechneten Key-Value-Paare für bereits generierte Tokens speichert. Spart Rechenzeit bei autoregressiver Generation.
+
+\section{L}
+
+\textbf{LangChain / LangGraph}: Framework zur Entwicklung von LLM-Anwendungen. LangChain fokussiert auf Chains und RAG, LangGraph auf zustandsbehaftete Multi-Agent-Workflows.
+
+\textbf{Langfuse}: Open-Source-Plattform für Tracing, Monitoring und Evaluation von LLM-Anwendungen. Ermöglicht detaillierte Einblicke in Kosten, Latenz und Qualität.
+
+\textbf{LLM (Large Language Model)}: Ein neuronales Netz, das auf riesigen Textkorpora trainiert wurde, um natürliche Sprache zu verstehen und zu generieren -- z.B. GPT-4o, Claude, Gemini, Llama.
+
+\textbf{LLM-as-a-Judge}: Eine Evaluationsmethode, bei der ein LLM die Qualität der Antwort eines anderen LLMs bewertet. Günstig und skalierbar, aber anfällig für Bias (Position, Länge, Stil).
+
+\textbf{Logit}: Die rohe Log-Wahrscheinlichkeit eines Tokens vor der Anwendung von Softmax (Temperature). Kann für Confidence-Scoring verwendet werden.
+
+\textbf{LoRA (Low-Rank Adaptation)}: Eine Technik für parameter-effizientes Fine-Tuning: Statt aller Modell-Gewichte werden nur kleine Adapter-Matrizen trainiert -- spart bis zu 95\% der Trainingskosten.
+
+\textbf{LSTM}: Eine Architektur von rekurrenten neuronalen Netzen (RNN) -- Vorgänger der Transformer-Architektur.
+
+\section{M}
+
+\textbf{MCP (Model Context Protocol)}: Ein offenes Protokoll von Anthropic, das LLMs mit externen Tools und Datenquellen verbindet. Alternativ zu Function Calling.
+
+\textbf{MHA (Multi-Head Attention)}: Die Variante der Attention in Transformatoren, bei der mehrere Heads parallel arbeiten und unterschiedliche Aspekte des Kontexts erfassen. Standard in allen modernen LLMs.
+
+\textbf{MoE (Mixture of Experts)}: Eine Architektur, bei der das Modell mehrere kleinere Experten-Netzwerke hat und nur die relevantesten pro Token aktiviert -- spart Rechenkosten bei grossen Modellen.
+
+\textbf{Multimodalität}: Die Fähigkeit eines Modells, mehrere Datentypen zu verarbeiten (Text, Bilder, Audio, Video). GPT-4o und Gemini 2.5 Pro sind multimodale Modelle.
+
+\section{N}
+
+\textbf{NER (Named Entity Recognition)}: Die Aufgabe, benannte Entitäten (Personen, Orte, Organisationen) in Text zu identifizieren. Ein klassischer NLP-Task, den LLMs gut lösen.
+
+\textbf{NGramm}: Eine Folge von N aufeinanderfolgenden Token in einem Text. Grundlage vieler klassischer NLP-Metriken (BLEU, ROUGE).
+
+\textbf{NPU (Neural Processing Unit)}: Spezialisierte Hardware für KI-Inference auf Endgeräten. Apple Neural Engine und Qualcomm Hexagon NPU sind Beispiele.
+
+\section{O}
+
+\textbf{OpenAI}: Das Unternehmen hinter GPT-4o, DALL-E, Whisper und der OpenAI-Plattform. 2026 der meistgenutzte LLM-Anbieter weltweit.
+
+\textbf{Output-Token}: Das vom Modell generierte Token -- fast immer teurer als Input-Token (3--5x Faktor) und damit ein kritischer Kostenfaktor.
+
+\textbf{OWASP LLM Top 10}: Ein Sicherheitskatalog, der die zehn wichtigsten Risikokategorien für LLM-Anwendungen auflistet. Standard-Referenz für LLM-Sicherheit.
+
+\section{P}
+
+\textbf{Parameter}: Die internen Gewichte eines neuronalen Netzes, die durch Training gelernt werden. Je mehr Parameter, desto komplexere Muster kann ein Modell lernen -- aber desto teurer ist die Inference.
+
+\textbf{PII (Personally Identifiable Information)}: Personenbezogene Daten wie Namen, E-Mails, Telefonnummern, Adressen. Dürfen nicht ungeschützt an LLM-APIs gesendet werden (DSGVO).
+
+\textbf{Pinecone}: Eine Managed Vector Database as a Service. Einfachster Weg, Embeddings in Produktion zu skalieren.
+
+\textbf{Prompt}: Die Eingabe eines Users an ein LLM. Im weiteren Sinne umfasst der Prompt auch System-Prompts, Few-Shot-Beispiele und Kontext-Chunks.
+
+\textbf{Prompt Caching}: Ein Feature von OpenAI und Anthropic, bei dem lange System-Prompts zwischengespeichert werden -- nach dem ersten Aufruf zahlt man nur die Differenz (oft 90\% Rabatt).
+
+\textbf{Prompt Injection}: Ein Angriff, bei dem bösartiger Input in den Prompt eingeschleust wird, um das Verhalten des LLMs zu manipulieren. Die kritischste Sicherheitslücke bei LLM-Anwendungen.
+
+\textbf{Promptfoo}: CLI-Tool für systematische Prompt-Evaluation. Ermöglicht Golden-Dataset-Tests, A/B-Comparisons und Regression-Checks.
+
+\textbf{Pydantic}: Python-Bibliothek für Datenvalidierung via Type Hints. Grundlage für strukturierte Outputs in LLM-Anwendungen.
+
+\section{Q}
+
+\textbf{Qwen}: Chinesische LLM-Familie von Alibaba (ehemals Tongyi Qianwen). Besonders stark in Multilingualität und Code-Generation.
+
+\section{R}
+
+\textbf{RAG (Retrieval-Augmented Generation)}: Eine Architektur, bei der ein LLM vor der Antwort-Generierung relevante Dokumente aus einer externen Wissensdatenbank zieht -- das Standardmuster für Firmenwissen-Integration.
+
+\textbf{Rate Limiting}: Die Begrenzung der Anzahl von API-Requests pro Zeitfenster. Schützt vor Kosten-Explosion und Abuse.
+
+\textbf{ReAct (Reasoning + Acting)}: Ein Agent-Pattern, bei dem das Modell zwischen Reasoning (Thought) und Action (Tool Call) abwechselnd durchläuft bis zur Lösung der Aufgabe.
+
+\textbf{Red Teaming}: Der professionelle Test von KI-Systemen auf Sicherheitsprobleme -- versucht, das Modell zu manipulieren oder Schwachstellen zu finden.
+
+\textbf{RLHF (Reinforcement Learning from Human Feedback)}: Eine Alignment-Methode, bei der ein Reward-Modell auf menschlichen Präferenzen trainiert wird, um das LLM zu steuern.
+
+\textbf{ROUGE (Recall-Oriented Understudy for Gisting Evaluation)}: NLP-Metrik, die den Recall der N-Gramm-Überlappung misst. Verbreitet für Zusammenfassungen.
+
+\section{S}
+
+\textbf{Sampling}: Der Prozess der Token-Auswahl während der Generierung. Parameter wie Temperature, Top-K und Top-P steuern die Zufälligkeit.
+
+\textbf{SFT (Supervised Fine-Tuning)}: Das Fine-Tuning eines Modells auf gelabelten Beispieldaten -- der Standardweg für Instruct-Modelle.
+
+\textbf{Speculative Decoding}: Eine Technik, bei der ein kleines Modell eine Antwort vorhersagt und ein grosses Modell diese validiert. Spart Rechenzeit bei langen Generationen.
+
+\textbf{SSE (Server-Sent Events)}: Ein Standard für Streaming-Responses. Das Backend sendet fortlaufend Daten-Events an den Client -- die Grundlage von Streaming in LLM-APIs.
+
+\textbf{Structured Output / JSON Mode}: Die Fähigkeit eines LLMs, Ausgaben in einem vorgegebenen Format (JSON, Pydantic-Modell) zu liefern. Standard für API-Integration.
+
+\textbf{System-Prompt}: Ein vorangestellter Instruction-Text, der das Verhalten des LLMs für die gesamte Sitzung festlegt. Das zentrale Steuerungswerkzeug des AI Engineers.
+
+\section{T}
+
+\textbf{Temperature}: Ein Parameter, der die Kreativität der LLM-Generierung steuert. 0 = deterministisch (immer gleiche Antwort), 1 = kreativ/variiert, >1 = extrem volatil.
+
+\textbf{Token}: Die kleinste Einheit, die ein LLM verarbeitet. Ein Token kann ein Wort, ein Teilwort oder ein einzelnes Zeichen sein.
+
+\textbf{Tokenizer}: Das Modul, das Text in Tokens zerlegt (Encoding) und Tokens zurück in Text (Decoding). Jedes Modell hat seinen eigenen Tokenizer.
+
+\textbf{TTFT (Time to First Token)}: Die Zeit bis zum ersten generierten Token. Die wichtigste Latenz-Metrik für LLM-Streaming.
+
+\textbf{Tiktoken}: OpenAIs Tokenisierungs-Bibliothek für Python. Das Standardwerkzeug, um Tokens zu zählen und damit Kosten und Kontext-Limits zu kontrollieren.
+
+\textbf{Top-K Sampling}: Eine Sampling-Methode, bei der das Modell nur aus den K wahrscheinlichsten nächsten Tokens wählt.
+
+\textbf{Top-P (Nucleus) Sampling}: Eine Sampling-Methode, die aus dem Cumulative-Probability-P der wahrscheinlichsten Tokens wählt. Standard in vielen Modellen.
+
+\textbf{Tracing}: Die Aufzeichnung eines Requests über verteilte Systemkomponenten hinweg. Jeder Schritt (API-Call, DB-Query, LLM-Call) wird als Span in einer Trace aufgezeichnet.
+
+\textbf{Transformer}: Die grundlegende Architektur hinter allen modernen LLMs. Basiert auf der Attention-Architektur (Vaswani et al., "Attention is All You Need", 2017).
+
+\section{U}
+
+\textbf{Uv}: Moderner Python-Package-Manager (Alternative zu pip). Extrem schnell, geschrieben in Rust. 2026 der empfohlene Paketmanager für neue KI-Projekte.
+
+\section{V}
+
+\textbf{Vector Database}: Eine Datenbank, die speziell für die Speicherung und Abfrage von Vektoren (Embeddings) optimiert ist -- z.B. Pinecone, ChromaDB, pgvector, Qdrant, Weaviate. Kernkomponente jeder RAG-Architektur.
+
+\textbf{Vector Search (Ähnlichkeitssuche)}: Die Suche nach den nächsten Nachbarn (Nearest Neighbors) in einem Vektorraum. Ermöglicht semantische Suche.
+
+\section{W}
+
+\textbf{Weight}: Siehe Parameter.
+
+\textbf{Whisper}: OpenAIs Open-Source-Spracherkennungsmodell. Standard für Speech-to-Text in LLM-Pipelines.
+
+\textbf{White-Box Test}: Ein Test, bei dem der interne Zustand des Modells beobachtet wird (z.B. Token-Wahrscheinlichkeiten, Attention-Maps). Im Gegensatz zu Black-Box-Tests, die nur Input/Output betrachten.
+
+\section{Z}
+
+\textbf{Zero-Shot Prompting}: Eine Technik, bei der das Modell keine Beispiele bekommt, sondern nur eine direkte Anweisung -- der einfachste, aber auch variabelste Prompt-Ansatz.
+
+\section*{Abkürzungsverzeichnis}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\textbf{Abkürzung} & \textbf{Vollständig} \\
+\midrule
+AGI & Artificial General Intelligence \\
+API & Application Programming Interface \\
+BPE & Byte-Pair Encoding \\
+CoT & Chain-of-Thought \\
+DPO & Direct Preference Optimization \\
+DSGVO & Datenschutz-Grundverordnung (GDPR) \\
+EOS & End of Sequence \\
+FIM & Fill-in-the-Middle \\
+GPU & Graphics Processing Unit \\
+HITL & Human-in-the-Loop \\
+LLM & Large Language Model \\
+LoRA & Low-Rank Adaptation \\
+MCP & Model Context Protocol \\
+MHA & Multi-Head Attention \\
+ML & Machine Learning \\
+MoE & Mixture of Experts \\
+NER & Named Entity Recognition \\
+NPU & Neural Processing Unit \\
+PII & Personally Identifiable Information \\
+RAG & Retrieval-Augmented Generation \\
+RLHF & Reinforcement Learning from Human Feedback \\
+SFT & Supervised Fine-Tuning \\
+SLA & Service Level Agreement \\
+SOTA & State of the Art \\
+SSE & Server-Sent Events \\
+TTFT & Time to First Token \\
+\bottomrule
+\end{tabularx}
+\caption{Wichtige Abkürzungen und ihre Bedeutungen}
+\end{table}
+
+\section*{Quellen für dieses Glossar}
+
+Dieses Glossar basiert auf dem AI Engineer Roadmap Glossary von roadmap.sh, den technischen Dokumentationen von OpenAI, Anthropic, Google DeepMind und der Forschungscommunity. Die Definitionen sind bewusst praxisorientiert formuliert -- als Nachschlagewerk für Entwickler:innen im AI-Engineering-Alltag.
+
+\textbf{Nächster Schritt:} Im nächsten Kapitel findest du fünf Praxisprojekte mit steigendem Schwierigkeitsgrad -- vom einfachen Chatbot bis zur Multi-Agent-Produktionspipeline.

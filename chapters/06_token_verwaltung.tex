@@ -1,0 +1,888 @@
+\chapter{Token-Management -- Der heimliche Kostenfaktor}
+\label{chap:token_management}
+
+% ============================================================
+% LERNZIELE
+% ============================================================
+\begin{lernziele}
+Nach diesem Kapitel kannst du:
+\begin{itemize}
+    \item Die Tokenisierung für GPT, Claude und Gemini im Detail erklären und deutsche Token-Effizienz berechnen
+    \item TikToken und alternative Tokenizer in Python produktiv einsetzen
+    \item Prompt-Kompaktierung, Chat-History-Management und Prompt-Caching strategisch kombinieren
+    \item Token-Budgets für Produktionssysteme entwerfen und Cost-Forecasts erstellen
+    \item Multi-modale Token-Kosten (Bilder, Audio, Video) korrekt kalkulieren
+\end{itemize}
+\end{lernziele}
+
+% ============================================================
+% MOTIVATION
+% ============================================================
+\section{Motivation}
+
+Token-Management ist die grundlegendste Engineering-Disziplin im Umgang mit LLMs. Während Software-Engineer:innen normalerweise in Request-Volumen oder Datenvolumen denken, wird bei LLMs in \textbf{Tokens abgerechnet}. Ein Token ist die kleinste Verrechnungseinheit -- kein Request, kein Byte, kein Wort.
+
+Die Konsequenz: Ohne Token-Management weißt du weder, was ein API-Call kostet, noch, ob der Prompt ins Context-Limit passt. In der Praxis führen falsche Token-Kalkulationen zu:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Kosten-Explosion}: Ein Batch-Job, der auf 10K Requests ausgelegt war, kostet plötzlich das Zehnfache, weil jeder Prompt 4.000 statt 400 Tokens hatte.
+    \item \textbf{Cutoff-Fehler}: Requests werden stillschweigend abgeschnitten, weil der Prompt das Context-Limit überschreitet -- der Fehler erscheint erst in der Response.
+    \item \textbf{Inkonsistente Ergebnisse}: Unterschiedliche Tokenizer (OpenAI vs. Anthropic) liefern unterschiedliche Resultate bei gleichem Text.
+\end{itemize}
+
+Token-Management ist keine optionale Optimierung, sondern eine \textbf{Grundvoraussetzung} für jede produktive LLM-Integration.
+
+% ============================================================
+% GRUNDLAGEN
+% ============================================================
+\section{Grundlagen -- Tokenisierung im Detail}
+
+\subsection{Was ist ein Token?}
+
+Ein Token ist die kleinste Einheit, die ein LLM verarbeiten kann. Anders als natürliche Sprache, die in Wörtern oder Zeichen denkt, arbeitet ein Transformer auf einer \textbf{vordefinierten Vokabelliste} von Tokens. Ein Token kann sein:
+\begin{itemize}[leftmargin=*]
+    \item Ein ganzes Wort (z.\,B. \texttt{the} = 1 Token)
+    \item Ein Wortteil (z.\,B. \texttt{un} + \texttt{believe} + \texttt{able})
+    \item Ein einzelnes Zeichen bei unbekannten Wörtern
+    \item Whitespace und Satzzeichen (jeweils eigene Tokens)
+\end{itemize}
+
+Die Umwandlung von Text in Tokens heißt \textbf{Tokenisierung}. Der Tokenizer ist ein fester Bestandteil jedes Modells -- er wird beim Training mitgelernt und ändert sich nicht mehr.
+
+\subsection{Die drei Haupt-Tokenisierer}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXX}
+\toprule
+\textbf{Modell-Familie} & \textbf{Tokenizer} & \textbf{Algorithmus} \\
+\midrule
+GPT-4o / GPT-4 / o1 & TikToken & BPE (Byte-Pair-Encoding) \\
+Claude 3.5 / Claude 4 & Claude Tokenizer & SentencePiece (BPE) \\
+Gemini 2.0 / 2.5 & Google SentencePiece & SentencePiece (Unigram) \\
+LLaMA 3.x & LLaMA Tokenizer & BPE (gguf-optimiert) \\
+\midrule
+\end{tabularx}
+\caption{Tokenizer der wichtigsten Modell-Familien}
+\label{tab:tokenizer-vergleich}
+\end{table}
+
+\subsubsection{BPE (Byte-Pair-Encoding)}
+
+BPE ist der dominierende Tokenisierungs-Algorithmus. Er funktioniert in drei Schritten:
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Zerlegung}: Jedes Zeichen wird einzeln als Token behandelt
+    \item \textbf{Merging}: Die häufigsten Paare werden iterativ zu einem Token zusammengefasst
+    \item \textbf{Vokabular}: Nach einer festgelegten Anzahl von Merges entsteht ein Vokabular (GPT-4o: ca. 100K Tokens)
+\end{enumerate}
+
+\subsubsection{SentencePiece}
+
+SentencePiece ist ein \textbf{sprachunabhängiger} Tokenizer, der direkt auf rohem Text arbeitet, ohne Whitespace-Pre-Tokenisierung. Er wird von Anthropic und Google verwendet.
+
+\subsection{Tokenisierung im Vergleich: Deutsch vs. Englisch}
+
+Deutsch erzeugt typischerweise \textbf{1,4--2x mehr Tokens als Englisch} für denselben Inhalt. Der Grund liegt in deutschen Komposita:
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXXX}
+\toprule
+\textbf{Wort} & \textbf{GPT-4o (BPE)} & \textbf{Tokens} & \textbf{Bemerkung} \\
+\midrule
+the cat & [the] [cat] & 2 & Kurze Wörter \\
+Kraftfahrzeughaftpflicht & [K] [raft] [fahr] [zeug] [haf] [t] [pfl] [icht] & 8 & Kompositum zerfällt \\
+Haftpflichtversicherung & [Haf] [t] [pfl] [icht] [vers] [ich] [er] [ung] & 8 & Langes Wort \\
+\midrule
+\end{tabularx}
+\caption{Token-Zerlegung Deutsch vs. Englisch (gpt-4o)}
+\label{tab:token-deutsch}
+\end{table}
+
+Ein 500-Wort-englischer Text wird typischerweise zu \textbf{\~650 Tokens}, der gleiche deutsche Text zu \textbf{\~850--1.000 Tokens}. Das bedeutet 30--50\,\% höhere Kosten für deutsche Texte bei gleichem Inhalt.
+
+\subsection{Tokenisierung visualisieren}
+
+\begin{verbatim}
+Text: "Haftpflichtversicherung ist ein langes Wort."
+
+GPT-4o (tiktoken):
+  [Haf] [t] [pfl] [icht] [vers] [ich] [er] [ung] [ist] [ein] [lang] [es] [Wort] [.]
+  = 14 Tokens
+
+Claude (SentencePiece):
+  [_Haft] [pfl] [icht] [vers] [icher] [ung] [_ist] [_ein] [_langes] [_Wort] [.]
+  = 11 Tokens (effizienter bei Komposita)
+\end{verbatim}
+
+% ============================================================
+% ARCHITEKTUR
+% ============================================================
+\section{Architektur -- Wie Tokens durch die Pipeline fließen}
+
+Token-Management ist kein isolierter Schritt, sondern durchzieht die gesamte LLM-Pipeline:
+
+\begin{verbatim}
+  Text -> Tokenizer -> Embedding-Lookup -> Transformer -> Output-Logits -> Detokenizer -> Text
+
+  Kosten-Falle #1:        Kosten-Falle #2:         Kosten-Falle #3:
+  Unnötig lange Prompts   Kein max_tokens          Chat-History wächst unbegrenzt
+\end{verbatim}
+
+\subsection{Kosten-Arten im Token-Fluss}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXl}
+\toprule
+\textbf{Kostenart} & \textbf{Entstehung} & \textbf{Hebel} \\
+\midrule
+Input-Tokens & Prompt (System + User + History) & Prompt-Kompaktierung, Caching \\
+Output-Tokens & Modell-Antwort & max\_tokens, kurze Antworten erzwingen \\
+Overhead-Tokens & API-Formatierung (Rollen, Tool-Defs) & Weniger Tools, kürzere Tool-Beschreibungen \\
+Multi-modal & Bilder, Audio, Video im Prompt & Auflösung reduzieren, Audio komprimieren \\
+Batch-Processing & Wiederholte Requests mit gleichem Prefix & Prompt-Caching \\
+\midrule
+\end{tabularx}
+\caption{Kostenarten im Token-Fluss}
+\label{tab:kostenarten}
+\end{table}
+
+\subsection{Token-Overhead pro Provider}
+
+Jeder API-Provider fügt Overhead-Tokens hinzu, die bei der Kostenkalkulation oft vergessen werden:
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\textbf{Provider} & \textbf{Overhead pro Message} \\
+\midrule
+OpenAI & 3 Tokens pro Message + 1 Token pro Name \\
+Anthropic & ~4 Tokens pro Message + System-Prompt-Separator \\
+Google & ~3 Tokens pro Message + Content-Blöcke \\
+\midrule
+\end{tabularx}
+\caption{Message-Overhead pro Provider}
+\label{tab:overhead-provider}
+\end{table}
+
+% ============================================================
+% THEORIE
+% ============================================================
+\section{Theorie -- Warum Token-Management nicht trivial ist}
+
+\subsection{Das Invarianz-Problem}
+
+Token-ization ist \textbf{nicht invariant}. Derselbe Semantik-Inhalt kann in sehr unterschiedlich vielen Tokens kodiert sein:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Umformulierung}: "Der Hund läuft schnell" vs. "Der flinke Hund rennt" -- gleiche Semantik, unterschiedliche Token-Zahl
+    \item \textbf{Whitespace}: Ein zusätzliches Leerzeichen oder Zeilenumbruch erzeugt einen zusätzlichen Token
+    \item \textbf{JSON-Formatierung}: Gleiches JSON formatiert vs. minimiert unterscheidet sich um 20--40\,\% Tokens
+\end{itemize}
+
+\subsection{Das nicht-lineare Kosten-Verhältnis}
+
+Die Kosten steigen nicht linear mit der Token-Zahl, weil:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Pricing-Stufen}: Input kostet weniger als Output (Faktor 3--10x)
+    \item \textbf{Context-Length-Pricing}: Längere Kontexte haben höhere Token-Preise (Cache- vs. Non-Cache-Rate)
+    \item \textbf{Batch-Rabatt}: Batch-Processing kostet 50\,\% weniger
+\end{itemize}
+
+Ein Prompt mit 100K Input-Tokens und 100 Output-Tokens kostet bei GPT-4o:
+\begin{itemize}[leftmargin=*]
+    \item Input: 100.000 $\times$ \$2,50 / 1M = \$0,25
+    \item Output: 100 $\times$ \$10,00 / 1M = \$0,001
+    \item Gesamt: \textbf{\$0,251}
+\end{itemize}
+
+Gleiches Verhältnis umgekehrt (100 Input, 100K Output):
+\begin{itemize}[leftmargin=*]
+    \item Input: 100 $\times$ \$2,50 / 1M = \$0,00025
+    \item Output: 100.000 $\times$ \$10,00 / 1M = \$1,00
+    \item Gesamt: \textbf{\$1,00}
+\end{itemize}
+
+\textbf{Fazit: Output-Tokens dominieren die Kosten bei langen Antworten, Input-Tokens bei RAG-Systemen mit großen Kontexten.}
+
+% ============================================================
+% PRAXIS
+% ============================================================
+\section{Praxisbeispiele aus der Industrie}
+
+\subsection{Fintech: Transaktions-Kategorisierung}
+
+Ein Fintech-Unternehmen kategorisiert 500.000 Transaktionsbeschreibungen monatlich:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Prompt}: 50 Tokens (System + Transaktions-Text)
+    \item \textbf{Output}: 10 Tokens (Kategorie + Confidence)
+    \item \textbf{Gesamt pro Request}: 60 Tokens
+    \item \textbf{Monatsvolumen}: 500.000 $\times$ 60 = 30M Tokens
+    \item \textbf{Kosten GPT-4o-mini}: \$0,45 (Input) + \$0,15 (Output) = \textbf{\$0,60}
+    \item \textbf{Kosten GPT-4o}: \$4,50 (Input) + \$1,50 (Output) = \textbf{\$6,00}
+\end{itemize}
+
+Die Wahl des Modells bestimmt hier die Kosten um den Faktor 10.
+
+\subsection{E-Commerce: Chat-Support mit History-Management}
+
+Ein Online-Shop speichert den gesamten Chat-Verlauf pro Kunde:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Ohne Kompression}: Nach 10 Nachrichten $\rightarrow$ 4.500 Tokens $\rightarrow$ Kosten pro Chat: \$0,11 (GPT-4o)
+    \item \textbf{Mit Kompression}: Nach 10 Nachrichten $\rightarrow$ 250 Tokens (zusammengefasst) $\rightarrow$ Kosten pro Chat: \$0,01
+    \item \textbf{Täglich}: 5.000 Chats $\rightarrow$ \$50 vs. \$550 pro Tag
+\end{itemize}
+
+Die History-Kompression spart hier 90\,\% der Kosten.
+
+\subsection{SaaS: Prompt-Caching in der Praxis}
+
+Ein SaaS-Anbieter hat einen 4K-System-Prompt, der bei jedem Call mitgesendet wird:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{100.000 Requests / Tag}, 4K Input + 500 Output
+    \item \textbf{Ohne Caching}: 100K $\times$ (4K + 0,5K) = 450M Tokens $\times$ GPT-4o-Preis
+    \item \textbf{Mit Caching}: 100K $\times$ (0K Cache + 0,5K Output) = 50M Tokens
+    \item \textbf{Ersparnis}: 89\,\% der Input-Kosten = \textbf{\$400/Tag vs. \$45/Tag}
+\end{itemize}
+
+% ============================================================
+% CODE: TIKTOKEN (existiert, erweitert)
+% ============================================================
+\section{Token-Counting in Python}
+
+Der wichtigste Schritt zur Kostenkontrolle ist, Prompts vor dem Senden zu zählen. Hier die produktive Implementierung.
+
+\subsection{TikToken -- der OpenAI-Standard}
+
+\label{sec:tiktoken}
+
+\begin{lstlisting}[language=Python, caption=TikToken: Tokens vor dem API-Call zaehlen]
+import tiktoken
+
+MODEL_ENCODINGS = {
+    "gpt-4o": "o200k_base",
+    "gpt-4o-mini": "o200k_base",
+    "o1": "o200k_base",
+    "o3": "o200k_base",
+    "gpt-4": "cl100k_base",
+    "gpt-3.5-turbo": "cl100k_base",
+}
+
+def get_encoding(model: str) -> tiktoken.Encoding:
+    encoding_name = MODEL_ENCODINGS.get(model, "o200k_base")
+    return tiktoken.get_encoding(encoding_name)
+
+def count_tokens(messages: list[dict], model: str = "gpt-4o") -> int:
+    encoding = get_encoding(model)
+    tokens_per_message = 3
+    tokens_per_name = 1
+
+    total = 0
+    for msg in messages:
+        total += tokens_per_message
+        for key, value in msg.items():
+            if isinstance(value, str):
+                total += len(encoding.encode(value))
+            elif isinstance(value, list):
+                for item in value:
+                    if item.get("type") == "text":
+                        total += len(encoding.encode(item["text"]))
+                    elif item.get("type") == "image_url":
+                        total += count_image_tokens(item["image_url"]["url"])
+            if key == "name":
+                total += tokens_per_name
+
+    total += 3
+    return total
+
+def count_image_tokens(image_url: str, detail: str = "auto") -> int:
+    if detail == "low":
+        return 85
+    if detail == "high":
+        return 170  # 768x768 default
+    if detail == "auto":
+        return 85
+    return 85
+\end{lstlisting}
+
+\subsection{Alternative Provider-Tokenizer}
+
+Nicht nur OpenAI benötigt Token-Counting:
+
+\begin{lstlisting}[language=Python, caption=Anthropic Token-Counting (Claude)]
+# Anthropic: count_tokens ist im SDK enthalten
+from anthropic import Anthropic
+
+client = Anthropic()
+token_count = client.count_tokens(
+    "Das ist ein Test-Prompt fuer Claude."
+)
+print(f"Claude Tokens: {token_count}")
+
+# Oder manuell mit anthropic-tokenizer
+from anthropic_tokenizer import count_tokens as claude_count
+
+tokens = claude_count("Dein Prompt hier")
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python, caption=Google Gemini Token-Counting]
+# Google: Token-Counting ueber die API
+import google.generativeai as genai
+
+model = genai.GenerativeModel("gemini-2.0-flash")
+response = model.count_tokens("Dein Prompt hier")
+print(f"Gemini Tokens: {response.total_tokens}")
+\end{lstlisting}
+
+\subsection{Multi-Provider Token-Counter}
+
+Für Produktionssysteme mit mehreren Providern:
+
+\begin{lstlisting}[language=Python, caption=Unabhaengiger Token-Counter fuer alle Provider]
+class TokenCounter:
+    def __init__(self):
+        self._openai_encoding = tiktoken.get_encoding("o200k_base")
+
+    def count_openai(self, text: str) -> int:
+        return len(self._openai_encoding.encode(text))
+
+    def count_anthropic(self, text: str) -> int:
+        from anthropic import Anthropic
+        return Anthropic().count_tokens(text)
+
+    def count_gemini(self, text: str, model_name: str = "gemini-2.0-flash") -> int:
+        import google.generativeai as genai
+        model = genai.GenerativeModel(model_name)
+        return model.count_tokens(text).total_tokens
+
+    def count_llama(self, text: str) -> int:
+        import tiktoken
+        encoding = tiktoken.get_encoding("cl100k_base")
+        return len(encoding.encode(text))
+
+    def estimate_cost(self, provider: str, model: str,
+                      input_tokens: int, output_tokens: int) -> float:
+        prices = {
+            ("openai", "gpt-4o"):       (2.50, 10.00),
+            ("openai", "gpt-4o-mini"):  (0.15, 0.60),
+            ("anthropic", "claude-4"):  (3.00, 15.00),
+            ("google", "gemini-2.0"):   (1.00, 4.00),
+        }
+        input_price, output_price = prices.get(
+            (provider, model), (0.0, 0.0)
+        )
+        return (input_tokens / 1_000_000 * input_price +
+                output_tokens / 1_000_000 * output_price)
+\end{lstlisting}
+
+\section{Max Tokens verstehen und konfigurieren}
+
+Der \texttt{max\_tokens}-Parameter kontrolliert nicht nur die Antwortlänge, sondern ist auch ein \textbf{kritischer Kostenfaktor}:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Ohne max\_tokens:} Das Modell kann bis zum Context-Limit generieren -- bei komplexen Queries schnell 4096 Tokens (und damit €0,06+ nur für den Output bei Claude Sonnet).
+    \item \textbf{Mit max\_tokens:} Setze einen vernünftigen Wert basierend auf der erwarteten Antwortlänge. Eine Klassifizierung braucht 50 Tokens, eine Analyse 500.
+    \item \textbf{Output-Overhead:} Plane immer 10\,\% Puffer für den internen Output-Zähler ein.
+\end{itemize}
+
+\begin{lstlisting}[language=Python, caption={max\_tokens sinnvoll setzen}]
+TASK_MAX_TOKENS = {
+    "classification":     50,
+    "extraction":        200,
+    "summarization":     512,
+    "analysis":         1024,
+    "code_generation":  2048,
+    "creative_writing": 4096,
+}
+
+def get_max_tokens(task_type: str) -> int:
+    return TASK_MAX_TOKENS.get(task_type, 512)
+
+# Dynamisches max_tokens
+def configure_request(task_type: str, user_input: str) -> dict:
+    input_tokens = count_tokens(user_input)
+    max_out = get_max_tokens(task_type)
+    return {
+        "max_tokens": max_out,
+        "estimated_cost": estimate_cost(
+            "openai", "gpt-4o", input_tokens, max_out
+        ),
+    }
+\end{lstlisting}
+
+% ============================================================
+% BEST PRACTICES
+% ============================================================
+\section{Best Practices}
+
+\subsection{Prompt-Kompaktierung -- die wichtigste Kostenoptimierung}
+
+Der System-Prompt wird bei \textbf{jeder API-Anfrage mitgesendet}. Ein 4K-Token-System-Prompt kostet also bei 100K Requests: 400M Input-Tokens. Hier die effektivsten Kompaktierungsstrategien:
+
+\begin{lstlisting}[language=Python, caption=Prompt-Kompaktierung]
+# Schlecht: Langer, wiederholender Prompt
+SYSTEM_PROMPT_LANG = """Du bist ein Kundenservice-Assistent fuer eine
+E-Commerce-Firma. Bitte antworte immer hoeflich und professionell.
+Deine Aufgabe ist es, Kundenanfragen zu beantworten. Wenn du etwas
+nicht weisst, sage das. Vermeide lange Antworten. Sei kurz und
+praezise. Antworte auf Deutsch."""
+
+# Gut: Kompaktierter Prompt (70% weniger Tokens)
+SYSTEM_PROMPT_KURZ = (
+    "Du bist E-Commerce-Kundenservice. "
+    "Antworte hoeflich, praezise, auf Deutsch. "
+    "Bei Unsicherheit: nachfragen."
+)
+\end{lstlisting}
+
+\subsection{Chat-History-Management}
+
+Die Chat-History ist der größte versteckte Kostentreiber:
+
+\begin{lstlisting}[language=Python, caption=Chat-History mit automatischer Kompression]
+from collections import deque
+import tiktoken
+
+class ConversationMemory:
+    def __init__(self, model: str = "gpt-4o", max_tokens: int = 120_000):
+        self.model = model
+        self.encoding = tiktoken.encoding_for_model(model)
+        self.max_tokens = max_tokens
+        self.history: deque[dict] = deque()
+        self.system_prompt: str = ""
+
+    def add_message(self, role: str, content: str):
+        if role == "system":
+            self.system_prompt = content
+            return
+        self.history.append({"role": role, "content": content})
+        if self._current_tokens() > self.max_tokens * 0.8:
+            self._compress()
+
+    def _current_tokens(self) -> int:
+        total = len(self.encoding.encode(self.system_prompt))
+        for msg in self.history:
+            total += 3 + len(self.encoding.encode(msg["content"]))
+        return total
+
+    def _compress(self):
+        if len(self.history) < 4:
+            return
+        recent = list(self.history)[-2:]
+        old = list(self.history)[:-2]
+        summary = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "user",
+                "content": "Fasse diese Chat-Nachrichten in einem Satz"
+                           " zusammen: " + " ".join(
+                               m["content"] for m in old
+                           )
+            }],
+            max_tokens=100,
+        ).choices[0].message.content
+        self.history = deque(
+            [{"role": "user", "content": f"[Summary: {summary}]"}]
+            + recent
+        )
+
+    def get_messages(self) -> list[dict]:
+        msgs = [{"role": "system", "content": self.system_prompt}]
+        msgs.extend(self.history)
+        return msgs
+\end{lstlisting}
+
+\subsection{Prompt-Caching}
+
+Prompt-Caching ist 2026 der \textbf{wichtigste Kostenhebel}. Sowohl OpenAI als auch Anthropic unterstützen es:
+
+\begin{lstlisting}[language=Python, caption=Prompt-Caching mit OpenAI]
+# OpenAI: Automatisches Caching fuer lange System-Prompts
+# Caching passiert automatisch ab 1024 Token Input
+# Gecachte Tokens kosten ~50% weniger
+
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[
+        {"role": "system", "content": system_prompt},  # Gecached!
+        {"role": "user", "content": user_input},
+    ],
+)
+
+# Nutze response.usage fuer Cache-Statistiken
+usage = response.usage
+print(f"Cache Read: {usage.prompt_tokens_details.cached_tokens}")
+print(f"Tokens Input (ohne Cache): {usage.prompt_tokens}")
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python, caption=Prompt-Caching mit Anthropic]
+# Anthropic: Explizites Cache-Control (ab Claude 3.5)
+response = client.messages.create(
+    model="claude-3-5-sonnet-20241022",
+    system=[{
+        "type": "text",
+        "text": system_prompt,
+        "cache_control": {"type": "ephemeral"},
+    }],
+    messages=[{"role": "user", "content": user_input}],
+)
+
+# Cache-Statistiken auslesen
+print(f"Cache Created: {response.usage.cache_creation_input_tokens}")
+print(f"Cache Read: {response.usage.cache_read_input_tokens}")
+\end{lstlisting}
+
+\subsection{Token-Budget-System}
+
+Definiere ein Budget pro Request, bevor du die API aufrufst:
+
+\begin{lstlisting}[language=Python, caption=Token-Budget-System]
+class TokenBudget:
+    def __init__(self, max_input: int, max_output: int):
+        self.max_input = max_input
+        self.max_output = max_output
+
+    def check(self, input_tokens: int, output_tokens: int) -> bool:
+        return (input_tokens <= self.max_input and
+                output_tokens <= self.max_output)
+
+    def truncate_input(self, text: str, encoding) -> str:
+        tokens = encoding.encode(text)
+        if len(tokens) <= self.max_input:
+            return text
+        return encoding.decode(tokens[:self.max_input])
+
+# Nutzung
+budget = TokenBudget(max_input=4096, max_output=512)
+
+if not budget.check(input_tokens, request_max):
+    print(f"Input {input_tokens} ueberschreitet Budget {budget.max_input}")
+    text = budget.truncate_input(text, encoding)
+\end{lstlisting}
+
+% ============================================================
+% ANTI-PATTERNS
+% ============================================================
+\section{Anti-Patterns}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Kein Token-Counting}: Ohne Zählung weißt du nie, wie viel deine Anfragen kosten oder wie nah du am Context-Limit bist. Immer vor dem API-Call zählen!
+    \item \textbf{max\_tokens zu groß setzen}: 4096 max\_tokens bei einer binären Klassifikation ist Verschwendung. Output-Tokens sind 3--10x teurer als Input.
+    \item \textbf{Bilder als Base64 ohne Optimierung}: Detail-Level (low/high/auto) reduziert Token-Kosten für Bilder um Faktor 50. \texttt{detail: "low"} reicht für die meisten Use Cases.
+    \item \textbf{History nie komprimieren}: Ein Chat mit 100 Nachrichten kostet schnell \$1 pro Request durch die kumulierte History.
+    \item \textbf{Prompt-Caching nicht nutzen}: Wenn der gleiche System-Prompt 10.000x gesendet wird, aber nie gecached, zahlst du jedes Mal neu.
+    \item \textbf{Auf Tokens optimieren statt auf Ergebnisse}: Ein extrem komprimierter Prompt spart Tokens, aber wenn die Ergebnisse schlechter werden, ist die Optimierung nutzlos. Immer Quality-Tests machen!
+    \item \textbf{Provider-übergreifend Tokens vergleichen}: 100 Tokens bei OpenAI sind nicht gleich 100 Tokens bei Anthropic. Jeder Tokenizer zählt anders.
+\end{itemize}
+
+% ============================================================
+% PERFORMANCE
+% ============================================================
+\section{Performance und Optimierung}
+
+\subsection{Latenz durch Token-Anzahl}
+
+Die Token-Zahl beeinflusst direkt die Latenz:
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXX}
+\toprule
+\textbf{Token-Bereich} & \textbf{Time-to-First-Token} & \textbf{Gesamtzeit (500 Out)} \\
+\midrule
+1K Input & 200--400ms & 1,2s \\
+10K Input & 500--800ms & 1,5s \\
+100K Input & 2--4s & 3--5s \\
+\midrule
+\end{tabularx}
+\caption{Latenz in Abhängigkeit der Input-Token-Zahl (GPT-4o)}
+\label{tab:latenz-tokens}
+\end{table}
+
+\subsection{Caching-Strategien}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Prompt-Caching (Provider-seitig)}: Automatisch bei OpenAI (ab 1K), manuell bei Anthropic. Kostet 50--90\,\% weniger für gecachte Input-Tokens.
+    \item \textbf{Response-Caching (Applikations-seitig)}: Gleiche Anfragen (identischer Prompt) werden gecached. Wirksam bei Classification und Extraction.
+    \item \textbf{Embedding-Caching}: Berechnete Embeddings für Dokumente cachen, statt sie neu zu berechnen.
+\end{itemize}
+
+\begin{lstlisting}[language=Python, caption=Response-Caching mit Disk-Cache]
+import hashlib
+import json
+import os
+
+class ResponseCache:
+    def __init__(self, cache_dir: str = ".token_cache"):
+        self.cache_dir = cache_dir
+        os.makedirs(cache_dir, exist_ok=True)
+
+    def _key(self, messages: list[dict], model: str) -> str:
+        raw = json.dumps({"messages": messages, "model": model},
+                         sort_keys=True)
+        return hashlib.sha256(raw.encode()).hexdigest()
+
+    def get(self, messages, model):
+        key = self._key(messages, model)
+        path = f"{self.cache_dir}/{key}.json"
+        if os.path.exists(path):
+            with open(path) as f:
+                return json.load(f)
+        return None
+
+    def set(self, messages, model, response):
+        key = self._key(messages, model)
+        with open(f"{self.cache_dir}/{key}.json", "w") as f:
+            json.dump(response, f)
+\end{lstlisting}
+
+\subsection{Kosten-Tracking in Produktion}
+
+Jeder API-Call sollte geloggt werden:
+
+\begin{lstlisting}[language=Python, caption=Token-Kosten-Tracking]
+from dataclasses import dataclass
+from datetime import datetime
+import sqlite3
+
+@dataclass
+class TokenUsage:
+    provider: str
+    model: str
+    input_tokens: int
+    output_tokens: int
+    cached_tokens: int
+    cost: float
+    user_id: str
+    endpoint: str
+    timestamp: datetime
+
+class CostTracker:
+    def __init__(self, db_path: str = "costs.db"):
+        self.conn = sqlite3.connect(db_path)
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS token_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider TEXT, model TEXT,
+                input_tokens INTEGER, output_tokens INTEGER,
+                cached_tokens INTEGER DEFAULT 0,
+                cost REAL, user_id TEXT, endpoint TEXT,
+                timestamp TEXT
+            )
+        """)
+        self.conn.commit()
+
+    def log(self, usage: TokenUsage):
+        self.conn.execute(
+            "INSERT INTO token_usage "
+            "(provider, model, input_tokens, output_tokens, "
+            " cached_tokens, cost, user_id, endpoint, timestamp) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (usage.provider, usage.model,
+             usage.input_tokens, usage.output_tokens,
+             usage.cached_tokens, usage.cost,
+             usage.user_id, usage.endpoint,
+             usage.timestamp.isoformat())
+        )
+        self.conn.commit()
+
+    def daily_cost(self, date: str) -> float:
+        row = self.conn.execute(
+            "SELECT SUM(cost) FROM token_usage WHERE date(timestamp) = ?",
+            (date,)
+        ).fetchone()
+        return row[0] or 0.0
+
+    def top_users(self, limit: int = 10) -> list[tuple]:
+        return self.conn.execute(
+            "SELECT user_id, SUM(cost) as total "
+            "FROM token_usage "
+            "GROUP BY user_id ORDER BY total DESC LIMIT ?",
+            (limit,)
+        ).fetchall()
+\end{lstlisting}
+
+% ===========================================================%
+% SICHERHEIT
+% ===========================================================%
+\section{Sicherheit}
+
+\subsection{Token-Leakage vermeiden}
+
+Token-Zahlen können Informationen über den Prompt preisgeben: Zwei sehr ähnliche Prompts erzeugen ähnliche Token-Zahlen. Bei der Logging-Architektur muss klar sein:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Token-Zahlen sind keine PII}, aber sie können Rückschlüsse auf Prompt-Längen und -Komplexität zulassen.
+    \item \textbf{Keine Rohdaten in Logs}: Logge Token-Zahlen, aber nicht den Prompt-Text selbst, wenn dieser sensible Daten enthält.
+    \item \textbf{Aggregierte Metriken}: Fasse Kosten pro User/Team/Abteilung zusammen, statt Einzel-Requests zu loggen.
+\end{itemize}
+
+\subsection{Denial-of-Wallet}
+
+Ohne Budget-Limits kann ein einzelner User oder ein fehlerhafter Prozess das gesamte API-Budget aufbrauchen:
+
+\begin{lstlisting}[language=Python, caption=Denial-of-Wallet-Praevention]
+class BudgetGuard:
+    def __init__(self, max_daily_cost: float = 100.0):
+        self.max_daily_cost = max_daily_cost
+        self.tracker = CostTracker()
+
+    def check_budget(self) -> bool:
+        today = datetime.now().strftime("%Y-%m-%d")
+        cost = self.tracker.daily_cost(today)
+        return cost < self.max_daily_cost
+
+    def guard(self, func):
+        """Decorator: Blockiert API-Calls, wenn Budget erreicht."""
+        def wrapper(*args, **kwargs):
+            if not self.check_budget():
+                raise RuntimeError(
+                    f"Daily budget {self.max_daily_cost}$ reached"
+                )
+            return func(*args, **kwargs)
+        return wrapper
+\end{lstlisting}
+
+\subsection{Multi-Tenant-Token-Isolation}
+
+In SaaS-Systemen müssen Token-Kosten pro Mandant (Tenant) getrennt werden:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Separate API-Keys pro Tenant}: Ermöglicht individuelle Limits und Abrechnung
+    \item \textbf{Per-Tenant-Budget}: Jeder Tenant hat sein eigenes max\_daily\_cost-Limit
+    \item \textbf{Cost-Allocation}: Token-Verbrauch wird auf Tenant-Kostenstellen gebucht (chargeback-fähig)
+\end{itemize}
+
+% ===========================================================
+% ZUSAMMENFASSUNG (existiert, erweitert)
+% ===========================================================
+\section{Zusammenfassung}
+
+\begin{itemize}[leftmargin=*]
+    \item Ein Token ist kein Wort -- deutsche Texte produzieren etwa 1,4--2x mehr Tokens als englische (Komposita!)
+    \item TikToken ist das Werkzeug zur Token-Zählung: Ohne es tappst du im Dunkeln bei Kosten und Limits
+    \item max\_tokens kontrolliert nicht nur die Antwortlänge, sondern ist ein direkter Kostenhebel -- setze ihn bewusst!
+    \item Prompt-Kompaktierung und Chat-History-Management sind die effektivsten Token-Einsparer
+    \item Prompt-Caching (OpenAI + Anthropic) kann Input-Kosten um bis zu 90\,\% reduzieren
+    \item Output-Tokens sind 3--10x teurer als Input-Tokens -- priorisiere kurze Antworten
+    \item Token-Budgeting und Cost-Tracking sind Grundvoraussetzungen für produktive Systeme
+\end{itemize}
+
+% ===========================================================
+% MERKE-BOX
+% ===========================================================
+\begin{merke}
+\begin{itemize}
+    \item \textbf{Kosten liegen im Output}: Output-Tokens sind 3--10x teurer als Input. max\_tokens ist der wichtigste Kostenhebel.
+    \item \textbf{Deutsch ist teurer}: Deutsche Texte kosten 30--50\,\% mehr als englische durch längere Tokenisierung.
+    \item \textbf{Caching ist Pflicht}: Prompt-Caching spart 50--90\,\% der Input-Kosten. Immer aktivieren!
+    \item \textbf{History killt Budget}: Ohne Kompression wächst die Chat-History unbegrenzt -- komprimiere ab 80\,\% des Context-Limits.
+    \item \textbf{Token-Zahlen sind nicht portabel}: 100 Tokens bei OpenAI $\neq$ 100 Tokens bei Anthropic.
+\end{itemize}
+\end{merke}
+
+% ===========================================================
+% PRAXISPROJEKT
+% ===========================================================
+\section{Praxisprojekt}
+
+\subsection{Aufgabe: Multi-Provider Cost Dashboard}
+
+Baue ein System, das die Token-Kosten über mehrere Provider hinweg trackt und visualisiert.
+
+\textbf{Anforderungen:}
+\begin{itemize}[leftmargin=*]
+    \item Implementiere einen \texttt{TokenTracker}, der API-Calls über OpenAI, Anthropic und Google loggt
+    \item Verwende die \texttt{CostTracker}-Klasse aus diesem Kapitel als Basis
+    \item Füge einen \texttt{BudgetGuard} hinzu, der bei Überschreitung des Tagesbudgets automatisch auf ein günstigeres Modell fallbackt ("GPT-4o $\rightarrow$ GPT-4o-mini")
+    \item Implementiere ein Reporting, das die Top-5-Token-Verbraucher pro Tag ausgibt
+    \item Schreibe einen Test, der die Kosten bei 1.000 Requests mit und ohne Prompt-Caching vergleicht
+\end{itemize}
+
+\textbf{Testdaten:} Simuliere 1.000 API-Calls mit variierenden Input-Längen (50--4.000 Tokens) und Output-Längen (10--500 Tokens).
+
+\textbf{Erfolgskriterium:} Das Dashboard zeigt korrekte Tageskosten, warnt bei Budget-Überschreitung und falls automatisch auf das günstigere Modell zurück.
+
+% ============================================================
+% INTERVIEWFRAGEN
+% ============================================================
+\section{Interviewfragen}
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Ein deutsches Unternehmen migriert seine englische RAG-Wissensdatenbank komplett auf Deutsch. Die Textlänge (in Wörtern) bleibt nahezu identisch, aber die API-Kosten für die Input-Tokens steigen plötzlich um 40\,\%. Warum?}
+
+    \textbf{Antwort:} Das ist der \glqq Tokenizer Bias\grqq{}. BPE-Tokenizer (wie TikToken von OpenAI) sind massiv auf englische Textkorpora optimiert. Typisch deutsche Konstruktionen (wie lange Komposita, z.\,B. \glqq Datenschutzgrundverordnung\grqq{}) kennt das Vokabular nicht. Das Wort zerfällt in zahlreiche kleine Sub-Tokens. Dadurch benötigt derselbe Informationsgehalt auf Deutsch signifikant mehr Tokens.
+
+    \item \textbf{Ein User lädt ein 4K-Bild in euren Chatbot hoch. Du nutzt die OpenAI Vision API mit \texttt{detail="high"}. Der Entwickler glaubt, das kostet einen pauschalen \glqq Image-Token-Preis\grqq{}. Wie wird das Bild tatsächlich abgerechnet?}
+
+    \textbf{Antwort:} Die API verarbeitet keine 4K-Bilder direkt. Das Bild wird zunächst proportional herunterskaliert, sodass es in ein 2048x2048-Quadrat passt, und dann in 512x512 Pixel große Kacheln (Tiles) zerschnitten. Jede Kachel kostet 170 Tokens, plus 85 Tokens Grundkosten. Ein detailreiches Bild kostet also nicht pauschal, sondern generiert oft über 1.000 Tokens, was bei hohem Volumen extrem teuer wird.
+
+    \item \textbf{Du hast Prompt-Caching für euer RAG-System implementiert, um bei 15.000 Tokens Kontext Geld zu sparen. Das Dashboard zeigt jedoch eine Cache-Hit-Rate von 0\,\%. Euer Prompt-Aufbau lautet: \texttt{[User-Frage] + [RAG-Dokumente] + [System-Regeln]}. Was ist der Architekturfehler?}
+
+    \textbf{Antwort:} Das Caching bricht beim ersten abweichenden Token ab (Prefix Matching). Da die \texttt{[User-Frage]} dynamisch ist und ganz am Anfang steht, invalidiert sie den gesamten restlichen Cache für diesen Request. Die statischen, großen Blöcke müssen nach vorne: \texttt{[System-Regeln] + [RAG-Dokumente] + [User-Frage]}.
+
+    \item \textbf{Ein Angreifer sendet per Skript 10.000 extrem kurze Prompts (z.\,B. \glqq Hallo\grqq{}) an eure API. Du denkst: \glqq Input-Tokens sind billig, das Budget hält das aus.\grqq{} Am nächsten Tag ist euer Monatsbudget aufgebraucht. Was hat der Angreifer vermutlich getan?}
+
+    \textbf{Antwort:} Ein \glqq Denial-of-Wallet\grqq{}-Angriff über Output-Tokens. Der Angreifer hat vermutlich Prompts wie \glqq Schreibe mir einen Aufsatz mit 5.000 Wörtern\grqq{} gesendet. Da Output-Tokens 3- bis 10-mal teurer sind als Input-Tokens und kein hartes \texttt{max\_tokens}-Limit im Backend konfiguriert war, hat das Modell maximale Kosten pro Request verursacht.
+
+    \item \textbf{Euer Chatbot nutzt eine automatische History-Kompression: Wenn 8.000 Tokens erreicht sind, fasst ein Mini-Modell alles zusammen. Plötzlich fängt der Bot an, strikte JSON-Formatvorgaben zu ignorieren. Welcher Fehler ist bei der Kompression passiert?}
+
+    \textbf{Antwort:} Die Kompressions-Logik hat versehentlich den \texttt{System-Prompt} mit in das \glqq Sliding Window\grqq{} gezogen und zusammengefasst. Dadurch wurden die harten, formatierenden Instruktionen weichgespült oder gelöscht. Der System-Prompt muss immer unangetastet bleiben und außerhalb der Kompressions-History \glqq gepinnt\grqq{} werden.
+
+    \item \textbf{Du migrierst ein Skript von OpenAI zu Anthropic. Um das Budget zu überwachen, nutzt du weiterhin die \texttt{tiktoken}-Bibliothek, um die Tokens lokal zu zählen, bevor du sie an Anthropic sendest. Die Anthropic-API blockiert bald deine Requests wegen Limit-Überschreitung. Warum?}
+
+    \textbf{Antwort:} Tokenizer sind Provider-spezifisch. OpenAI nutzt TikToken (BPE), Anthropic nutzt eine Variante von SentencePiece. \texttt{tiktoken} zählt die Tokens für Claude-Modelle systematisch falsch (oft 10--20\,\% Abweichung). Man muss zwingend den Tokenizer des jeweiligen Providers nutzen (z.\,B. den Client-internen Counter von Anthropic).
+
+    \item \textbf{Ein Kollege formatiert alle JSON-Paylods im System-Prompt mit \glqq Pretty-Print\grqq{} (Einrückungen, Zeilenumbrüche), damit sie in den Logs schöner aussehen. Wie bewertest du das aus Token-Management-Sicht?}
+
+    \textbf{Antwort:} Sehr negativ. Whitespaces, Einrückungen und Zeilenumbrüche sind im Token-Vokabular oft eigene Tokens (oder verhindern effiziente Merges). Ein pretty-printed JSON kann 20--40\,\% mehr Tokens verbrauchen als ein minifiziertes JSON (\texttt{json.dumps(obj, separators=(',', ':'))}). Bei jedem Request summiert sich das zu massiven, sinnlosen Kosten.
+
+    \item \textbf{Ihr verarbeitet nachts 100.000 Kundenrezensionen. Ein Junior-Entwickler baut ein Skript mit \texttt{stream=True}, damit das System \glqq schneller und paralleler\grqq{} arbeitet. Was entgegnest du?}
+
+    \textbf{Antwort:} Streaming reduziert nur die wahrgenommene \textit{Time-to-First-Token} für menschliche User (UX), es erhöht aber nicht den serverseitigen Durchsatz -- im Gegenteil, es hält HTTP-Verbindungen unnötig lange offen. Für asynchrone Massenverarbeitung ohne menschlichen Empfänger muss zwingend die \glqq Batch API\grqq{} (mit 50\,\% Token-Rabatt) genutzt werden.
+
+    \item \textbf{Modell A kostet \$1/1M Input und \$1/1M Output. Modell B kostet \$0.50/1M Input und \$3/1M Output. Dein RAG-System liest immer 15.000 Dokumenten-Tokens und antwortet mit einem kurzen Satz (50 Tokens). Welches Modell ist günstiger?}
+
+    \textbf{Antwort:} Modell B. RAG ist extrem asymmetrisch (gewaltiger Input, winziger Output). Inputkosten Modell B: \$0.0075. Outputkosten: \$0.00015. Gesamt: \$0.00765. Modell A würde \$0.01505 kosten. Die hohen Output-Kosten von Modell B fallen wegen der Kürze der Antwort nicht ins Gewicht.
+
+    \item \textbf{In eurem B2B-SaaS lädt Kunde X ein riesiges Buch hoch und stellt 500 Fragen dazu. Dadurch wird das globale OpenAI-Tier-Limit eurer Firma erreicht. Kunde Y kann sich nicht mehr einloggen. Wie löst du das architektonisch?}
+
+    \textbf{Antwort:} Es fehlt die Multi-Tenant-Token-Isolation. Das Backend darf API-Requests nicht ungeprüft durchreichen. Es benötigt eine \glqq Token Bucket\grqq{}-Implementierung pro Mandant (Tenant) in der eigenen Datenbank. Erreicht Kunde X sein individuelles Limit, wirft das Backend einen \texttt{429 Too Many Requests}, \textit{bevor} OpenAI kontaktiert wird. So bleibt das globale API-Limit für andere Kunden frei.
+\end{enumerate}
+
+% ===========================================================
+% WEITERFÜHRENDE RESSOURCEN
+% ===========================================================
+\section{Weiterführende Ressourcen}
+
+\subsection{Dokumentationen}
+
+\begin{itemize}[leftmargin=*]
+    \item OpenAI Tokenizer: \href{https://platform.openai.com/tokenizer}{platform.openai.com/tokenizer}
+    \item TikToken GitHub: \href{https://github.com/openai/tiktoken}{github.com/openai/tiktoken}
+    \item Anthropic Tokenizer: \href{https://docs.anthropic.com/en/docs/build-with-claude/token-counting}{docs.anthropic.com}
+    \item Google Token Counting: \href{https://ai.google.dev/gemini-api/docs/tokens}{ai.google.dev/gemini-api/docs/tokens}
+\end{itemize}
+
+\subsection{Tools}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{TikToken}: \href{https://github.com/openai/tiktoken}{github.com/openai/tiktoken} - BPE-Tokenizer für OpenAI-Modelle
+    \item \textbf{anthropic-tokenizer}: \href{https://github.com/anthropics/anthropic-tokenizer}{github.com/anthropics/anthropic-tokenizer}
+    \item \textbf{Langfuse}: \href{https://langfuse.com}{langfuse.com} - Open-Source-Tracking für LLM-Kosten
+    \item \textbf{LiteLLM}: \href{https://github.com/BerriAI/litellm}{github.com/BerriAI/litellm} - Einheitliche Kostenberechnung über alle Provider
+\end{itemize}
+
+\subsection{Bücher und Artikel}
+
+\begin{itemize}[leftmargin=*]
+    \item OpenAI Cookbook: \href{https://cookbook.openai.com}{cookbook.openai.com} - "How to count tokens with tiktoken"
+    \item Sennrich et al. (2016): "Neural Machine Translation of Rare Words with Subword Units" -- grundlegende BPE-Arbeit
+    \item Kudo \& Richardson (2018): "SentencePiece: A simple and language independent subword tokenizer"
+\end{itemize}
+
+\textbf{Nächster Schritt:} Mit diesem Token-Wissen im Kopf geht es weiter zum Kernstück der AI Engineer-Arbeit: Prompt Engineering.

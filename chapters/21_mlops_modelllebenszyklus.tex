@@ -1,0 +1,215 @@
+\chapter{MLOps und der Modell-Lebenszyklus}
+
+\label{chap:mlops_modelllebenszyklus}
+
+% ============================================================
+% LERNZIELE
+% ============================================================
+\begin{lernziele}
+Nach diesem Kapitel kannst du:
+\begin{itemize}
+    \item den Unterschied zwischen klassischem DevOps und LLMOps erklären
+    \item ein Versionierungs- und Release-Setup für Prompts, Modelle und Datasets entwerfen
+    \item eine CI/CD-Pipeline für LLM-Änderungen konfigurieren
+    \item Produktionsdrift und Kostenabweichungen systematisch erkennen
+    \item Verantwortlichkeiten, Governance und Audit für KI-Produkte strukturieren
+\end{itemize}
+\end{lernziele}
+
+% ============================================================
+% MOTIVATION
+% ============================================================
+\section{Motivation}
+
+LLM-Anwendungen bestehen aus mehr als Code. Sie kombinieren Modelle, Daten, Prompts und Infrastruktur. Deshalb reicht klassisches Software-Engineering nicht aus: Es muss ein Lebenszyklus entstehen, der alle Komponenten versioniert, testet, deployed und überwacht.
+
+MLOps ist die Disziplin, die diese Kette operationalisiert. Für AI Engineers ist sie entscheidend, weil sie aus einem einmaligen Prototypen eine stabile, skalierbare Produktionsanwendung macht.
+
+% ============================================================
+% GRUNDLAGEN
+% ============================================================
+\section{Was macht MLOps anders?}
+
+Im Vergleich zur klassischen Softwareentwicklung sind drei Aspekte zentral:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Nicht-deterministisches Verhalten:} Der gleiche Prompt liefert nicht immer denselben Output. Deshalb müssen Tests probabilistisch und robust gestaltet werden.
+    \item \textbf{Externe Modellabhängigkeit:} Viele Anwendungen nutzen Managed APIs. Verfügbarkeit, Latenz und Kosten liegen oft außerhalb der eigenen Kontrolle.
+    \item \textbf{Daten- und Modelldrift:} Das reale Nutzerverhalten ändert sich, und der promptbasierte Code altert schneller als klassischer Application Code.
+\end{enumerate}
+
+% ============================================================
+% ARCHITEKTUR DES LEBENSZYKLUS
+% ============================================================
+\section{Der LLMOps-Lebenszyklus}
+
+Eine LLMOps-Architektur besteht aus fünf Hauptphasen:
+
+\begin{description}[leftmargin=*,style=nextline]
+    \item[Entwickeln] Prompts, Modell-Konfigurationen, Daten-Pipelines und Service-Code erstellen
+    \item[Testen] Golden Datasets, Prompt-Tests, Kosten- und Latenzprüfungen ausführen
+    \item[Ausrollen] Versionierte Releases, Canary-Deployments und Rollbacks verwalten
+    \item[Überwachen] Drift, Feedback, Kosten und Performance in Produktion beobachten
+    \item[Verbessern] Regeln, Daten und Prompts iterativ anpassen und den Kreislauf erneuern
+\end{description}
+
+\subsection{Systemkomponenten}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Versionierung}: Git für Code und Prompts, DVC/LakeFS für Trainingsdaten, Model Cards für Modelle
+    \item \textbf{CI/CD}: Automatisierte Tests, Review-Gates, Canary-Deployments
+    \item \textbf{Observability}: Metriken, Tracing, Log-Events, Drift-Metriken
+    \item \textbf{Governance}: Verantwortlichkeiten, Dokumentation, Audit-Logs
+    \item \textbf{Feedback}: Nutzerfeedback, menschliche Evaluierung, Incident Reports
+\end{itemize}
+
+% ============================================================
+% VERSIONIERUNG
+% ============================================================
+\section{Versionierung von Prompts, Daten und Modellen}
+
+\subsection{Prompts als Code}
+Prompts gehören in die Codebasis. Jede Änderung muss eine Git-Historie haben, eine Review erhalten und bei Bedarf zurücksetzbar sein. Dazu gehören:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Prompt-Templates} als parametrische Dateien
+    \item \textbf{Prompt-Tests} gegen Golden Datasets
+    \item \textbf{Release Notes} für Prompt-Änderungen
+\end{itemize}
+
+\subsection{Datenversionierung}
+
+Daten für Evaluationen, Referenzen und semantische Indizes müssen versioniert werden. Für AI Engineers gelten folgende Regeln:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Daten-Snapshots} für historische Vergleichbarkeit
+    \item \textbf{Schema-Checks} zur Erkennung von Drift
+    \item \textbf{Reproduzierbare Builds} durch festgehaltene Datenversionen
+\end{itemize}
+
+\subsection{Modelldokumentation}
+
+Jedes Modell braucht eine \textbf{Model Card}. Diese beschreibt:
+
+\begin{itemize}[leftmargin=*]
+    \item Zweck und Einsatzgebiet
+    \item Trainingsdaten- oder Prompt-Basis
+    \item bekannte Schwächen und Risiken
+    \item Performance-Metriken und Kosten
+\end{itemize}
+
+% ============================================================
+% CICD
+% ============================================================
+\section{CI/CD für LLM-Systeme}
+
+Eine LLMOps-Pipeline enthält neben standardmäßigen Code-Checks auch prompt- und datenorientierte Schritte.
+
+\subsection{Beispiel-Pipeline}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Linting}\ für Code, Prompts und JSON-Schema
+    \item \textbf{Golden-Dataset-Tests}\ zur Qualitätsabsicherung
+    \item \textbf{LLM-Judge-Tests}\ zur semantischen Bewertung
+    \item \textbf{Kosten-/Latenz-Checks}\ zur Budgetkontrolle
+    \item \textbf{Canary Deploy}\ zur risikoreduzierten Einführung
+\end{itemize}
+
+\subsection{Praktischer Ablauf}
+
+Eine CI/CD-Stage kann so aussehen:
+
+\begin{lstlisting}[language=Bash,caption={Beispiel-Workflow für LLMOps in GitHub Actions}]
+name: LLMOps Pipeline
+on: [pull_request, push]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Prompt lint
+        run: python scripts/prompt_lint.py prompts/
+      - name: Run golden dataset tests
+        run: python scripts/evaluate_golden.py
+      - name: Validate JSON schema
+        run: python scripts/validate_output_schema.py
+
+  canary:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy canary
+        run: ./scripts/deploy_canary.sh
+      - name: Run canary smoke tests
+        run: python scripts/canary_smoke_test.py
+\end{lstlisting}
+
+% ============================================================
+% MONITORING
+% ============================================================
+\section{Monitoring und Drift-Erkennung}
+
+Überwachung bedeutet nicht nur, dass ein Dienst erreichbar ist. Für LLM-Systeme zählen auch Inhalt und Qualität.
+
+\subsection{Wichtige Produktionsmetriken}
+
+\begin{description}[leftmargin=*,style=nextline]
+    \item[Qualitäts-Drift] Veränderung der Antwortqualität über Zeit. Gemessen durch Stichproben, Feedback oder automatisierte Judges.
+    \item[Daten-Drift] Veränderungen in den Eingabedaten (z. B. Länge, Domäne, Token-Verteilung).
+    \item[Kosten-Drift] Unerwartete Steigerungen durch höhere Tokens, längere Ausgaben oder neue Nutzerprofile.
+    \item[Performance-Drift] Steigende Latenzen, höhere Fehlerquoten oder vermehrte Timeouts.
+\end{description}
+
+\subsection{Alerting}
+
+Alerts sollten nicht nur bei Ausfällen ausgelöst werden, sondern auch bei:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Signifikanter Kostenabweichung} im Vergleich zur Baseline
+    \item \textbf{Spürbarer Qualitätsverschlechterung} im Golden Dataset
+    \item \textbf{Datenanomalien} bei Eingabeverteilungen
+    \item \textbf{Anstieg von User Complaints} oder Ablehnungen
+\end{itemize}
+
+% ============================================================
+% GOVERNANCE
+% ============================================================
+\section{Governance und Verantwortlichkeiten}
+
+Eine stabile KI-Produktion braucht klare Rollen:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Model Owner}: Verantwortlich für die Modellwahl, Release-Planung und Dokumentation
+    \item \textbf{Data Steward}: Sorgt für Datenqualität, Versionierung und Compliance
+    \item \textbf{Product Owner}: Bewertet Nutzerfeedback und priorisiert Verbesserungen
+    \item \textbf{Security Owner}: Überprüft Zugriff, Datenschutz und Missbrauchsschutz
+\end{itemize}
+
+\subsection{Audit und Dokumentation}
+
+Jede Modelländerung sollte nachvollziehbar sein. Wichtige Artefakte sind:
+
+\begin{itemize}[leftmargin=*]
+    \item Release Notes für Prompts, Modelle und Indexdaten
+    \item Logs von Evaluationen und Governance Reviews
+    \item Model Cards und Risikoanalysen
+    \item Approval-Gates vor Deployments
+\end{itemize}
+
+% ============================================================
+% ZUSAMMENFASSUNG
+% ============================================================
+\begin{zusammenfassung}
+MLOps macht LLM-Anwendungen produktionsreif: nicht nur durch Deployment, sondern durch Versionierung, Tests, Monitoring und Governance. Ein strukturierter Lebenszyklus reduziert Risiko, Kosten und Drift, und ermöglicht wiederholbare Verbesserungen.
+\end{zusammenfassung}
+
+\begin{uebungen}
+    \item Beschreibe einen konkreten Ablauf, wie du ein Prompt-Update von der Review bis zum Canary-Release bringen würdest.
+    \item Nenne drei Drift-Indikatoren, die für eine Conversational AI besonders wichtig sind.
+    \item Erkläre, warum eine Model Card für API-basierte Modelle trotzdem sinnvoll ist.
+\end{uebungen}
