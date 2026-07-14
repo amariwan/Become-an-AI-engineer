@@ -1,0 +1,16 @@
+# 02 vorgefertigte modelle – Block 5
+
+## Beschreibung
+
+\textbf{Testdaten:}
+
+## Verbatim
+
+```
+Betreff: Projekttreffen Q2
+Hallo zusammen,
+wir treffen uns am 15.04.2026 um 14:30 Uhr
+im Konferenzraum Berlin. Bitte bestätigt bis
+zum 10.04.2026.
+Teilnehmer: Anna, Ben, Clara, David
+```

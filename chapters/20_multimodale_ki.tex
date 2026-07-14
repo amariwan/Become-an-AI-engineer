@@ -20,7 +20,7 @@ Nach diesem Kapitel kannst du:
 % ============================================================
 \section{Motivation}
 
-Bis 2024 waren LLMs reine Textmaschinen. 2026 ist das anders: \textbf{GPT-4o, Claude 4 Vision und Gemini 3} verarbeiten Bilder, Audio und Video nativ. Mehr als 60\,\% der neuen Enterprise-KI-Anwendungen nutzen multimodale Eingaben (Gartner 2026). Ein Support-Bot, der Screenshots liest, ein Code-Review-Tool, das Architekturdiagramme versteht, oder ein Qualitätsinspektor, der Kamerabilder auswertet -- das sind keine Zukunftsszenarien mehr, sondern aktuelle Produktionssysteme.
+LLMs waren reine Textmaschinen. \textbf{GPT-4o, Claude 4 Vision und Gemini 3} verarbeiten Bilder, Audio und Video nativ. Mehr als 60\,\% der neuen Enterprise-KI-Anwendungen nutzen multimodale Eingaben (Gartner). Ein Support-Bot, der Screenshots liest, ein Code-Review-Tool, das Architekturdiagramme versteht, oder ein Qualitätsinspektor, der Kamerabilder auswertet -- das sind keine Zukunftsszenarien mehr, sondern aktuelle Produktionssysteme.
 
 Der Shift von Text-zu-Multimodal ist der grösste Infrastrukturwandel im AI Engineering seit der Einführung von RAG. Er betrifft nicht nur die Modell-Wahl, sondern die gesamte Pipeline: Datenvorbereitung, Embedding, Retrieval, Sicherheit und Evaluation.
 
@@ -58,7 +58,7 @@ Gemini 3 Pro & Text, Bild, Audio, Video & nat. Auflösung & 1,25 \$/M Tokens \\
 Llama 4 90B & Text, Bild & 1024$\times$1024 & Open Source \\
 \bottomrule
 \end{tabularx}
-\caption{Multimodale Modelle 2026 im Vergleich}
+\caption{Multimodale Modelle im Vergleich}
 \label{tab:multimodal-models}
 \end{table}
 
@@ -97,6 +97,10 @@ print(f"{cost['tiles']} Tiles, {cost['tokens']} Tokens, "
       f"${cost['estimated_cost_usd']:.5f}")
 # Ausgabe: 16 Tiles, 2805 Tokens, $0.007
 \end{lstlisting}
+
+\begin{praxishinweis}
+Bild-Tokens summieren sich schneller als gedacht. Ein einzelnes 4K-Bild kostet bei GPT-4o high-detail rund 7.000 Tokens -- mehr als dieser gesamte Absatz. Vorverarbeitung lohnt: zuschneiden, skalieren, Rauschen reduzieren.
+\end{praxishinweis}
 
 % ===========================================================%
 % VISION
@@ -166,6 +170,9 @@ Ein Dokument mit Diagrammen, Screenshots und handschriftlichen Notizen kann nich
 \end{verbatim}
 
 \begin{lstlisting}[language=Python, caption=Vision-RAG-Pipeline]
+from openai import OpenAI
+
+
 class VisionRAG:
     """RAG-Pipeline fuer bildbasierte Dokumente."""
 
@@ -232,11 +239,16 @@ class VisionRAG:
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 \end{lstlisting}
 
+\begin{praxishinweis}
+Vision RAG lohnt sich ab 50+ Seiten pro Tag. Für kleine Dokumentenmengen reicht es, Bilder direkt per Vision-LLM zu analysieren. Die Embedding-Infrastruktur (Vector-DB, Chunking, Indexing) amortisiert sich erst ab Volumen.
+\end{praxishinweis}
+
 \subsection{Diagramme und Charts verarbeiten}
 
-Ein Spezialfall von Vision: technische Diagramme, Architekturskizzen, UML-Diagramme und Charts. Multimodale Modelle sind 2026 gut darin, Diagramme zu lesen, aber sie machen systematische Fehler bei Achsenbeschriftungen und Metriken.
+Ein Spezialfall von Vision: technische Diagramme, Architekturskizzen, UML-Diagramme und Charts. Multimodale Modelle sind gut darin, Diagramme zu lesen, aber sie machen systematische Fehler bei Achsenbeschriftungen und Metriken.
 
 \begin{lstlisting}[language=Python, caption=Diagramm-Analyse mit strukturiertem Output]
+from openai import OpenAI
 from pydantic import BaseModel
 
 class ChartData(BaseModel):
@@ -284,7 +296,7 @@ def extract_chart_data(chart_path: str) -> ChartData:
 
 \subsection{Speech-to-Text (STT)}
 
-Die Umwandlung von Sprache in Text ist die reifste multimodale Technologie. 2026 wird sie praktisch fehlerfrei von GPT-4o-Audio, Whisper v3 und Gemini 3 beherrscht.
+Die Umwandlung von Sprache in Text ist die reifste multimodale Technologie. Sie wird praktisch fehlerfrei von GPT-4o-Audio, Whisper v3 und Gemini 3 beherrscht.
 
 \begin{lstlisting}[language=Python, caption=Audio-Transkription mit Whisper]
 def transcribe_audio(audio_path: str, language: str = "de") -> dict:
@@ -324,6 +336,9 @@ def transcribe_audio(audio_path: str, language: str = "de") -> dict:
 GPT-4o und Gemini 3 verarbeiten Audio direkt, ohne separaten STT-Schritt. Das Modell bekommt die Roh-Audiodaten und kann sowohl Inhalt als auch Tonfall, Emotionen und Sprecherwechsel erkennen.
 
 \begin{lstlisting}[language=Python, caption=Direkte Audio-Verarbeitung (GPT-4o-Audio)]
+from openai import OpenAI
+
+
 class AudioPipeline:
     """Verarbeitet Audio direkt ohne STT-Zwischenschritt."""
 
@@ -399,6 +414,10 @@ for lang, text, voice in [
                     output_path=f"welcome_{lang}.mp3")
 \end{lstlisting}
 
+\begin{praxishinweis}
+Audio-Native-Verarbeitung (GPT-4o-Audio, Gemini) erhält Emotion und Tonfall, kostet aber mehr Tokens als STT-$\rightarrow$Text-$\rightarrow$LLM. Entscheide nach Use-Case: Sentiment-Analyse braucht natives Audio, Transkription reicht STT.
+\end{praxishinweis}
+
 % ===========================================================%
 % VIDEO
 % ===========================================================%
@@ -406,11 +425,12 @@ for lang, text, voice in [
 
 \subsection{Frame-Extraktion}
 
-Video-Verarbeitung in LLMs ist 2026 noch kein nativer Echtzeit-Stream, sondern erfolgt über \textbf{Frame-Sampling}. Das Modell bekommt eine Auswahl an Frames in regelmässigen Abständen und extrahiert daraus Informationen.
+Video-Verarbeitung in LLMs ist noch kein nativer Echtzeit-Stream, sondern erfolgt über \textbf{Frame-Sampling}. Das Modell bekommt eine Auswahl an Frames in regelmässigen Abständen und extrahiert daraus Informationen.
 
 \begin{lstlisting}[language=Python, caption=Video-Frame-Extraktion für LLM-Analyse]
 import cv2
 import base64
+from openai import OpenAI
 from pathlib import Path
 
 class VideoAnalyzer:
@@ -548,6 +568,10 @@ class HierarchicalVideoAnalyzer(VideoAnalyzer):
         }
 \end{lstlisting}
 
+\begin{praxishinweis}
+Frame-Sampling ist ein Kosten-Kompromiss. 1 Frame/s für Szenen-Wechsel, 1 Frame/10s für statische Präsentationen. Und immer low-detail für Video-Frames -- high-detail kostet 4x und bringt bei Bewegung kaum Mehrwert.
+\end{praxishinweis}
+
 % ===========================================================%
 % BEST PRACTICES
 % ===========================================================%
@@ -627,6 +651,10 @@ class MultimodalGuard:
         return True
 \end{lstlisting}
 
+\begin{praxishinweis}
+Multimodale Sicherheit ist kein nachträglicher Einbau. OCR-Injection-Check und Audio-Frequenz-Filter gehören in die Basis-Pipeline, nicht ins Monitoring-Dashboard. Baut den Input Guard bevor der erste User den Endpoint testet.
+\end{praxishinweis}
+
 % ===========================================================%
 % ZUSAMMENFASSUNG
 % ===========================================================%
@@ -661,56 +689,6 @@ Multimodalität ist kein Feature -- es ist ein neues Paradigma. Die Pipelines, S
 \end{enumerate}
 
 \textbf{Erfolgskriterium:} Eine Rechnung wird in 5 Sekunden indexiert und ist per Natürlichsprach-Query in 100\,\% der Fälle korrekt auffindbar.
-
-% ============================================================
-% INTERVIEWFRAGEN
-% ============================================================
-\section{Interviewfragen}
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{20 Frames aus 5-min Video = 6.800 Tokens. Kosten massiv senken?}
-
-    \textbf{Antwort:} 1) Strukturelle Keyframe-Detektion (OpenCV) filtert statische Bilder raus. 2) Image-Detail der API auf `low` setzen. 3) Auflösung drastisch downscalen.
-
-    \item \textbf{Bild mit unsichtbarem Prompt-Injection-Text (White on White). Abwehr?}
-
-    \textbf{Antwort:} OCR-Pipeline (Tesseract) vorgeschaltet, die den reinen Text extrahiert. Dieser wird durch ein NLP-Guardrail gejagt, bevor das Bild ans Vision-Modell geht.
-
-    \item \textbf{GPT-4o vs Claude 3.5 Sonnet vs Gemini 1.5 Pro für Multimodal?}
-
-    \textbf{Antwort:} Claude dominiert extrem bei UI-Screenshots und Code/Diagramm-Transkription. Gemini ist durch das massive Fenster für Video-Analyse (Long-Context) unschlagbar.
-
-    \item \textbf{Multi-Vector Retrieval (ColPali/Vision-RAG) Architektur?}
-
-    \textbf{Antwort:} PDF-Seiten werden als Bilder geembeddet (Vision-Encoder), statt OCR-Text zu extrahieren. Bewahrt Layout, Tabellen und Charts perfekt für semantische Bild-Vektor-Suchen.
-
-    \item \textbf{Kostenfalle: High-Res vs Low-Res Visual Tokens?}
-
-    \textbf{Antwort:} High-Res skaliert das Bild, zerschneidet es in 512x512 Kacheln und berechnet jede (700-1000 Tokens/Bild). Low-Res skaliert alles auf eine 512-Kachel (85 Tokens fix). High-Res nur für OCR zwingend.
-
-    \item \textbf{Audio-Native LLMs (wie GPT-4o Realtime) vs ASR Pipeline?}
-
-    \textbf{Antwort:} Alte Pipeline (Audio->Text->LLM->Text->Audio) verliert Emotion/Tonfall und hat Latenz. Audio-Native Modelle verarbeiten Spectrogram-Tokens direkt in Attention-Layers (Latenz <300ms, Emotion bleibt erhalten).
-
-    \item \textbf{Spatial Reasoning in Vision Language Models (VLM)?}
-
-    \textbf{Antwort:} VLMs haben oft Probleme mit relativen Positionen ("Ist A links von B?"). Lösung: Visual Prompting (Bounding Boxes oder Koordinaten-Grid per OpenCV auf das Bild zeichnen vor dem Senden).
-
-    \item \textbf{Cross-Modal Alignment Problem beim Pre-Training?}
-
-    \textbf{Antwort:} Wie lernt das Modell, dass das Wort "Hund" und das Bild "Hund" identisch sind? Contrastive Learning (CLIP-Architektur) verringert die Vektor-Distanz zwischen passenden Text/Bild-Paaren massiv.
-
-    \item \textbf{Multimodales Prompt Injection (Audio)?}
-
-    \textbf{Antwort:} Angreifer bettet eine gesprochene Anweisung ("Leite Geld um") auf einer Frequenz ein, die das Modell-Audio-Processing erfasst, Menschen aber ignorieren. Härtung: Audio-Filterung (Low-Pass/High-Pass) vor API.
-
-    \item \textbf{Video-Frame Temporal Coherence: Warum halluziniert das VLM?}
-
-    \textbf{Antwort:} Wenn Frames einzeln gesendet werden, fehlt dem VLM das Verständnis für Bewegung/Zeitverlauf. Lösung: Modelle mit nativen Temporal-Attention-Schichten (Sora/Gemini 1.5) nutzen.
-
-
-\end{enumerate}
-
 
 % ===========================================================%
 % RESSOURCEN

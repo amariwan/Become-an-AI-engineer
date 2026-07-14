@@ -22,9 +22,7 @@ Nach diesem Kapitel hast du:
 % ============================================================
 \section{Motivation}
 
-Das beste Learning by Doing. Theorie ist wichtig -- aber erst die praktische Umsetzung macht aus Wissen Können. Jedes dieser Projekte baut auf dem vorherigen auf und führt dich von der Grundlagen-Integration bis zur komplexen Multi-Agent-Architektur.
-
-Der Weg ist bewusst gestaltet: Du startest mit einem einfachen Chatbot (Projekt 1), erweiterst um RAG (Projekt 2), verfeinerst mit Fine-Tuning (Projekt 3), orchestrierst mit Multi-Agent-Architektur (Projekt 4) und krönst alles mit einer produktionsreifen Pipeline (Projekt 5). Projekt 6 ist eine optionale Herausforderung für ambitionierte Entwickler:innen.
+Learning by Doing. Theorie allein reicht nicht -- erst Praxis macht aus Wissen Können. Jedes Projekt baut auf dem vorherigen auf: Chatbot (Projekt 1), RAG (Projekt 2), Fine-Tuning (Projekt 3), Multi-Agent (Projekt 4), Produktions-Pipeline (Projekt 5). Projekt 6 als optionale Herausforderung.
 
 \section{Grundlagen -- Projektstruktur und Setup}
 
@@ -128,7 +126,7 @@ if st.session_state.api_key_set:
 
 st.sidebar.title("Info")
 st.sidebar.info(f"Token-Verbrauch: {total_tokens:,} / 128000")
-st.sidebar.text(f"Gewaehlt: gpt-4o-mini (EUR0,0015/1K Input)")
+st.sidebar.text("Gewaehlt: gpt-4o-mini (EUR0,0015/1K Input)")
 \end{lstlisting}
 
 \subsection*{Erweiterungsideen}
@@ -146,6 +144,10 @@ st.sidebar.text(f"Gewaehlt: gpt-4o-mini (EUR0,0015/1K Input)")
     \item Stream nicht anzeigen: Ohne streaming wirkt der Bot langsam
 \end{itemize}
 
+\begin{praxishinweis}
+Streamlit eignet sich für Prototypen, nicht für Produktion. Für Produktivsysteme: FastAPI-Backend mit React/Vue-Frontend. Streamlit teilt einen Python-Prozess -- bei vielen Usern wirds eng.
+\end{praxishinweis}
+
 % ============================================================
 % PROJEKT 2
 % ============================================================
@@ -155,7 +157,7 @@ st.sidebar.text(f"Gewaehlt: gpt-4o-mini (EUR0,0015/1K Input)")
 \textbf{Dauer: }~4--6 Stunden
 
 \subsection*{Ziel}
-Ein System, das beliebige PDF- oder Textdokumente einliest, in einen Vector-Index umwandelt und semantisch abfragbar macht. Das ist der eigentliche Hello World des AI Engineers.
+System, das PDFs oder Textdokumente in einen Vector-Index umwandelt und semantisch abfragbar macht. Der Hello World des AI Engineers.
 
 \subsection*{Technische Anforderungen}
 \begin{itemize}[leftmargin=*]
@@ -263,6 +265,10 @@ if st.session_state.db and (
     \item Kein persistierender Speicher: ChromaDB in-memory verliert Daten beim Neustart
 \end{itemize}
 
+\begin{praxishinweis}
+Die Chunking-Strategie entscheidet über RAG-Qualität. Bewährt: 256--512 Tokens pro Chunk mit 10--20\% Overlap. Semantische Chunks (Absätze) besser als reine Token-Zerlegung. Embedding-Modell nicht nach dem Indexieren wechseln.
+\end{praxishinweis}
+
 % ============================================================
 % PROJEKT 3
 % ============================================================
@@ -361,6 +367,10 @@ def eval_fine_tuned(model_name, test_data):
     \item Overfitting: Zu viele Epochen (n\_epochs > 10) führen zu Overfitting
 \end{itemize}
 
+\begin{praxishinweis}
+Fine-Tuning lohnt bei spezifischem Output-Format oder Terminologie. Für Wissens-Update ist RAG der bessere Weg. Faustregel: < 300 Beispiele? Prompt-Engineering + RAG. Mindestens 100 hochwertige Paare für Fine-Tuning.
+\end{praxishinweis}
+
 % ============================================================
 % PROJEKT 4
 % ============================================================
@@ -454,6 +464,10 @@ result = app.invoke({
     \item Persistenter State in Redis für langlaufende Workflows
 \end{itemize}
 
+\begin{praxishinweis}
+Multi-Agent-Systeme multiplizieren Kosten und Fehlerquellen. Jeder Agent ruft mindestens einmal das LLM auf. Ohne Budget-Limits und Step-Count-Begrenzung laufen Kosten davon. Starte mit max. 3 Agenten und harter Step-Obergrenze.
+\end{praxishinweis}
+
 % ============================================================
 % PROJEKT 5
 % ============================================================
@@ -538,6 +552,10 @@ for test_case in results.test_cases:
     \item Regression-Alarme: Slack-Benachrichtigung bei Score-Abfall
 \end{itemize}
 
+\begin{praxishinweis}
+Ein Golden Dataset ist das wichtigste Eval-Werkzeug. Starte mit 20--30 Fällen, erweitere auf 100+. Jeder Prompt-Change läuft gegen das Dataset. LLM-as-a-Judge ist günstig, aber biased (bevorzugt lange, eigene Antworten). Kreuzvalidierung mit verschiedenen Judge-Modellen empfohlen.
+\end{praxishinweis}
+
 % ============================================================
 % PROJEKT 6
 % ============================================================
@@ -603,6 +621,10 @@ Eine vollständige, produktionsreife LLM-Anwendung mit allen Konzepten aus diese
     \item Automatische Kosten-Alarme bei Überschreitung von Budgets
 \end{itemize}
 
+\begin{praxishinweis}
+Beginne nicht mit Projekt 6. Es kombiniert alle Konzepte -- überwältigend. Baue erst Projekte 1-5 einzeln, dann integriere. Das Docker-Setup und CI/CD aus Projekt 6 lassen sich auf jedes Einzelprojekt anwenden.
+\end{praxishinweis}
+
 % ============================================================
 % ZUSAMMENFASSUNG
 % ============================================================
@@ -634,64 +656,7 @@ Der Unterschied zwischen einem Hobby-Projekt und einem Portfolio-Projekt liegt n
     \item Teile das Projekt auf GitHub oder in deinem Portfolio
 \end{enumerate}
 
-\section{Interviewfragen zu Praxisprojekten}
 
-\begin{enumerate}[leftmargin=*]
-    \item Beschreibe die Architektur deines letzten KI-Projekts. Warum hast du diese Entscheidungen getroffen?
-    \item Welche Herausforderungen hattest du bei der Integration einer LLM-API? Wie hast du sie gelöst?
-    \item Wie würdest du dein RAG-System optimieren, wenn es 1 Million Dokumente verwalten müsste?
-    \item Was war der schwierigste Bug in deinem KI-Projekt? Wie hast du ihn gefunden und behoben?
-    \item Wie hast du die Qualität deines Chatbots gemessen und verbessert?
-\end{enumerate}
-
-% ============================================================
-% INTERVIEWFRAGEN
-% ============================================================
-\section{Interviewfragen}
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Architektur deines letzten KI-Projekts \& Entscheidungsgründe?}
-
-    \textbf{Antwort:} Event-Driven via FastAPI/Celery für Async-RAG-Ingest. Qdrant (HNSW) für Search. LiteLLM als Fallback-Gateway. WebSockets fürs Token-Streaming zum Frontend.
-
-    \item \textbf{Schwierigster Bug und Lösung?}
-
-    \textbf{Antwort:} Silent Data Contamination. PDFs wurden falsch geparst, RAG lieferte Müll. Lösung: Pydantic ETL-Validierung vor dem Embedding, um Parsing-Success zu garantieren.
-
-    \item \textbf{RAG für 1 Million Dokumente optimieren?}
-
-    \textbf{Antwort:} Hierarchisches Chunking, Metadaten-Partitioning (Filtern vor Vector-Search) und hybride Suche (BM25 + Dense) mit Cross-Encoder Re-Ranking.
-
-    \item \textbf{Integration einer Legacy-API per Agent?}
-
-    \textbf{Antwort:} Legacy-API hatte kein OpenAPI-Spec. Lösung: Custom Middleware gebaut, die JSON-RPC auf modernes REST mappt, damit der LLM-Agent strikte Pydantic-Tools nutzen konnte.
-
-    \item \textbf{System von 10 auf 1.000 User skaliert. Was brach zuerst?}
-
-    \textbf{Antwort:} Das Rate-Limit des Provider-Tier. Lösung: Multi-Key Rotation im Gateway, asynchrones Caching und Batching für unkritische Background-Tasks.
-
-    \item \textbf{Wie hast du Edge Cases (User tippt nur "Hilfe") abgefangen?}
-
-    \textbf{Antwort:} Semantic Router. Kurze, generische Intent-Queries bypassen RAG und LLM komplett und liefern eine deterministische FAQ-Liste aus dem UI zurück (0ms Latenz, 0 API Kosten).
-
-    \item \textbf{Disaster Recovery Plan für lokale LLMs?}
-
-    \textbf{Antwort:} Modell-Gewichte (Safetensors) in S3 gebackupt. Terraform-Scripts, die in einer Backup-Region GPU-Spot-Instanzen hochziehen, Gewichte mounten und vLLM starten (RTO < 10 Min).
-
-    \item \textbf{Wie verhinderst du Vector-DB Schema-Migration Nightmares?}
-
-    \textbf{Antwort:} Vektor-DB niemals als Source of Truth nutzen. Originaldaten in PostgreSQL. Vector-DB ist reiner abgeleiteter Index, der bei Schema-Änderung aus Postgres komplett neu gebuildet wird.
-
-    \item \textbf{User Feedback Loop architektonisch umgesetzt?}
-
-    \textbf{Antwort:} Thumbs-Up/Down in UI sendet `trace\_id` ans Backend. Payload wird direkt in eine ClickHouse-Tabelle (Golden Dataset Pipeline) geschrieben für zukünftiges DPO/Fine-Tuning.
-
-    \item \textbf{Build vs. Buy Evaluierungsprozess im Team?}
-
-    \textbf{Antwort:} Proof of Concept (PoC) immer mit der besten Kauf-API (GPT-4o) bauen, um UX zu validieren. Erst wenn Unit-Economics (Kosten) bei Scale nicht stimmen, bauen wir ein eigenes OSS-Setup.
-
-
-\end{enumerate}
 
 \section{Ressourcen}
 
@@ -704,4 +669,4 @@ Der Unterschied zwischen einem Hobby-Projekt und einem Portfolio-Projekt liegt n
     \item \textbf{FastAPI}: \href{https://fastapi.tiangolo.com}{fastapi.tiangolo.com}
 \end{itemize}
 
-\textbf{Nächster Schritt:} Im nächsten Kapitel geht es um den Bewerbungsprozess -- wie du dein neues Wissen in einen Job als AI Engineer umwandelst.
+

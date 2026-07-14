@@ -114,6 +114,10 @@ Claude (SentencePiece):
   = 11 Tokens (effizienter bei Komposita)
 \end{verbatim}
 
+\begin{praxishinweis}
+Deutsch produziert 30--50\,\% mehr Tokens als Englisch für denselben Inhalt. Das ist kein Bug, sondern ein Feature der Tokenizer -- muss aber in der Kostenkalkulation berücksichtigt werden. Besonders RAG-Systeme mit deutschen Texten sind stärker betroffen als reine Chat-Anwendungen.
+\end{praxishinweis}
+
 % ============================================================
 % ARCHITEKTUR
 % ============================================================
@@ -206,6 +210,10 @@ Gleiches Verhältnis umgekehrt (100 Input, 100K Output):
 
 \textbf{Fazit: Output-Tokens dominieren die Kosten bei langen Antworten, Input-Tokens bei RAG-Systemen mit großen Kontexten.}
 
+\begin{praxishinweis}
+Die Kostenasymmetrie zwischen Input und Output (Faktor 3--10x) bestimmt die optimale Architektur: Für RAG-Systeme mit vielen Input- und wenigen Output-Tokens lohnt sich Prompt-Caching enorm. Für Chat-Systeme mit langen Antworten ist max\_tokens der wichtigste Hebel.
+\end{praxishinweis}
+
 % ============================================================
 % PRAXIS
 % ============================================================
@@ -248,6 +256,10 @@ Ein SaaS-Anbieter hat einen 4K-System-Prompt, der bei jedem Call mitgesendet wir
     \item \textbf{Mit Caching}: 100K $\times$ (0K Cache + 0,5K Output) = 50M Tokens
     \item \textbf{Ersparnis}: 89\,\% der Input-Kosten = \textbf{\$400/Tag vs. \$45/Tag}
 \end{itemize}
+
+\begin{praxishinweis}
+Die drei Praxisbeispiele zeigen ein Muster: In jedem Fall ist es die Kombination aus Modellwahl, History-Management und Caching, die die Kosten drastisch senkt. Keine einzelne Optimierung bringt 90\,\% -- erst das Zusammenspiel aller drei Hebel.
+\end{praxishinweis}
 
 % ============================================================
 % CODE: TIKTOKEN (existiert, erweitert)
@@ -498,7 +510,7 @@ class ConversationMemory:
 
 \subsection{Prompt-Caching}
 
-Prompt-Caching ist 2026 der \textbf{wichtigste Kostenhebel}. Sowohl OpenAI als auch Anthropic unterstützen es:
+Prompt-Caching ist der \textbf{wichtigste Kostenhebel}. Sowohl OpenAI als auch Anthropic unterstützen es:
 
 \begin{lstlisting}[language=Python, caption=Prompt-Caching mit OpenAI]
 # OpenAI: Automatisches Caching fuer lange System-Prompts
@@ -578,6 +590,10 @@ if not budget.check(input_tokens, request_max):
     \item \textbf{Auf Tokens optimieren statt auf Ergebnisse}: Ein extrem komprimierter Prompt spart Tokens, aber wenn die Ergebnisse schlechter werden, ist die Optimierung nutzlos. Immer Quality-Tests machen!
     \item \textbf{Provider-übergreifend Tokens vergleichen}: 100 Tokens bei OpenAI sind nicht gleich 100 Tokens bei Anthropic. Jeder Tokenizer zählt anders.
 \end{itemize}
+
+\begin{praxishinweis}
+Das häufigste Anti-Pattern: maximale Kompression ohne Qualitätskontrolle. Ein extrem verdichteter Prompt spart Tokens, aber wenn die Ergebnisse leiden, ist die Einsparung ein Verlustgeschäft. Miss beides: Token-Kosten und Output-Qualität.
+\end{praxishinweis}
 
 % ============================================================
 % PERFORMANCE
@@ -663,7 +679,7 @@ class TokenUsage:
 
 class CostTracker:
     def __init__(self, db_path: str = "costs.db"):
-        self.conn = sqlite3.connect(db_path)
+        self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS token_usage (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -806,56 +822,6 @@ Baue ein System, das die Token-Kosten über mehrere Provider hinweg trackt und v
 \textbf{Testdaten:} Simuliere 1.000 API-Calls mit variierenden Input-Längen (50--4.000 Tokens) und Output-Längen (10--500 Tokens).
 
 \textbf{Erfolgskriterium:} Das Dashboard zeigt korrekte Tageskosten, warnt bei Budget-Überschreitung und falls automatisch auf das günstigere Modell zurück.
-
-% ============================================================
-% INTERVIEWFRAGEN
-% ============================================================
-\section{Interviewfragen}
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Deutsche RAG: Gleiche Wortzahl, 40 \% mehr Kosten. Warum?}
-
-    \textbf{Antwort:} Tokenizer Bias zulasten von Sprachen mit langen Komposita.
-
-    \item \textbf{4K-Bild mit `detail="high"`: Wie wird abgerechnet?}
-
-    \textbf{Antwort:} Skalierung auf 2048x2048, Zerlegung in 512x512 Kacheln (je 170 Tokens). Teuer.
-
-    \item \textbf{Denial-of-Wallet-Angriff über kurze Prompts. Prävention?}
-
-    \textbf{Antwort:} Angreifer nutzt Prompts wie "Schreibe 50.000 Wörter". Zwingend `max\_tokens` für Output limitieren.
-
-    \item \textbf{History-Kompression bei 8K Tokens: JSON-Format wird ignoriert. Fehler?}
-
-    \textbf{Antwort:} Der System-Prompt wurde fälschlicherweise in die dynamische Kompression (Summary) gezogen. System-Prompt muss isoliert und gepinnt bleiben.
-
-    \item \textbf{`tiktoken` für Anthropic-Budget-Monitoring: Requests blockiert. Warum?}
-
-    \textbf{Antwort:} Tokenizer sind proprietär. Tiktoken (OpenAI) zählt Claude-Tokens falsch (10–20 \% Abweichung).
-
-    \item \textbf{Pretty-Printed JSON im System-Prompt. Bewertung?}
-
-    \textbf{Antwort:} Anti-Pattern. Verbraucht 20–40 \% mehr Tokens durch Leerzeichen. Minifiziertes JSON nutzen.
-
-    \item \textbf{100.000 Rezensionen mit `stream=True` via API. Problem?}
-
-    \textbf{Antwort:} Streaming blockiert Durchsatz. Für asynchrone Massenverarbeitung die Batch API (50 \% Rabatt, 24h Window) nutzen.
-
-    \item \textbf{Kunde X verbraucht globales OpenAI-Limit → Kunde Y kann nicht einloggen. Lösung?}
-
-    \textbf{Antwort:} Multi-Tenant-Isolation via Token Bucket im eigenen API-Gateway, bevor der Request zu OpenAI geht.
-
-    \item \textbf{User sendet Base64-codiertes Bild statt URL an Vision API. Performance-Impact?}
-
-    \textbf{Antwort:} Base64 bläht den Request-Body extrem auf (Bandbreite/Latenz). Bei großen Traffic-Mengen immer pre-signed URLs (z.B. S3) übergeben.
-
-    \item \textbf{Wie trackst du Token-Usage über Microservices hinweg exakt?}
-
-    \textbf{Antwort:} Token-Usage aus der API-Response extrahieren, mit der `trace\_id` taggen und als Custom Metric an Datadog/Prometheus senden.
-
-
-\end{enumerate}
-
 
 % ===========================================================
 % WEITERFÜHRENDE RESSOURCEN

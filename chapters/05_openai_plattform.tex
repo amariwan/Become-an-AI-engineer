@@ -20,7 +20,7 @@ Nach diesem Kapitel kannst du:
 % ============================================================
 \section{Motivation}
 
-OpenAI ist 2026 der reifste und am weitesten verbreitete LLM-API-Provider. Die Plattform bietet nicht nur Zugriff auf Modelle, sondern ein vollständiges Ökosystem: Chat Completions, Embeddings, Fine-Tuning, Moderation, Batch-Processing, Realtime Audio und Whisper Speech-to-Text. Für die meisten AI Engineers ist die OpenAI-API der erste und häufigste Berührungspunkt mit produktiver LLM-Integration.
+OpenAI ist der reifste und am weitesten verbreitete LLM-API-Provider. Die Plattform bietet nicht nur Zugriff auf Modelle, sondern ein vollständiges Ökosystem: Chat Completions, Embeddings, Fine-Tuning, Moderation, Batch-Processing, Realtime Audio und Whisper Speech-to-Text. Für die meisten AI Engineers ist die OpenAI-API der erste und häufigste Berührungspunkt mit produktiver LLM-Integration.
 
 Die Plattform ist aber auch komplex: unterschiedliche Endpunkte, verschiedene Parameter mit subtilen Wirkungen, Rate Limits, Pricing-Modelle und Sicherheitsaspekte. Ein tiefes Verständnis der API ist die Grundlage für jedes produktive System.
 
@@ -86,8 +86,8 @@ OpenAI stuft Accounts in Usage Tiers ein, die höhere Limits und schnellere Proc
 \subsection{Weitere wichtige Konzepte}
 
 \begin{description}[leftmargin=*,style=nextline]
-    \item[Seed] Ein Integer-Wert, der reproduzierbare Ergebnisse ermöglicht. Bei gleichem Seed, Modell und Parametern liefert die API deterministische Ergebnisse. Wichtig für Tests und Regression.
-    \item[Temperature] Steuert die Zufälligkeit der Token-Auswahl. 0.0 = deterministisch, 1.0 = maximal kreativ. Für Produktion: 0.0--0.2.
+    \item[Seed] Ein Integer-Wert, der reproduzierbare Ergebnisse ermöglicht. Bei gleichem Seed, Modell und Parametern liefert die API weitgehend deterministische Ergebnisse -- allerdings ohne Garantie, da serverseitiges Batching die Floating-Point-Summationsreihenfolge beeinflussen kann. Wichtig für Tests und Regression.
+    \item[Temperature] Steuert die Zufälligkeit der Token-Auswahl. 0.0 = weitgehend deterministisch (reduziert Varianz drastisch, garantiert aber keine Bit-Identität), 1.0 = maximal kreativ. Für Produktion: 0.0--0.2.
     \item[Top-P] Nucleus Sampling -- alternative zu Temperature. Wähle Tokens aus, bis deren kumulative Wahrscheinlichkeit p erreicht ist. In der Regel wird nur Temperature verwendet.
     \item[Frequency/Presence Penalty] Bestrafen wiederholter bzw. neuer Tokens. In Produktion meist auf 0.0 gelassen.
     \item[Max Completion Tokens] Begrenzt die Länge der Modell-Antwort. Wichtigster Kostenhebel nach der Modell-Wahl.
@@ -188,9 +188,13 @@ tool & Das Ergebnis eines Tool Calls -- die Response der aufgerufenen Funktion. 
 \label{tab:message-roles}
 \end{table}
 
+\begin{praxishinweis}
+Die Rollen-Trennung (system/user/assistant/tool) ist kein Detail -- sie ist das Fundament für verlässliche Multi-Turn-Interaktionen und Tool-Use. System-Prompt definiert das Verhalten, User-Prompt die Aufgabe, assistant/tool die Interaktionsschleife. Vermische diese Rollen nicht.
+\end{praxishinweis}
+
 % ===========================================================%
 % THEORIE
-% ===========================================================%
+% ============================================================
 \section{Theorie -- Warum OpenAI die API so designt hat}
 
 \subsection{Message-Passing statt Prompt-String}
@@ -264,7 +268,11 @@ result = MovieInfo.model_validate_json(response.choices[0].message.content)
 # Garantiert valides MovieInfo-Objekt -- keine Parser-Fehler mehr!
 \end{lstlisting}
 
-\textbf{Wichtig:} Seit 2025 unterstützt OpenAI \texttt{strict: true} für garantierte Schema-Konformität. Die API retryt intern, bis das JSON dem Schema entspricht. Das eliminiert eine der größten Fehlerquellen in Produktion.
+\textbf{Wichtig:} OpenAI unterstützt \texttt{strict: true} für garantierte Schema-Konformität. Die API retryt intern, bis das JSON dem Schema entspricht. Das eliminiert eine der größten Fehlerquellen in Produktion.
+
+\begin{praxishinweis}
+Structured Outputs sollten der Standard für jeden API-Call sein, der in einem Produktivsystem landet. Ohne Schema-Enforcement produziert jedes LLM gelegentlich invalides JSON -- und das verursacht Produktionsfehler, die schwer zu debuggen sind.
+\end{praxishinweis}
 
 % ===========================================================%
 % PRAXIS
@@ -374,9 +382,13 @@ async function streamChat(message: string) {
 }
 \end{lstlisting}
 
+\begin{praxishinweis}
+Streaming ist für User-facing APIs Pflicht, aber für Backend-Processing oft hinderlich. Batch-API (50\,\% Rabatt) oder synchroner Modus sind für Massenverarbeitung besser geeignet. Wähle den Modus nach Use-Case, nicht nach Gewohnheit.
+\end{praxishinweis}
+
 % ===========================================================%
 % PARALLEL TOOL CALLING (existiert)
-% ===========================================================%
+% ============================================================
 \section{Parallel Tool Calling}
 
 Eines der mächtigsten Features für AI Engineers: Das Modell kann automatisch mehrere Tools parallel aufrufen:
@@ -481,9 +493,13 @@ response = client.chat.completions.create(
 )
 \end{lstlisting}
 
+\begin{praxishinweis}
+Fine-Tuning wird oft überschätzt. Bevor du einen Fine-Tuning-Job startest, prüfe: 1) Reicht Prompt-Engineering + RAG? 2) Kann Prompt-Caching das Problem lösen? 3) Ist das Datenformat korrekt? Fine-Tuning ist mächtig, aber teuer und wartungsintensiv.
+\end{praxishinweis}
+
 % ===========================================================%
 % BEST PRACTICES
-% ===========================================================%
+% ============================================================
 \section{Best Practices}
 
 \begin{itemize}[leftmargin=*]
@@ -650,58 +666,9 @@ Baue ein System, das Produktbilder analysiert und strukturierte Metadaten extrah
 
 \textbf{Erfolgskriterium:} Alle drei Bilder werden korrekt klassifiziert. Die Response ist garantiert valides JSON gemäß Schema. Kosten und Token-Verbrauch werden ausgegeben.
 
-% ============================================================
-% INTERVIEWFRAGEN
-% ============================================================
-\section{Interviewfragen}
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Structured Outputs (strict: true) lehnt Schema ab. Ursache?}
-
-    \textbf{Antwort:} `strict: true` unterstützt kein vollumfängliches JSON Schema (keine optionalen Felder ohne `null`, keine Rekursion).
-
-    \item \textbf{Batch API mit 50.000 Docs failed. Wie isolierst du den Fehler?}
-
-    \textbf{Antwort:} Error-File-ID aus der Batch-Response laden, die die `custom\_ids` der gefehlten Requests enthält.
-
-    \item \textbf{User schließt Tab bei Streaming nach 2s. Wie stoppst du LLM-Kosten?}
-
-    \textbf{Antwort:} Verbindungsabbruch im Backend erkennen (z.B. FastAPI Request-Cancellation) und Stream per `response.close()` hart beenden.
-
-    \item \textbf{Parallel Tool Calling: Reihenfolge der Ergebnisse?}
-
-    \textbf{Antwort:} Reihenfolge ist irrelevant, solange die `tool\_call\_id` exakt gematcht wird und alle in der History stehen.
-
-    \item \textbf{10K System-Prompt: Fine-Tuning auf gpt-4o-mini statt Prompting. Wirtschaftlich?}
-
-    \textbf{Antwort:} Selten. Fine-Tuned Modelle kosten pro Token oft das 2-3fache. Mit Prompt Caching ist der lange System-Prompt meist günstiger.
-
-    \item \textbf{App reicht User-Bilder an Vision API — Account nach 3 Tagen gesperrt. Architekturfehler?}
-
-    \textbf{Antwort:} Fehlende Moderation. Bilder müssen vor dem LLM-Call durch die Moderations-API auf NSFW/Gewalt geprüft werden.
-
-    \item \textbf{`temperature=0.0`, Output weicht trotzdem ab. Wie Determinismus erhöhen?}
-
-    \textbf{Antwort:} `seed` Parameter setzen und den `system\_fingerprint` in der Response überwachen. (100\% Determinismus gibt es bei GPUs nie).
-
-    \item \textbf{Prompt-Caching bei [User-Frage] + [RAG] + [System]. Fehler?}
-
-    \textbf{Antwort:} Invalidiert Prefix sofort. Korrekt: [System] + [RAG] + [User-Frage].
-
-    \item \textbf{`presence\_penalty=2.0` für Python-Code. Modell halluziniert. Warum?}
-
-    \textbf{Antwort:} Penalty bestraft Wiederholungen. Bei Code sind Schlüsselwörter (def, return) essenziell. Für Code: Penalties auf 0 setzen.
-
-    \item \textbf{400 Bad Request bei OpenAI → Fallback zu Anthropic triggern?}
-
-    \textbf{Antwort:} Nein. 400 ist ein Client-Fehler (falsches Schema/Auth). Der Fallback würde auch fehlschlagen. Fallbacks nur bei 5xx oder 429.
-
-
-\end{enumerate}
-
 % ===========================================================%
 % WEITERFÜHRENDE RESSOURCEN
-% ===========================================================%
+% ============================================================
 \section{Weiterführende Ressourcen}
 
 \subsection{Dokumentationen}

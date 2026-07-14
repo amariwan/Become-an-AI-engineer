@@ -20,22 +20,26 @@ Nach diesem Kapitel kannst du:
 % ============================================================
 \section{Motivation}
 
-Prompt Engineering ist 2026 die \textbf{wichtigste Programmierschnittstelle} zwischen Mensch und Maschine. Anders als klassisches Software Engineering, wo Code deterministisch ausgeführt wird, interagiert Prompt Engineering mit einem probabilistischen System. Du schreibst keinen Code, der genau eine Sache tut -- du formulierst Instruktionen, die ein trainiertes Modell interpretiert.
+Prompt Engineering ist die \textbf{wichtigste Programmierschnittstelle} zwischen Mensch und Maschine. Anders als klassisches Software Engineering, wo Code deterministisch ausgeführt wird, interagiert Prompt Engineering mit einem probabilistischen System. Du schreibst Code, der von einem trainierten Modell interpretiert wird -- nicht deterministisch, sondern als Wahrscheinlichkeitsverteilung.
 
-Die Konsequenz: Derselbe Prompt liefert nicht immer dieselbe Antwort. Ein kleiner Unterschied in der Formulierung ("klassifiziere" vs. "kategorisiere") kann die Ergebnisse verändern. Ohne systematisches Prompt Engineering produzieren LLM-Integrationen inkonststente, unzuverlässige Ergebnisse.
+Derselbe Prompt liefert nicht immer dieselbe Antwort. Ein Unterschied in der Formulierung ("klassifiziere" vs. "kategorisiere") kann Ergebnisse verändern. Ohne systematisches Prompt Engineering produzieren LLM-Integrationen inkonsistente Ergebnisse.
 
-In der Praxis zeigt sich: Unternehmen mit \textbf{strukturiertem Prompt Engineering} haben 3--5x niedrigere Fehlerraten und 40--60\,\% niedrigere Token-Kosten als solche, die Prompts ad hoc formulieren. Prompt Engineering ist kein "Schreiben einer guten Frage" -- es ist eine systematische Engineering-Disziplin.
+Unternehmen mit \textbf{strukturiertem Prompt Engineering} haben 3--5x niedrigere Fehlerraten und 40--60\,\% niedrigere Token-Kosten. Prompt Engineering ist kein "Schreiben einer guten Frage" -- es ist eine systematische Engineering-Disziplin.
 
 % ============================================================
 % GRUNDLAGEN
 % ============================================================
 \section{Grundlagen -- Was ist Prompt Engineering?}
 
-Prompt Engineering ist die Kunst und Wissenschaft, Eingabe-Anweisungen (Prompts) so zu formulieren, dass ein LLM die gewünschte Ausgabe liefert -- konsistent, verlässlich und effizient.
+Prompt Engineering formuliert Eingabe-Anweisungen (Prompts), damit ein LLM konsistent, verlässlich und effizient die gewünschte Ausgabe liefert.
 
-Während Software-Entwickler:innen Code schreiben, um Maschinen zu instruieren, schreiben AI Engineer:innen Prompts, um KI-Modelle zu instruieren -- beide tun im Grunde dasselbe: Sie definieren die Logik eines Systems. Der Unterschied: Code ist deterministisch, ein Prompt ist eine Wahrscheinlichkeitsverteilung über Token-Sequenzen.
+Software-Entwickler:innen schreiben Code, um Maschinen zu instruieren. AI Engineer:innen schreiben Prompts, um KI-Modelle zu instruieren. Beide definieren die Logik eines Systems. Der Unterschied: Code ist deterministisch, ein Prompt ist eine Wahrscheinlichkeitsverteilung über Token-Sequenzen.
 
 \subsection{Die drei Ebenen eines Prompts}
+
+\begin{praxishinweis}
+Jeder Prompt hat drei Ebenen: Instruktion (was tun), Kontext (worum geht es), Metaebene (wie denken). Fehlt eine, rät das Modell. Explizite Metaebene -- Persona, Ton, Format -- ist der einfachste Hebel für konsistente Ergebnisse.
+\end{praxishinweis}
 
 Jeder Prompt hat drei implizite Ebenen:
 
@@ -170,7 +174,9 @@ Die Few-Shot-Beispiele erfüllen drei Funktionen:
 
 Längere Prompts sind nicht automatisch besser. Es gibt ein \textbf{Rezeptivitäts-Maximum}: Ab einer bestimmten Länge (ca. 2.000--4.000 Tokens Instruktion) wird das Modell \textit{weniger} genau, nicht mehr. Der Grund: Die Aufmerksamkeit des Modells verteilt sich über mehr Tokens, und die Kern-Instruktion "verschwimmt" im Rauschen.
 
-\textbf{Faustregel}: Instruktionen so kurz wie möglich, Beispiele so viele wie nötig, Kontext so wenig wie möglich.
+\begin{praxishinweis}
+Faustregel: Instruktionen so kurz wie möglich, Beispiele so viele wie nötig, Kontext so wenig wie möglich. Messen statt raten -- \texttt{prompt\_efficiency\_score()} im Performance-Abschnitt hilft, die optimale Länge zu finden.
+\end{praxishinweis}
 
 % ============================================================
 % PRAXIS: ALLE TECHNIKEN
@@ -429,6 +435,10 @@ ReAct & 2--5x & +50\,\% bei Multi-Step \\
 \label{tab:latency-quality}
 \end{table}
 
+\begin{praxishinweis}
+Prompt-Länge ist nicht nur Qualität, sondern auch Kosten. Ein Prompt mit 4.000 Tokens kostet 4x mehr als einer mit 1.000 Tokens -- bei oft nur marginalem Qualitätsgewinn. Miss die \texttt{prompt\_efficiency\_score()} und optimiere auf Tokens pro Qualitätspunkt.
+\end{praxishinweis}
+
 \subsection{Prompt-Caching für sich wiederholende System-Prompts}
 
 System-Prompts und Few-Shot-Beispiele ändern sich selten. Nutze Prompt-Caching:
@@ -499,6 +509,10 @@ def safe_prompt(user_input: str) -> list[dict]:
     \item \textbf{Audit-Log}: Jeden Prompt + Response loggen für Forensik
 \end{enumerate}
 
+\begin{praxishinweis}
+Prompt-Injection ist kein theoretisches Problem. Jeder User-Input kann schädliche Anweisungen enthalten. Die goldene Regel: User-Input niemals in den System-Prompt interpolieren. XML-Tags, Rollen-Isolation und Output-Filter sind die Minimal-Absicherung für Produktion.
+\end{praxishinweis}
+
 % ===========================================================%
 % ZUSAMMENFASSUNG
 % ===========================================================%
@@ -550,56 +564,6 @@ Baue ein vollständiges Prompt-Engineering-System für einen E-Commerce-Support-
 \textbf{Testdaten:} 20 Support-Tickets (10 normal, 5 kritisch, 5 Prompt-Injection-Versuche).
 
 \textbf{Erfolgskriterium:} Der Classifier erzielt >90\,\% Accuracy. Prompt-Injection-Versuche werden zu 100\,\% erkannt und abgewiesen. Die Token-Kosten sind dokumentiert.
-
-% ============================================================
-% INTERVIEWFRAGEN
-% ============================================================
-\section{Interviewfragen}
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Zero-Shot vs Few-Shot in Produktion?}
-
-    \textbf{Antwort:} Zero-Shot ist günstiger. Few-Shot (3–5 Beispiele) erhöht die Zuverlässigkeit um 20-30\%, kostet aber mehr Input-Tokens.
-
-    \item \textbf{Wann nutzt du Chain-of-Thought (CoT)?}
-
-    \textbf{Antwort:} Bei logischen, mathematischen oder mehrstufigen analytischen Aufgaben. Zwingt das LLM, Zwischenschritte im KV-Cache auszurollen.
-
-    \item \textbf{Schutz vor Prompt-Injection in Produktion?}
-
-    \textbf{Antwort:} User-Input in `<user\_input>` XML-Tags isolieren, Input-Sanitization und Output über DLP-Scanner prüfen.
-
-    \item \textbf{Self-Consistency Pattern?}
-
-    \textbf{Antwort:} Das LLM generiert parallel 5 Antworten via Temperatur > 0. Eine Majority-Vote Logik wählt das finale Ergebnis.
-
-    \item \textbf{Wie versionierst und verwaltest du Prompts im Team?}
-
-    \textbf{Antwort:} Als Code. `.jinja2` Templates im Git-Repo, deployt in eine Model-Registry oder Feature-Store, validiert über CI/CD-Evals.
-
-    \item \textbf{ReAct vs einfaches Tool Calling?}
-
-    \textbf{Antwort:} Tool Calling führt exakt ein Tool aus. ReAct evaluiert das Ergebnis in einer internen Schleife und entscheidet dynamisch über weitere Schritte.
-
-    \item \textbf{Was ist "Negative Prompting" und wann versagt es?}
-
-    \textbf{Antwort:} Anweisungen wie "Verwende keine Metaphern". Versagt oft bei LLMs, da das Konzept (Metapher) dadurch in der Attention-Matrix aktiviert wird. Besser: Positiv formulieren ("Schreibe extrem sachlich").
-
-    \item \textbf{Du hast 50 Few-Shot Beispiele. Alle reinladen?}
-
-    \textbf{Antwort:} Nein (Token-Verschwendung und Lost-in-the-middle). Dynamisches Few-Shotting: Die User-Query embedden und via Vector-Search nur die 3 relevantesten Beispiele in den Prompt laden.
-
-    \item \textbf{Chain-of-Verification Architektur?}
-
-    \textbf{Antwort:} LLM 1 generiert Baseline-Antwort. LLM 2 generiert Verifizierungsfragen dazu. LLM 3 beantwortet diese unabhängig. LLM 4 schreibt finale, korrigierte Antwort.
-
-    \item \textbf{Prompt-Qualität evaluieren nach Anpassungen?}
-
-    \textbf{Antwort:} Über ein Golden Dataset (Ground Truth). Automatischer CI-Run misst Accuracy, Precision und Token-Effizienz (LLM-as-a-Judge).
-
-
-\end{enumerate}
-
 
 % ===========================================================%
 % WEITERFÜHRENDE RESSOURCEN

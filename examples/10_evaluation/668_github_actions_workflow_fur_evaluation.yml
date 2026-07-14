@@ -1,0 +1,23 @@
+# GitHub-Actions-Workflow für Evaluation
+# Quelle: chapters/10_evaluation.tex (Zeile 668)
+# .github/workflows/eval.yml
+# name: LLM Evaluation Pipeline
+# on: [push, pull_request]
+# jobs:
+#   evaluate:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+#       - name: Run Golden Dataset eval
+#         run: python eval/run_golden.py --dataset golden_v3.json
+#         env:
+#           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+#       - name: Check pass rate
+#         run: |
+#           PASS_RATE=$(python eval/check_results.py)
+#           if (( $(echo "$PASS_RATE < 0.85" | bc -l) )); then
+#             echo "FAIL: Pass rate $PASS_RATE below threshold 0.85"
+#             exit 1
+#           fi
+#           echo "PASS: Pass rate $PASS_RATE"
+

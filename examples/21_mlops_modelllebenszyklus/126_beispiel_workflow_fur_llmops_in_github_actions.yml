@@ -1,0 +1,30 @@
+# Beispiel-Workflow für LLMOps in GitHub Actions
+# Quelle: chapters/21_mlops_modelllebenszyklus.tex (Zeile 126)
+name: LLMOps Pipeline
+on: [pull_request, push]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Prompt lint
+        run: python scripts/prompt_lint.py prompts/
+      - name: Run golden dataset tests
+        run: python scripts/evaluate_golden.py
+      - name: Validate JSON schema
+        run: python scripts/validate_output_schema.py
+
+  canary:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy canary
+        run: ./scripts/deploy_canary.sh
+      - name: Run canary smoke tests
+        run: python scripts/canary_smoke_test.py
+

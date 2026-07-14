@@ -1,4 +1,4 @@
-\chapter{Die Model-Landschaft 2026 -- Ein Vergleich}
+\chapter{Die Model-Landschaft -- Ein Vergleich}
 \label{chap:model_landschaft}
 
 % ============================================================
@@ -15,20 +15,24 @@ Nach diesem Kapitel kannst du:
 \end{itemize}
 \end{lernziele}
 
+\begin{merke}
+\textbf{Modellnamen im Wandel:} Dieses Kapitel nennt konkrete Modellnamen (GPT-4o, Claude~4, Gemini~2.5) als Beispiele zum Zeitpunkt der Drucklegung. Die Modell-Landschaft verändert sich rasant -- neue Versionen erscheinen monatlich. Die grundlegenden Konzepte der Modellklassen (Flaggschiff, effizient, spezialisiert) und Architekturentscheidungen bleiben davon unberührt. Prüfe die aktuellen Benchmark-Tabellen und Preislisten der Anbieter, bevor du eine Architekturentscheidung triffst.
+\end{merke}
+
 % ============================================================
 % MOTIVATION
 % ============================================================
 \section{Motivation}
 
-2026 gibt es nicht \glqq das eine beste Modell\grqq{}. Es gibt Dutzende Modelle, die sich in Preis, Leistung, Latenz, Kontextfenster und Sicherheit stark unterscheiden. Die Wahl des falschen Modells kostet Unternehmen täglich tausende Euro -- entweder durch überhöhte API-Kosten (zu teures Modell), durch schlechte Ergebnisse (falsche Modell-Familie) oder durch Ausfallrisiken (Single-Provider-Abhängigkeit).
+Es gibt nicht \glqq das eine beste Modell\grqq{}. Dutzende Modelle unterscheiden sich in Preis, Leistung, Latenz, Kontextfenster und Sicherheit. Die Wahl des falschen Modells kostet Unternehmen täglich tausende Euro -- durch überhöhte API-Kosten, schlechte Ergebnisse oder Ausfallrisiken (Single-Provider-Abhängigkeit).
 
 Ein AI Engineer muss die Landschaft nicht nur kennen, sondern aktiv steuern können: Wann setzt man GPT-4o-mini ein, wann Llama 3 lokal, wann DeepSeek R1 für Reasoning? Welche Modelle tauscht man aus, wenn der Preis steigt? Welcher Provider bietet EU-Datenhaltung?
 
-Dieses Kapitel gibt dir einen strukturierten Überblick über den Modell-Markt 2026, eine Entscheidungsmatrix für die tägliche Arbeit und die Werkzeuge, um Modell-Entscheidungen systematisch zu treffen.
+Dieses Kapitel gibt einen strukturierten Überblick über den Modell-Markt, eine Entscheidungsmatrix und die Werkzeuge, um Modell-Entscheidungen systematisch zu treffen.
 
 \section{Die Architektur des modernen AI-Stacks}
 
-Bevor wir die einzelnen Modelle vergleichen, lohnt ein Blick auf das Gesamtsystem. Ein LLM allein ist selten die Lösung -- es ist eine Komponente in einem größeren Stack. 2026 hat sich eine vierschichtige Architektur als Standard etabliert:
+Bevor wir die einzelnen Modelle vergleichen, lohnt ein Blick auf das Gesamtsystem. Ein LLM allein ist selten die Lösung -- es ist eine Komponente in einem größeren Stack. Eine vierschichtige Architektur hat sich als Standard etabliert:
 
 \begin{verbatim}
    +------------------------------------------------------------+
@@ -174,18 +178,22 @@ Benchmarks wie MMLU, HumanEval, GSM8K oder Chatbot Arena geben einen Hinweis auf
 
 \begin{description}[leftmargin=*,style=nextline]
     \item[Quantisierung] Reduktion der Parameter-Genauigkeit von FP16 auf INT8 oder FP4. Reduziert Speicherbedarf um 50--75\,\% bei geringem Qualitätsverlust. Unverzichtbar für Self-Hosting.
-    \item[Context Window] Die maximale Token-Anzahl, die ein Modell in einem Durchlauf verarbeiten kann. 2026 zwischen 8K (klein) und 2M (Experimental).
-    \item[Knowledge Cutoff] Das Datum, bis zu dem das Modell trainiert wurde. Modelle mit Cutoff 2025 kennen keine Ereignisse von 2026.
+    \item[Context Window] Die maximale Token-Anzahl, die ein Modell in einem Durchlauf verarbeiten kann. Zwischen 8K (klein) und 2M (Experimental).
+    \item[Knowledge Cutoff] Das Datum, bis zu dem das Modell trainiert wurde. Modelle kennen keine Ereignisse nach ihrem Cutoff.
     \item[Open Weight] Die Modellgewichte sind öffentlich verfügbar, aber die Trainingsdaten sind es nicht.
     \item[Open Source] Modellgewichte \textit{und} Trainingscode/-daten sind öffentlich. Sehr selten bei großen Modellen.
 \end{description}
+
+\begin{praxishinweis}
+Bevor du Modelle vergleichst, kenne deine Anforderungen: Brauchst du Spitzenqualität, minimale Kosten, niedrige Latenz oder Datenhoheit? Keine Benchmark-Tabelle der Welt kann diese Frage beantworten -- nur dein eigener Anwendungsfall.
+\end{praxishinweis}
 
 % ============================================================
 % DER MARKT IM ÜBERBLICK (existiert)
 % ============================================================
 \section{Der Markt im Überblick}
 
-Im Jahr 2026 hat sich die Model-Landschaft von einem offenen zu einem oligopolistischen Feld entwickelt, in dem drei Akteure (\textbf{OpenAI}, \textbf{Anthropic} und \textbf{Google}) die Closed-Source-Spitze dominieren, während \textbf{Meta (Llama)}, \textbf{Mistral} und \textbf{Qwen} den Open-Source-Markt steuern.
+Die Model-Landschaft hat sich von einem offenen zu einem oligopolistischen Feld entwickelt: drei Akteure (\textbf{OpenAI}, \textbf{Anthropic} und \textbf{Google}) dominieren die Closed-Source-Spitze, während \textbf{Meta (Llama)}, \textbf{Mistral} und \textbf{Qwen} den Open-Source-Markt steuern.
 
 \begin{table}[H]
 \centering
@@ -202,7 +210,7 @@ Alibaba & Qwen 2.5 & Stärkste Konkurrenz aus Asien \\
 DeepSeek & R1 / V3 & Preisbrecher, Reasoning auf o1-Niveau \\
 \bottomrule
 \end{tabularx}
-\caption{Marktübersicht der wichtigsten Model-Anbieter 2026}
+\caption{Marktübersicht der wichtigsten Model-Anbieter}
 \label{tab:markt}
 \end{table}
 
@@ -245,6 +253,10 @@ Googles Gemini-Reihe punktet mit Multimodalität und der tiefsten Cloud-Integrat
 \end{itemize}
 
 Besonderheit: Gemini unterstützt Kontextfenster bis zu 1 Million Tokens -- das längste aller kommerziellen Modelle.
+
+\begin{praxishinweis}
+Kein Closed-Source-Modell ist universell überlegen. GPT-4o glänzt bei Geschwindigkeit und Tool-Use, Claude bei Safety und langen Kontexten, Gemini bei Multimodalität. Teste alle drei auf deinen Daten, bevor du dich festlegst.
+\end{praxishinweis}
 
 % ============================================================
 % ARCHITEKTUR
@@ -394,6 +406,10 @@ Chinesische Modelle gewinnen rasant an Qualität:
     \item \textbf{DeepSeek V3:} Allgemeines Modell, konkurriert mit GPT-4o zu 10\,\% der Kosten.
 \end{itemize}
 
+\begin{praxishinweis}
+Open-Source-Modelle wie Llama oder Mistral sind eine ernsthafte Alternative, nicht nur eine Notlösung. Rechne durch: Ab ca. 1 Mio. API-Anfragen/Monat kann Self-Hosting günstiger sein -- bei voller Datenkontrolle.
+\end{praxishinweis}
+
 % ============================================================
 % CLOUD-PLATTFORMEN (existiert)
 % ============================================================
@@ -415,7 +431,7 @@ Together AI & Schnellstes Self-Hosting mit Llama \& Qwen \\
 Groq & Extrem schnelle Inference (LPU-Technologie) für Open-Source-Modelle \\
 \bottomrule
 \end{tabularx}
-\caption{Cloud-KI-Plattformen 2026}
+\caption{Cloud-KI-Plattformen}
 \label{tab:cloud}
 \end{table}
 
@@ -480,6 +496,10 @@ Ein europäisches Fintech mit regulatorischen Anforderungen setzt auf drei Provi
 
 \textbf{Ergebnis:} 99,95\,\% Verfügbarkeit des KI-Service über 12 Monate.
 
+\begin{praxishinweis}
+Multi-Provider ist kein Luxus, sondern betriebliche Notwendigkeit. Ein einziger Provider bedeutet Single Point of Failure -- inklusive Preisrisiko. Drei Provider mit automatischem Fallback sind der Mindeststandard für Produktion.
+\end{praxishinweis}
+
 % ===========================================================%
 % ENTSCHEIDUNGSMATRIX (existiert)
 % ============================================================
@@ -507,6 +527,10 @@ Multi-Modal (Bild+Audio) & GPT-4o oder Gemini Ultra & Claude (nur Text) \\
 \label{tab:empfehlungen}
 \end{table}
 
+\begin{praxishinweis}
+Die Entscheidungsmatrix ist ein Ausgangspunkt, nicht das letzte Wort. Jedes Team sollte ein eigenes Golden Dataset mit 100--500 repräsentativen Queries aufbauen und Modelle regelmäßig dagegen testen. Preise ändern sich, neue Modelle kommen -- deine Evaluierung muss mitwachsen.
+\end{praxishinweis}
+
 % ===========================================================%
 % CODEBEISPIELE (existiert, erweitert)
 % ============================================================
@@ -520,14 +544,15 @@ Ein praktischer AI Engineer wechselt oft zwischen Modellen -- daher ein Beispiel
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-import openai, anthropic
+import openai
+import anthropic
 
 
 class Provider(Enum):
     OPENAI = openai
     ANTHROPIC = anthropic
-    GOOGLE = google
-    LOCAL = local
+    GOOGLE = "google"
+    LOCAL = "local"
 
 @dataclass
 class QueryResult:
@@ -659,7 +684,7 @@ async function routeRequest(
 \begin{itemize}[leftmargin=*]
     \item \textbf{Das beste Modell für alles}: Kein Modell ist universal am besten. Für 80\,\% der Tasks reicht GPT-4o-mini -- die anderen 20\,\% benötigen spezifische Stärken.
     \item \textbf{Vendor-Lock-in}: Zu tiefe Integration in einen Provider (z.\,B. Anthropic-spezifische Tool-Syntax) macht den Wechsel teuer. Abstrahierte Clients sind wertvolle Absicherung.
-    \item \textbf{Vernachlässigung von Open Source}: Open-Source-Modelle sind 2026 so gut, dass sie für viele Use-Cases die API-Kosten komplett ersetzen können -- besonders mit Quantisierung.
+    \item \textbf{Vernachlässigung von Open Source}: Open-Source-Modelle sind so gut, dass sie für viele Use-Cases die API-Kosten ersetzen können -- besonders mit Quantisierung.
     \item \textbf{Benchmark-Jagd}: Ein Modell nur nach MMLU-Score auswählen, ohne die eigenen Anforderungen zu testen.
     \item \textbf{Kein Fallback}: Ein einziger Provider, kein Backup. Fällt dieser aus, steht das gesamte System.
     \item \textbf{Immer das neueste Modell}: Neue Modelle haben oft Kinderkrankheiten. Warte 2--4 Wochen nach Release, bevor du in Produktion gehst.
@@ -687,7 +712,7 @@ Llama 3 (70B, lokal) & 0,00 \$ (Strom) & 0,00 \$ & 500--1500 ms & 128K \\
 Mistral Large 2 & 2,00 \$ & 6,00 \$ & 600--1200 ms & 128K \\
 \bottomrule
 \end{tabularx}
-\caption{Vollständiger Kosten- und Performance-Vergleich (Stand 2026)}
+\caption{Vollständiger Kosten- und Performance-Vergleich}
 \label{tab:vollvergleich}
 \end{table}
 
@@ -740,7 +765,7 @@ Self-Hosted & Volle Kontrolle. Verantwortung für Sicherheit liegt beim Betreibe
 
 \begin{itemize}[leftmargin=*]
     \item Die Closed-Source-Spitze besteht aus OpenAI (GPT-4o, o-Series), Anthropic (Claude) und Google (Gemini) -- jedes mit eigenen Stärken
-    \item Llama (Meta), Mistral, Qwen und DeepSeek dominieren den Open-Source-Bereich und werden 2026 immer besser
+    \item Llama (Meta), Mistral, Qwen und DeepSeek dominieren den Open-Source-Bereich
     \item Cloud-Plattformen (Azure AI, AWS Bedrock, Vertex AI) bieten modellübergreifende Verwaltung und Enterprise-Features
     \item Die Modellwahl hängt stark vom Use-Case ab: Reasoning (o1), Qualität (Sonnet/4o), Kosten (mini/Haiku), Datenhoheit (Llama selbst gehostet)
     \item Ein Multi-Provider-Routing senkt Kosten um 30--50\,\% und erhöht Verfügbarkeit
@@ -755,7 +780,7 @@ Self-Hosted & Volle Kontrolle. Verantwortung für Sicherheit liegt beim Betreibe
 \begin{itemize}
     \item \textbf{Kein Modell ist für alles optimal.} Die Kunst liegt im Routing.
     \item \textbf{GPT-4o-mini reicht für 80\,\% aller Aufgaben.} Teure Modelle nur bei konkretem Mehrwert.
-    \item \textbf{Open Source ist 2026 gleichauf} mit Closed Source in den meisten Domänen.
+    \item \textbf{Open Source ist gleichauf} mit Closed Source in den meisten Domänen.
     \item \textbf{Abstraktion ist Überleben.} Ein Multi-Provider-Client ist kein Luxus, sondern Versicherung.
     \item \textbf{Preise ändern sich monatlich.} Ein Review-Rhythmus von 3 Monaten ist Pflicht.
 \end{itemize}
@@ -788,55 +813,6 @@ Jede Anfrage verbraucht durchschnittlich 500 Input-Tokens und 200 Output-Tokens.
 \textbf{Zusatz:} Baue ein Python-Skript, das diese Kosten dynamisch berechnet -- mit Konfiguration für Preise und Verteilung.
 
 \textbf{Erfolgskriterium:} Du kannst die Kostenersparnis durch Routing beziffern und erklären, warum pauschale Modell-Entscheidungen teuer sind.
-
-% ============================================================
-% INTERVIEWFRAGEN
-% ============================================================
-\section{Interviewfragen}
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Junior will 8x7B MoE-Modell auf 16-GB-GPU hosten. Denkfehler?}
-
-    \textbf{Antwort:} Alle Gewichte (ca. 47B) müssen im VRAM liegen für das Routing, nicht nur die pro Token aktivierten Parameter.
-
-    \item \textbf{Semantic Router (Mini -> Opus) führt zu 2 Sekunden TTFT. Bottleneck?}
-
-    \textbf{Antwort:} Sequenzielle Latenz. LLM-Calls in Reihe summieren sich. Lösung: Klassifikation durch lokale Modelle (FastText/BERT) mit 10ms Latenz ersetzen.
-
-    \item \textbf{Neues OS-Modell schlägt GPT-4o, versagt aber bei striktem JSON. Warum?}
-
-    \textbf{Antwort:} Mangelndes Alignment/Instruction Tuning für Formatvorgaben. Benchmarks testen oft nur Multiple-Choice.
-
-    \item \textbf{Fallback feuert bei 429 sofort gegen Anthropic. Beide Provider offline. Warum?}
-
-    \textbf{Antwort:} Thundering Herd Problem. Bei Ausfall wechseln alle User synchron zu B. Lösung: Exponential Backoff \& Jitter.
-
-    \item \textbf{CFO will Chatbot auf DeepSeek R1 umstellen für 90\% Kostensenkung. Veto-Grund?}
-
-    \textbf{Antwort:} Reasoning-Modelle (R1/o1) haben 5–15 Sekunden interne Chain-of-Thought vor dem ersten Output-Token. Tödlich für Echtzeit-Chat-UX.
-
-    \item \textbf{Was ist die einzige Zero-Trust-Architektur für LLMs?}
-
-    \textbf{Antwort:} Self-Hosting von Open-Weight-Modellen auf Air-Gapped On-Premise-Infrastruktur.
-
-    \item \textbf{Abstraktion: Feature braucht OpenAIs json\_schema, Anthropic bietet das nicht. Lösung?}
-
-    \textbf{Antwort:} Mapping auf Native Tool Calling (Function Calling) bei Anthropic, was das JSON-Format über Tool-Argumente erzwingt.
-
-    \item \textbf{70B auf INT4: Code hat Syntax-Fehler, Smalltalk geht. Warum?}
-
-    \textbf{Antwort:} Quantisierung zerstört feingranulare Gewichte. Code-Syntax ist hochsensibel, Smalltalk-Wahrscheinlichkeiten sind robuster.
-
-    \item \textbf{System-Prompt 1:1 von GPT-4o auf Claude 3.5 portiert. Claude weigert sich. Warum?}
-
-    \textbf{Antwort:} Unterschiedliches Alignment (Constitutional AI). Prompts sind nicht 1:1 portabel und müssen modell-spezifisch kalibriert werden.
-
-    \item \textbf{10.000 PDF-Verträge am Tag analysieren, System-Prompt immer gleich. Kosten-Hack?}
-
-    \textbf{Antwort:} Prompt Caching. Der statische System-Prompt muss exakt am Anfang (Prefix) des Arrays stehen, damit der Cache-Hit erfolgt.
-
-
-\end{enumerate}
 
 % ===========================================================%
 % WEITERFÜHRENDE RESSOURCEN

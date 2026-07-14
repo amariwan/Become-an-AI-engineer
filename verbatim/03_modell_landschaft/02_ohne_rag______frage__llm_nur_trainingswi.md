@@ -1,0 +1,17 @@
+# 03 modell landschaft – Block 2
+
+## Beschreibung
+
+\subsection{Layer 2: Retrieval-Augmented Generation}
+RAG gibt dem LLM Zugriff auf eine Wissensbasis -- Unternehmensdokumente, Richtlinien, Datenbanken, interne Wikis, aktuelle Kundeninformationen. Vor jeder Antwort wird relevantes Wissen abgefragt und als Kontext in den Prompt eingefügt.
+
+## Verbatim
+
+```
+   Ohne RAG:      [Frage] --> [LLM (nur Trainingswissen)] --> [Antwort]
+
+   Mit RAG:       [Frage] --> [Vector Search] --> [Relevante Doku]
+                                |
+                                v
+                   [LLM (Prompt + Doku)] --> [Antwort mit Fakten]
+```

@@ -83,6 +83,10 @@ Durchsatz & Viele Requests \textit{nacheinander} abgearbeitet & Continuous Batch
     \item[VRAM-Auslastung] Belegter Speicher durch Modellgewichte + KV-Cache + Overhead. Bestimmt die maximale Batch-Size.
 \end{description}
 
+\begin{praxishinweis}
+TTFT und TPOT sind die zwei Metriken, die User wirklich spüren. TTFT $<$ 500ms für Streaming, TPOT $<$ 30ms pro Token. Misst immer den P95-Wert -- der Durchschnitt lügt bei Latenz.
+\end{praxishinweis}
+
 % ============================================================
 % ARCHITEKTUR
 % ============================================================
@@ -112,7 +116,7 @@ Ein produktionsreifer Inference-Server besteht aus mehreren Schichten:
 
 \subsection{vLLM und PagedAttention}
 
-vLLM (\href{https://github.com/vllm-project/vllm}{github.com/vllm-project/vllm}) ist der dominierende Open-Source-Inference-Server 2026. Seine Kerninnovation ist \textbf{PagedAttention} -- eine Speicherverwaltung für den KV-Cache, inspiriert von virtuellen Speicherseiten in Betriebssystemen.
+vLLM (\href{https://github.com/vllm-project/vllm}{github.com/vllm-project/vllm}) ist der dominierende Open-Source-Inference-Server. Seine Kerninnovation ist \textbf{PagedAttention} -- eine Speicherverwaltung für den KV-Cache, inspiriert von virtuellen Speicherseiten in Betriebssystemen.
 
 Das Problem: Der KV-Cache wächst mit der Sequenzlänge und ist fragmentiert. Bei 2.000 Output-Tokens und einer Batch-Grösse von 8 belegt der KV-Cache für ein 70B-Modell rund 40~GB VRAM. PagedAttention alloziert den Cache in Seiten (Pages) fester Grösse und vermeidet Fragmentierung:
 
@@ -168,6 +172,10 @@ Ohne Batching wird jeder Request einzeln verarbeitet -- eine GPU ist zu 100\,\% 
 
 vLLM, TensorRT-LLM und TGI (Text Generation Inference von Hugging Face) unterstützen Continuous Batching nativ. Der Effekt: 2--5x höherer Durchsatz bei gleicher Hardware.
 
+\begin{praxishinweis}
+Continuous Batching ist kein magischer Turbo. Für interaktive Chat-Anwendungen kleine Batches (4-8) wählen, sonst leidet die TTFT. Für Batch-Jobs 32-64. Und immer \texttt{--enable-prefix-caching} aktivieren.
+\end{praxishinweis}
+
 % ===========================================================%
 % THEORIE
 % ============================================================
@@ -198,7 +206,7 @@ FP4 (FP4) & 4 & 35~GB & Mässiger Verlust \\
 
 \begin{description}[leftmargin=*,style=nextline]
     \item[GPTQ (Post-Training)] Kalibriert die Quantisierung mit einem kleinen Kalibrierungs-Dataset. Gut für GPU-Inference. Unterstützt von vLLM und AutoGPTQ.
-    \item[AWQ (Activation-Aware)] Berücksichtigt die Aktivierungsverteilung, nicht nur die Gewichte. Erhält mehr Qualität als GPTQ bei gleicher Bitrate. Aktuell (2026) der empfohlene Standard für GPU-Inference.
+    \item[AWQ (Activation-Aware)] Berücksichtigt die Aktivierungsverteilung, nicht nur die Gewichte. Erhält mehr Qualität als GPTQ bei gleicher Bitrate. Der empfohlene Standard für GPU-Inference.
     \item[GGUF (llama.cpp)] Format für CPU- und Mixed-Inference. Erlaubt heterogenes Computing (GPU + CPU). Standard für lokale und On-Device-Inference via Ollama, LM Studio.
     \item[Bitsandbytes (NF4)] Speziell für QLoRA-Fine-Tuning entwickelt. 4-Bit-NormalFloat-Format, optimiert für normalverteilte Gewichte.
 \end{description}
@@ -242,6 +250,10 @@ Quantisierung trifft nicht alle Fähigkeiten gleich. Allgemeine Sprachkompetenz 
 
 \textbf{Praxis-Regel:} Für 90\,\% der Produktionseinsätze reicht INT4 (AWQ). Nur für Code/Reasoning-Systeme INT8 oder FP16 verwenden.
 
+\begin{praxishinweis}
+Quantisierung nie blind deployen. Ein INT4-Modell verliert je nach Domäne 2--25\,\%. Golden Dataset auf FP16 und INT4 evaluieren -- erst dann entscheiden. Für Code und Mathematik lieber INT8 nehmen.
+\end{praxishinweis}
+
 % ===========================================================%
 % PRAXIS
 % ============================================================
@@ -260,7 +272,7 @@ Speculative Decoding beschleunigt die Token-Generierung, indem ein \textit{schne
 
 \paragraph{Ergebnis:} 2--3x schnellere Token-Generierung bei identischer Output-Qualität (verlustfrei!). Das Target-Modell akzeptiert oder verwirft die Draft-Token -- bei Ablehnung wird der korrekte Token berechnet.
 
-\paragraph{Voraussetzung:} Draft-Modell muss die gleiche Tokenizer-Vokabular haben wie das Target-Modell. In vLLM 2026 integriert:
+\paragraph{Voraussetzung:} Draft-Modell muss die gleiche Tokenizer-Vokabular haben wie das Target-Modell. In vLLM integriert:
 
 \begin{lstlisting}[language=bash, caption=Speculative Decoding in vLLM]
 vllm serve meta-llama/Llama-3.3-70B-Instruct \
@@ -268,6 +280,10 @@ vllm serve meta-llama/Llama-3.3-70B-Instruct \
     --num-speculative-tokens 5 \
     --tensor-parallel-size 4
 \end{lstlisting}
+
+\begin{praxishinweis}
+Speculative Decoding bringt 2-3x Speedup -- aber nur wenn Draft und Target denselben Tokenizer teilen. Prüft vor dem Deployment die Akzeptanzrate: unter 60\,\% lohnt sich der Overhead nicht.
+\end{praxishinweis}
 
 % ===========================================================%
 % BEST PRACTICES
@@ -329,13 +345,17 @@ AWQ~INT4 + Spec. Decode & 16 & 850ms & 18ms & 320 Tok/s \\
     \item \textbf{VRAM-Monitoring}: Wenn der KV-Cache den VRAM sprengt, crasht der Server. \texttt{--gpu-memory-utilization 0.90} als Sicherheitspuffer.
 \end{itemize}
 
+\begin{praxishinweis}
+Inference-Server sind kritische Infrastruktur. Immer hinter API-Gateway betreiben, Rate-Limiting aktivieren, Audit-Log führen. Und niemals \texttt{--gpu-memory-utilization 1.0} setzen -- der KV-Cache braucht Reserve für Spitzen.
+\end{praxishinweis}
+
 % ===========================================================%
 % ZUSAMMENFASSUNG
 % ===========================================================%
 \begin{zusammenfassung}
 \begin{itemize}[leftmargin=*]
     \item LLM-Inference hat zwei Phasen: Prefill (parallel, compute-bound) und Decode (sequentiell, memory-bound)
-    \item vLLM mit PagedAttention ist der Standard-Server 2026 -- bis zu 60\,\% weniger KV-Cache-Fragmentierung
+    \item vLLM mit PagedAttention ist der Standard-Server -- bis zu 60\,\% weniger KV-Cache-Fragmentierung
     \item Quantisierung (AWQ für GPU, GGUF für CPU) reduziert VRAM um 50--75\,\% bei geringem Qualitätsverlust
     \item Speculative Decoding beschleunigt Token-Generierung um 2--3x (verlustfrei)
     \item Continuous Batching erhöht GPU-Auslastung von 50\,\% auf 95\,\%+
@@ -364,56 +384,6 @@ Der Engpass der LLM-Inference ist nicht Rechenleistung, sondern Speicherbandbrei
 \end{enumerate}
 
 \textbf{Erfolgskriterium:} Du kannst begründen, welche Konfiguration für welchen Use-Case optimal ist.
-
-% ============================================================
-% INTERVIEWFRAGEN
-% ============================================================
-\section{Interviewfragen}
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Prefill- vs Decode-Phase. Wo liegt der Engpass?}
-
-    \textbf{Antwort:} Prefill (Prompt einlesen) = parallel, compute-bound. Decode (Token-Generierung) = sequentiell, memory-bound (KV-Cache Transfer). Decode ist bei LLMs der absolute Engpass.
-
-    \item \textbf{vLLM TTFT liegt bei 2,5s bei Batch=1. Optimierungen?}
-
-    \textbf{Antwort:} 1) Flash Attention 2/3. 2) Prefix Caching an. 3) Tensor Parallelism erhöhen. 4) INT8 KV-Cache aktivieren, um Memory-Bandwidth-Druck zu senken.
-
-    \item \textbf{Continuous Batching \& PagedAttention auf 4x A100 (70B Modell)?}
-
-    \textbf{Antwort:} Tensor Parallelism (TP=4). PagedAttention Block-Size auf 16 Tokens für minimale Fragmentierung. Chunked Prefill aktiv, um Compute-Bound und Memory-Bound Phasen optimal zu verschränken.
-
-    \item \textbf{KV-Cache Berechnung (Max Batch Size) für Hardware-Sizing?}
-
-    \textbf{Antwort:} VRAM = Model Weights + KV-Cache. KV-Cache = `2 * Layers * Hidden\_Dim * Seq\_Len * 2 Bytes (FP16)`. Der Rest-VRAM bestimmt, wie viele parallele Requests in den Batch passen.
-
-    \item \textbf{Speculative Decoding Draft-Model Auswahl?}
-
-    \textbf{Antwort:} Das Draft-Modell muss extrem klein (schnell) sein, aber aus derselben Tokenizer/Architektur-Familie stammen wie das Target-Modell. Die Akzeptanzrate (Verification) bestimmt den Speedup.
-
-    \item \textbf{GPTQ vs AWQ vs GGUF?}
-
-    \textbf{Antwort:} GPTQ/AWQ sind für GPU-Inference optimiert (AWQ hat meist bessere Accuracy). GGUF ist für CPU/Apple Silicon (llama.cpp) und Offloading-Strategien designt.
-
-    \item \textbf{Warum zerstört aggressive INT4 Quantisierung Python-Code Qualität?}
-
-    \textbf{Antwort:} Code-Syntax (Klammern, Indentation) verlässt sich auf fein kalibrierte Outlier-Gewichte in der Attention-Matrix. INT4 glättet diese. Abhilfe: INT8 oder Quantization-Aware-Training.
-
-    \item \textbf{MoE (Mixture of Experts) Inference-Overhead?}
-
-    \textbf{Antwort:} MoE aktiviert pro Token z.B. nur 14B von 47B Parametern (Compute billig), aber *alle* 47B Parameter müssen im schnellen VRAM vorgehalten werden (Memory extrem teuer).
-
-    \item \textbf{FlashAttention-3 Kern-Mechanik?}
-
-    \textbf{Antwort:} Tiling. Die extrem speicherintensive Attention-Matrix ($N \times N$) wird nie komplett im langsamen HBM der GPU materialisiert, sondern in Blöcken im schnellen SRAM berechnet (Memory I/O drastisch reduziert).
-
-    \item \textbf{CPU Offloading bei zu wenig VRAM (z.B. DeepSpeed ZeRO)?}
-
-    \textbf{Antwort:} Gewichte liegen im System-RAM und werden Block für Block via PCIe in den GPU-VRAM kopiert. Funktioniert, zerstört aber die Latenz (Tokens/s sinken massiv) durch den PCIe-Bottleneck.
-
-
-\end{enumerate}
-
 
 % ===========================================================%
 % RESSOURCEN

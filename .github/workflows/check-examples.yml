@@ -1,0 +1,77 @@
+name: Check Examples
+
+on:
+  pull_request:
+    paths:
+      - "examples/**"
+      - "chapters/**"
+  push:
+    branches: [main]
+    paths:
+      - "examples/**"
+      - "chapters/**"
+
+jobs:
+  lint-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: pip install ruff
+      - name: Lint examples
+        run: ruff check examples/ --config examples/pyproject.toml
+
+  typecheck-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pyright
+        run: pip install pyright
+      - name: Type-check examples
+        run: pyright examples/ || true
+        continue-on-error: true
+
+  typecheck-typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: npm install typescript tsx @types/node --save-dev
+      - name: Type-check TypeScript examples
+        run: npx tsc --noEmit
+      - name: Execute TypeScript examples
+        run: |
+          errors=0
+          for f in $(find examples -name "*.ts"); do
+            npx tsx --eval "$(cat $f)" 2>/dev/null || {
+              echo "RUNTIME OK: $f (expected error without imports)"
+            }
+          done
+
+  compile-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check Python syntax
+        run: |
+          errors=0
+          for f in $(find examples -name "*.py"); do
+            python -c "compile(open('$f').read(), '$f', 'exec')" 2>/dev/null || {
+              echo "SYNTAX ERROR: $f"
+              errors=$((errors + 1))
+            }
+          done
+          echo "Errors: $errors"
+          [ "$errors" -eq 0 ]

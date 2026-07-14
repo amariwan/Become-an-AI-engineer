@@ -62,6 +62,10 @@ Qualität bei Spezialisierung & Niedrig bis mittel & Mittel bis hoch & Hoch \\
     \item \textbf{Kombiniere alle drei}, wenn das Modell domänenspezifisch antworten \textit{und} auf aktuelle Daten zugreifen soll (Fine-Tuned Base + RAG-Layer).
 \end{itemize}
 
+\begin{praxishinweis}
+Die beste Architektur kombiniert alle drei: Prompt Engineering für den System-Prompt, RAG für aktuelle Fakten, Fine-Tuning für Format und Stil. Nicht entweder-oder, sondern alle drei geschichtet.
+\end{praxishinweis}
+
 % ===========================================================%
 % ARCHITEKTUR
 % ===========================================================%
@@ -189,6 +193,10 @@ model = get_peft_model(model, lora_config)
 
 QLoRA reduziert den VRAM-Bedarf drastisch: Ein 70B-Modell benötigt statt 140~GB nur noch \(\sim 38\)~GB und trainiert auf einer einzelnen A100~80GB.
 
+\begin{praxishinweis}
+QLoRA ist der Game-Changer für Teams ohne GPU-Cluster. 70B-Modell auf einer A80 fine-tunen -- aber aufgepasst: Das Basismodell in 4-Bit bedeutet leichten Qualitätsverlust. Für maximale Quality lieber 8B in FP16 mit LoRA.
+\end{praxishinweis}
+
 % ===========================================================%
 % PRAXIS
 % ===========================================================%
@@ -251,6 +259,10 @@ Deduplizierung & Exakt gleiche Paare entfernen (Levenshtein-Ähnlichkeit $>$ 0.9
 \caption{Dataset-Qualitätskriterien für Fine-Tuning}
 \label{tab:dataset-quality}
 \end{table}
+
+\begin{praxishinweis}
+500 qualitätsgeprüfte Beispiele schlagen 5.000 synthetische. Jeder Fehler im Dataset wird vom Modell gelernt. Manuelle Prüfung von 20\% aller Einträge ist Pflicht -- besonders bei synthetisch generierten Daten.
+\end{praxishinweis}
 
 \subsection{Dataset-Splits}
 
@@ -394,6 +406,10 @@ def evaluate_forgetting(model, tokenizer, benchmark):
         print("OK: Kein signifikanter Knowledge-Drift.")
 \end{lstlisting}
 
+\begin{praxishinweis}
+Forgetting-Check ist kein Nice-to-have. Ein FT-Modell, das auf SQL glänzt aber "Was ist 2+2?" nicht mehr beantwortet, ist unbrauchbar. Fix: 20-30\% generische Prompts im Dataset behalten.
+\end{praxishinweis}
+
 \subsection{Multi-LoRA-Serving}
 
 In Produktion willst du oft mehrere LoRA-Adapter parallel bereitstellen (ein Adapter für SQL, einer für E-Mail, einer für Code). vLLM unterstützt Multi-LoRA-Serving nativ:
@@ -416,6 +432,10 @@ response = client.chat.completions.create(
 \end{lstlisting}
 
 Der Adapter wird bei jedem Request dynamisch in den Forward-Pass eingeblendet -- ohne Modell-Neuladen. Der Speicher-Overhead pro Adapter beträgt nur einige MB.
+
+\begin{praxishinweis}
+Multi-LoRA-Serving ist der effizienteste Weg, mehrere spezialisierte Modelle zu betreiben. Das Basismodell bleibt 1x im VRAM, Dutzende Adapter teilen sich den Rest. Ideal für SQL-, E-Mail- und Code-Agents auf einer GPU.
+\end{praxishinweis}
 
 % ===========================================================%
 % BEST PRACTICES
@@ -480,56 +500,6 @@ Fine-Tuning ist kein Ersatz für RAG, sondern eine Ergänzung. RAG liefert Fakte
 \end{enumerate}
 
 \textbf{Erfolgskriterium:} Das Modell generiert korrektes SQL für 90\,\% der Test-Query. Die MMLU-Accuracy sinkt um maximal 5\,\%.
-
-% ============================================================
-% INTERVIEWFRAGEN
-% ============================================================
-\section{Interviewfragen}
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{LoRA-Mechanismus. Was ist der Rank (\$r\$)?}
-
-    \textbf{Antwort:} Statt Milliarden Gewichte anzupassen, lernt LoRA zwei kleine Low-Rank-Matrizen \$A\$ und \$B\$. Der Rank \$r\$ definiert die "Lernkapazität" (Dimension). Zu hoch = Overfitting, zu niedrig = Underfitting.
-
-    \item \textbf{Multi-LoRA Serving in Produktion?}
-
-    \textbf{Antwort:} Das schwere Basismodell (z.B. Llama 3) bleibt 1x im VRAM. Die winzigen LoRA-Adapter (wenige MB) werden per Request (Dynamic Adapter Loading) im vLLM on-the-fly in den Batch injiziert.
-
-    \item \textbf{Modell verlernt nach Fine-Tuning sein Allgemeinwissen. Fix?}
-
-    \textbf{Antwort:} Catastrophic Forgetting. Das Dataset muss Replay-Data (20-30\% alte, generische Prompts) enthalten, um die alten Gewichtungs-Cluster zu stabilisieren.
-
-    \item \textbf{DPO (Direct Preference Optimization) vs RLHF?}
-
-    \textbf{Antwort:} RLHF erfordert ein separates Reward-Model und komplexe PPO-Pipelines. DPO optimiert das Modell direkt mathematisch auf Basis von "Chosen vs. Rejected" Paaren. DPO ist leichter, billiger und stabiler.
-
-    \item \textbf{Wie bestimmst du die Lernrate für LoRA vs Full Fine-Tuning?}
-
-    \textbf{Antwort:} LoRA benötigt viel höhere Lernraten (z.B. `2e-4` bis `1e-3`), da von Null trainiert wird. Full Fine-Tuning nutzt minimale Raten (`1e-5`), da vortrainierte Strukturen zerstört werden könnten.
-
-    \item \textbf{Wann nutzt man Prefix-Tuning anstelle von LoRA?}
-
-    \textbf{Antwort:} Wenn man das Modellverhalten nur temporär für spezifische Tasks "lenken" will, ohne die Modellgewichte anzufassen (Virtuelle Tokens werden in den Attention-Head injiziert).
-
-    \item \textbf{Minimale Dataset-Größe für Format-Fine-Tuning (z.B. Custom JSON)?}
-
-    \textbf{Antwort:} Für reine Syntax-Imitation reichen 100-300 hochqualitative, diverse Beispiele. Quantität ist irrelevant, Data-Quality (keine Fehler im Target-Output) ist alles.
-
-    \item \textbf{Evaluierung während des Fine-Tunings?}
-
-    \textbf{Antwort:} Validation Set (20\% der Daten) nutzen. Den Validation-Loss überwachen. Steigt der Val-Loss während der Training-Loss sinkt, fängt das Modell an zu memorisieren (Overfitting) → Early Stopping.
-
-    \item \textbf{Merging: LoRA-Adapter dauerhaft ins Basismodell integrieren?}
-
-    \textbf{Antwort:} Via Weight-Merging Scripts (z.B. PEFT). Die $A \times B$ Matrix wird mathematisch auf die Basis-Gewichte addiert. Eliminiert den minimalen Inference-Overhead von LoRA.
-
-    \item \textbf{Hardware-Setup für 8B Modell Fine-Tuning (QLoRA)?}
-
-    \textbf{Antwort:} Basismodell in 4-Bit laden. Training auf einer Single-GPU mit 16-24GB VRAM (z.B. RTX 4090). Batch-Size 1-2 mit Gradient Accumulation, um VRAM-OOM zu verhindern.
-
-
-\end{enumerate}
-
 
 % ===========================================================%
 % RESSOURCEN

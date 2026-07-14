@@ -128,6 +128,10 @@ class ResponseCache:
 
 \textbf{Einsatzbereiche:} FAQ-Systeme, Statusabfragen, wiederkehrende Extraktionen, Template-basierte Responses.
 
+\begin{praxishinweis}
+Response Cache ist der einfachste Hebel. SHA-256-Hash über Messages + Model -- und 20-40\% der API-Calls verschwinden. Aber Vorsicht: personalisierte Antworten nie cachen, TTL immer setzen.
+\end{praxishinweis}
+
 % ===========================================================%
 % SEMANTIC CACHING
 % ===========================================================%
@@ -239,6 +243,10 @@ Der Similarity-Threshold bestimmt das Verhältnis von Cache-Hits zu Korrektheit:
 
 \textbf{Praxis:} Starte mit 0,92 für Support-Systeme, 0,88 für FAQ-Systeme. Bei false positives den Threshold erhöhen.
 
+\begin{praxishinweis}
+Semantischer Cache braucht dynamischen Threshold. Medizinische Fragen: 0.99 (fast Exact Match). Smalltalk: 0.85 reicht. Und immer TTL setzen -- ein gecachtes Modell-Update vom Januar darf nicht im Juni ausgeliefert werden.
+\end{praxishinweis}
+
 % ===========================================================%
 % SEMANTIC ROUTER
 % ===========================================================%
@@ -296,13 +304,13 @@ class SemanticRouter:
         prompt = (
             "Klassifiziere die folgende Anfrage in eine Kategorie.\n"
             f"- '{Intent.SIMPLE.value}': Einfache Frage, "
-            z.B. Status, Datum, Faktenabfrage\n"
+            f"z.B. Status, Datum, Faktenabfrage\n"
             f"- '{Intent.COMPLEX.value}': Komplexe Analyse, "
-            mehrschrittiges Reasoning, Vergleich\n"
+            "mehrschrittiges Reasoning, Vergleich\n"
             f"- '{Intent.CODE.value}': Code-Generierung, "
-            Debugging, SQL, Regex\n"
+            "Debugging, SQL, Regex\n"
             f"- '{Intent.REFUSAL.value}': Illegal, gefaehrlich, "
-            personenbezogene Daten, Passwoerter\n"
+            "personenbezogene Daten, Passwoerter\n"
             f"\nAnfrage: {query}\n"
             f"Antwort NUR mit dem Kategorie-String."
         )
@@ -365,6 +373,10 @@ Der Router selbst kostet einen zusätzlichen LLM-Call (GPT-4o-mini). Bei hohem V
     \item \textbf{kleiner Classifier}: Fine-getuntes MiniLM oder BERT für Intent-Klassifikation
     \item \textbf{Regel-basiert}: Regex-Patterns für einfache Intents (z.\,B. Bestellstatus, Öffnungszeiten)
 \end{itemize}
+
+\begin{praxishinweis}
+Der Router selbst kostet einen LLM-Call. Ab 10.000 Requests/Tag lohnt sich ein dedizierter Intent-Classifier (MiniLM/BERT). Und immer Fallback definieren -- falsch klassifizierte Requests dürfen nicht einfach verschwinden.
+\end{praxishinweis}
 
 % ===========================================================%
 % GUARDRAILS
@@ -474,11 +486,18 @@ print(f"PII found: {len(result['pii_found'])}")
 # -> Redacted: Meine E-Mail ist [REDACTED:email] ...
 \end{lstlisting}
 
+\begin{praxishinweis}
+PII-Redaktion vor dem LLM-Call ist kritisch. Sonst landen persönliche Daten im KV-Cache oder im Response Cache -- und werden an andere User ausgeliefert. Redigieren vor dem Caching, nicht danach.
+\end{praxishinweis}
+
 \subsection{Output Guard}
 
 Prüft die LLM-Ausgabe vor der Auslieferung an den User:
 
 \begin{lstlisting}[language=Python, caption=Output Guard mit Content-Filter und Schema-Validierung]
+from typing import Optional
+
+
 class OutputGuard:
     def __init__(self):
         self.blocked_categories = [
@@ -547,6 +566,10 @@ class OutputGuard:
         result["output"] = llm_output
         return result
 \end{lstlisting}
+
+\begin{praxishinweis}
+Output Guard muss serverseitig laufen -- Client-Prüfung ist umgehbar. Safety-Check mit kleinem Modell (GPT-4o-mini) reicht für 90\% der Fälle. Nur für sensible Domänen ein zweites, strengeres Modell nachschalten.
+\end{praxishinweis}
 
 % ===========================================================%
 % BUDGET CONTROL
@@ -630,6 +653,10 @@ def handle_request(user_id: str, query: str):
     return {"response": response, "cost": actual_cost}
 \end{lstlisting}
 
+\begin{praxishinweis}
+Budget-Controller ohne Alarm nützen nichts. Bei 80\% Tagesbudget Slack-Benachrichtigung, bei 100\% Request-Queue pausieren. Ein fehlerhafter Agent in einer Schleife kostet in Minuten hunderte Euro.
+\end{praxishinweis}
+
 % ===========================================================%
 % BEST PRACTICES
 % ===========================================================%
@@ -695,56 +722,6 @@ Caching ist der effektivste Hebel zur Kostensenkung in LLM-Systemen -- 20--40\,\
 \end{enumerate}
 
 \textbf{Erfolgskriterium:} Mindestens 25\,\% Cache-Hit-Rate, null PII-Leaks, null Budget-Überschreitungen.
-
-% ============================================================
-% INTERVIEWFRAGEN
-% ============================================================
-\section{Interviewfragen}
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{User bekommt Cache-Antwort mit privaten Daten eines anderen Users. Ursache?}
-
-    \textbf{Antwort:} PII wurde *nach* dem Caching maskiert. PII muss zwingend vor der Hash-/Vector-Generierung aus dem Payload entfernt werden.
-
-    \item \textbf{Semantic Router (Embedding-basiert) routet 20 \% falsch. Fix?}
-
-    \textbf{Antwort:} Confidence-Score Threshold tunen, Vektor-DB auf hochwertigeres Embedding-Modell umstellen und ein "Fallback-Intent" definieren, wenn die Distanz zu groß ist.
-
-    \item \textbf{Response Caching vs Semantic Caching?}
-
-    \textbf{Antwort:} Response = Exakter String-Hash (Redis). Semantic = Vektor-Suche, erkennt auch umformulierte Fragen ("Wie ist das Wetter?" = "Regnet es?"). Semantic erfordert einen Embedding-Call.
-
-    \item \textbf{Architektur von NeMo Guardrails / LlamaGuard?}
-
-    \textbf{Antwort:} Sie operieren als Middleware. Input-Rail blockt böse Prompts, Dialog-Rail erzwingt Flows (z.B. "Darf nicht über Politik reden"), Output-Rail scannt LLM-Antwort vor Delivery. Latenz-Tradeoff.
-
-    \item \textbf{Cache Invalidation Strategien bei Modellen?}
-
-    \textbf{Antwort:} Der Cache-Key muss zwingend die Modell-Version und den Hash des System-Prompts enthalten. Ändert sich der System-Prompt, wird der Cache für alle User automatisch invalidiert.
-
-    \item \textbf{Latenz-Impact von Input-Guardrails minimieren?}
-
-    \textbf{Antwort:} Keine schweren LLMs als Guard nutzen. Lokale BERT-Klassifikatoren oder Heuristiken (Regex) vorschalten, die asynchron in <10ms feuern.
-
-    \item \textbf{Dynamic Thresholding beim Semantic Cache?}
-
-    \textbf{Antwort:} Der Threshold (Similarity Score) wird je nach Domain angepasst. Bei medizinischen Fragen 0.99 (fast Exact Match nötig), bei Smalltalk reicht 0.85 für einen Cache-Hit.
-
-    \item \textbf{Denial-of-Wallet-Abwehr über Routing?}
-
-    \textbf{Antwort:} Wenn der Rate-Limiter zuschlägt, Request nicht droppen (schlechte UX), sondern hart auf ein extrem günstiges lokales Modell (CPU-basiert) oder GPT-4o-mini umrouten ("Degraded Mode").
-
-    \item \textbf{Kostenberechnung: Lohnt sich Semantic Caching?}
-
-    \textbf{Antwort:} Formel: $(Hits \times LLM\_Cost) - (Total\_Calls \times Embedding\_Cost)$. Caching lohnt sich finanziell nur, wenn die Embedding-Inference drastisch günstiger ist als der gesparte LLM-Aufruf.
-
-    \item \textbf{Wie baust du eine Fallback-Chain im Code robust ein?}
-
-    \textbf{Antwort:} Try-Catch Block mit Circuit-Breaker-Pattern (LiteLLM). Nach 3 fails auf Provider A öffnet sich der Circuit, und Provider B übernimmt für 5 Minuten den gesamten Traffic.
-
-
-\end{enumerate}
-
 
 % ===========================================================%
 % RESSOURCEN

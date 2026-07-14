@@ -1,0 +1,17 @@
+# 07 prompt design – Block 1
+
+## Beschreibung
+
+(keine direkte Beschreibung)
+
+## Verbatim
+
+```
+   Prompt = Instruktion + Kontext + Metacbene
+
+   [System] Du bist ein freundlicher Support-Agent.    <-- Metacbene
+            Klassifiziere Tickets nach Prioritaet.      <-- Instruktion
+            Tickets: {history}                          <-- Kontext
+
+   [User]  Mein Produkt ist kaputt!                    <-- Instruktion
+```

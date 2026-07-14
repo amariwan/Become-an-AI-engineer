@@ -1,0 +1,23 @@
+# 04 kontext preise – Block 3
+
+## Beschreibung
+
+Das wichtigste Kontext-Phänomen: Modelle schenken dem Anfang und Ende
+eines langen Prompts mehr Aufmerksamkeit als der Mitte. Studien zeigen,
+dass die Retrieval-Genauigkeit in der Mitte eines 100K-Kontexts um
+30--50\,\% niedriger sein kann als am Anfang oder Ende.
+
+## Verbatim
+
+```
+    Retrieval-Genauigkeit uber die Kontext-Position:
+
+    100% |\             /|
+         | \           / |
+    80%  |  \         /  |
+         |   \       /   |
+    60%  |    \-----/    |
+         | Anfang  Mitte  Ende
+    40%  +-------------------+
+             Kontext-Position
+```

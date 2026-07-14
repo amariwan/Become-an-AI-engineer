@@ -21,11 +21,11 @@ Nach diesem Kapitel kannst du:
 % ============================================================
 \section{Motivation}
 
-Ein einfacher LLM-Aufruf ist reaktiv: Prompt rein, Antwort raus, fertig. Für viele Anwendungen reicht das -- Klassifikation, Extraktion, Zusammenfassung. Aber sobald ein System \textbf{mehrere Schritte} ausführen muss, \textbf{Tools aufrufen} und \textbf{Ergebnisse interpretieren} soll, reicht ein einzelner Prompt nicht mehr.
+Ein einfacher LLM-Aufruf ist reaktiv: Prompt rein, Antwort raus. Für Klassifikation, Extraktion, Zusammenfassung reicht das. Aber sobald ein System \textbf{mehrere Schritte} ausführen, \textbf{Tools aufrufen} und \textbf{Ergebnisse interpretieren} muss, reicht ein einzelner Prompt nicht.
 
-Ein AI Agent ist genau das: Ein System, das LLMs als \textbf{Reasoning Engine} nutzt, um autonom Aufgaben zu planen und auszuführen. Der Agent entscheidet selbst, welche Tools er in welcher Reihenfolge aufruft, bewertet Zwischenergebnisse und passt seine Strategie an.
+Ein AI Agent nutzt LLMs als \textbf{Reasoning Engine}, um autonom Aufgaben zu planen und auszuführen. Der Agent entscheidet selbst, welche Tools in welcher Reihenfolge aufgerufen werden, bewertet Zwischenergebnisse und passt seine Strategie an.
 
-2026 sind AI Agents der dominierende Trend in der LLM-Entwicklung. Während 2023/2024 reine RAG-Systeme dominierten, setzen Produktionsteams heute auf agentische Systeme, die Recherche, Analyse, Entscheidung und Aktion in einem automatisierten Workflow vereinen.
+AI Agents sind der dominierende Trend in der LLM-Entwicklung. Reine RAG-Systeme waren der vorherige Standard; Produktionsteams setzen jetzt auf agentische Systeme, die Recherche, Analyse, Entscheidung und Aktion in einem automatisierten Workflow vereinen.
 
 \begin{verbatim}
    Prompt:        [User] --> [LLM] --> [Antwort]
@@ -45,9 +45,9 @@ Ein AI Agent ist genau das: Ein System, das LLMs als \textbf{Reasoning Engine} n
 
 \subsection{Der Bruch mit dem Prompt-Denken}
 
-Das klassische Prompt-Denken basiert auf Kontrolle im Moment. Du formulierst präzise, um das bestmögliche Ergebnis in einem einzelnen Schritt zu erhalten. Die Qualität hängt stark von deiner Fähigkeit ab, die Anfrage perfekt zu beschreiben. Das Problem: Jede neue Situation erfordert erneut Aufmerksamkeit, erneut Kontext, erneut Entscheidung.
+Prompt-Denken setzt auf Kontrolle im Moment: präzise formulieren für das beste Ergebnis in einem Schritt. Jede neue Situation erfordert neue Aufmerksamkeit, neuen Kontext, neue Entscheidung.
 
-Loops verschieben dieses Modell fundamental. Statt jede Entscheidung selbst zu treffen, definierst du einen Rahmen, innerhalb dessen Entscheidungen automatisch entstehen. Du steuerst nicht mehr den Output. Du steuerst das System, das den Output erzeugt.
+Loops verschieben das Modell. Statt jede Entscheidung selbst zu treffen, definierst du einen Rahmen, in dem Entscheidungen automatisch entstehen. Du steuerst nicht den Output. Du steuerst das System, das den Output erzeugt.
 
 \begin{verbatim}
    Prompt-Denken:    [Trigger] --> [LLM] --> [Antwort] --> Ende
@@ -261,6 +261,10 @@ Jeder AI Agent folgt einem Loop:
     \item[Planning] Der Agent entscheidet, welche Tools in welcher Reihenfolge aufgerufen werden. Bei einfachen Agenten geschieht das implizit (ReAct), bei komplexen explizit (Plan-and-Solve).
     \item[Orchestration] Bei Multi-Agent-Systemen: Wer ruft wen wann auf? Supervisor-Agenten verteilen Aufgaben an spezialisierte Worker.
 \end{description}
+
+\begin{praxishinweis}
+Tool-Beschreibungen sind die halbe Miete. Ein schlecht beschriebenes Tool wird nie aufgerufen. Jede Tool-Definition braucht: präzisen Namen, klaren Einsatzzweck, dokumentierte Parameter mit Beispielwerten. Maximal 5--10 Tools gleichzeitig -- bei mehr: hierarchische Tool-Auswahl.
+\end{praxishinweis}
 
 % ===========================================================%
 % ARCHITEKTUR
@@ -895,6 +899,10 @@ Lernkurve & Niedrig & Mittel & Steil \\
 
 \subsection{Fehlermodi in Multi-Agent-Systemen}
 
+\begin{praxishinweis}
+Multi-Agent-Systeme multiplizieren Kosten und Latenz: 5 Agenten × 3 Schritte × 4 LLM-Calls = 60 Calls pro Task. Immer Budget-Limits setzen und Modell-Tiering nutzen (günstiges Modell für Routine, teures für Reasoning). Ein einzelner Prompt reicht oft -- Agent nur bei Multi-Step-Aufgaben mit Tool-Bedarf.
+\end{praxishinweis}
+
 Spezifische Fehler, die in Single-Agent-Systemen nicht auftreten:
 
 \begin{enumerate}[leftmargin=*]
@@ -987,6 +995,10 @@ Nächster Schritt planen & 300--800ms & Input-Tokens (History) \\
 % SICHERHEIT
 % ===========================================================%
 \section{Sicherheit}
+
+\begin{praxishinweis}
+Agenten sind mächtiger als einfache LLM-Calls -- und damit gefährlicher. Ein Agent ohne max\_steps, Token-Budget und Tool-Whitelist kann Tausende API-Calls auslösen (Denial-of-Wallet). Jedes Tool-Ergebnis ist ein potenzielles Injection-Vehikel. HITL für kritische Aktionen ist keine Option, sondern Pflicht.
+\end{praxishinweis}
 
 \subsection{Agent-spezifische Risiken}
 
@@ -1143,56 +1155,6 @@ Baue ein Multi-Agent-System für den Kundensupport.
 \textbf{Testdaten:} 10 Support-Tickets (4 Bestellstatus, 3 FAQ, 3 komplexe Fälle).
 
 \textbf{Erfolgskriterium:} 80\,\% der Tickets werden automatisiert gelöst. Alle kritischen Aktionen (Retoure > €100) landen im HITL. Kein Agent überschreitet max\_steps oder Budget.
-
-% ============================================================
-% INTERVIEWFRAGEN
-% ============================================================
-\section{Interviewfragen}
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{RAG vs AI Agent?}
-
-    \textbf{Antwort:} RAG ist passiv (1 Prompt = 1 Antwort). Agents sind aktiv (Multi-Step-Loop: Planen, API ausführen, Evaluieren, Wiederholen).
-
-    \item \textbf{ReAct-Loop Architektur?}
-
-    \textbf{Antwort:} Thought (Überlegung) → Action (Tool Call) → Observation (API-Ergebnis parsen) → Repeat bis finale Antwort gefunden.
-
-    \item \textbf{Endlosschleifen (Agent hängt fest) verhindern?}
-
-    \textbf{Antwort:} Harter `max\_steps` Counter, Execution-Timeouts und Token-Budget-Tracking pro Session.
-
-    \item \textbf{Parallel Tool Calling Vorteil?}
-
-    \textbf{Antwort:} Reduziert Latenz und LLM-Calls um bis zu 50\%, da unabhängige Tools (z.B. Wetter in Berlin UND München) im selben Turn ausgeführt werden.
-
-    \item \textbf{Human-in-the-Loop (HITL) bei kritischen Agent-Aktionen?}
-
-    \textbf{Antwort:} Agent stoppt Execution, schiebt Status in eine `pending\_approvals` DB. Mensch bestätigt via UI, Agent nimmt State wieder auf.
-
-    \item \textbf{Agent ruft ständig das falsche Tool auf. Fixes?}
-
-    \textbf{Antwort:} Tool-Descriptions präzisieren (als Pydantic Docstrings), Few-Shot Beispiele für die Tool-Wahl einbauen, Anzahl der Tools reduzieren (Max 5-7 pro Agent).
-
-    \item \textbf{Semantic Routing für Tools?}
-
-    \textbf{Antwort:} Statt alle Tools ins Prompt zu laden, embeddet man die Query und lädt per RAG nur die 3 relevantesten Tool-Definitionen in den System-Prompt (Spart Kontext/Kosten).
-
-    \item \textbf{Single-Agent vs Multi-Agent (z.B. Autogen/CrewAI)?}
-
-    \textbf{Antwort:} Single-Agent für lineare Workflows. Multi-Agent für komplexe Domains, bei denen verschiedene Personas (Coder, Reviewer, QA) mit unterschiedlichen System-Prompts interagieren.
-
-    \item \textbf{Wie behält der Agent Zustand (Memory) über lange Sessions?}
-
-    \textbf{Antwort:} Sliding-Window Memory (letzte N Turns) plus Summary-Memory (LLM komprimiert alte Turns) plus Vector-Memory (RAG auf vergangene Sessions).
-
-    \item \textbf{Angreifer übergibt dem Agenten über ein Tool bösartigen Code zur Ausführung. Härtung?}
-
-    \textbf{Antwort:} Code-Execution-Tools streng in ephemeren, netzwerklosen Docker-Sandboxes (z.B. E2B) isolieren. Egress-Traffic hart blockieren.
-
-
-\end{enumerate}
-
 
 % ===========================================================%
 % WEITERFÜHRENDE RESSOURCEN

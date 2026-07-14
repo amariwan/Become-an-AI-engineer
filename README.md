@@ -6,63 +6,60 @@ Von [Aland Baban](https://github.com/amariwan) · [tasiomind.dev](https://tasiom
 
 ---
 
-Ein deutschsprachiges Lehrbuch, das dir den Weg vom Software-Entwickler zum AI Engineer zeigt. Basierend auf der offiziellen [AI Engineer Roadmap](https://roadmap.sh/ai-engineer) von roadmap.sh — praxisnah, konkret und direkt umsetzbar.
+468 Seiten · 22 Kapitel · 210 Interviewfragen · CC BY-SA 4.0
 
-## Was erwartet dich?
+Deutschsprachiges Lehrbuch — vom Software-Entwickler zum AI Engineer. Basierend auf der [AI Engineer Roadmap](https://roadmap.sh/ai-engineer) von roadmap.sh.
 
-Dieses Buch führt dich nicht in die Mathematik neuronaler Netze ein. Es setzt **Software-Engineering-Grundlagen** voraus (Python, TypeScript, REST APIs, Docker) und konzentriert sich auf das, was einen AI Engineer ausmacht: **den Umgang mit Large Language Models als Engineering-Aufgabe.**
-
-### 📖 Struktur — 6 Teile · 22 Kapitel
+## Inhalt
 
 | Teil | Titel | Kapitel |
 |------|-------|---------|
 | **I** | Grundlagen verstehen | 1–4: AI Engineer Rolle, vorgefertigte Modelle, Modell-Landschaft, Kontext & Pricing |
-| **II** | Technik und Werkzeuge | 5–7: OpenAI-Plattform, Token-Management, Prompt-Design |
-| **III** | LLMs in der Praxis | 8–12: RAG & Vector DBs, AI Agents, Evaluation, Deployment, KI-Sicherheit |
-| **IV** | Production Layer | 13–19: Inferenz-Optimierung, Model-Anpassung, Caching/Routing/Guardrails |
-| **V** | In Produktion bringen | 20–22: Multimodale KI, MLOps/Modelllebenszyklus, Verantwortliche KI-Governance |
-| **VI** | Karriere | Glossar, Praxisprojekte, Bewerbungsprozess |
+| **II** | Technik und Werkzeuge | 5–7: OpenAI Plattform, Token-Verwaltung, Prompt Design |
+| **III** | LLMs in der Praxis | 8–10, 20: RAG & Vector DBs, AI Agents, Evaluation, Multimodale KI |
+| **IV** | Production Layer | 17–19: Inference Optimization, Model Customization, Caching/Routing/Guardrails |
+| **V** | In Produktion bringen | 11, 21, 12, 22, 16: Deployment, MLOps, KI-Sicherheit, Governance |
+| **VI** | Karriere | 13–15: Glossar, Praxisprojekte, Bewerbungsprozess |
 
-### 🎯 Für wen?
+Jedes Kapitel enthält **10 Interviewfragen** mit ausführlichen Antworten auf Senior-Niveau (210 gesamt).
 
-- Software-Entwickler:innen, die in KI einsteigen wollen
-- AI Engineers mit Grundkenntnissen, die Production-Patterns vertiefen möchten
-- Tech Leads, die das KI-Engineering-Ökosystem 2026 verstehen müssen
+## Build
 
-## Schnellstart — Buch kompilieren
-
-Das Buch nutzt das [LiX thesis template](https://github.com/NicklasVraa/LiX). Der Build läuft **ausschließlich in Docker**:
+Läuft in Docker (VS Code Devcontainer oder manuell):
 
 ```bash
-# Container bauen (einmalig)
+# Einmalig
 docker build -t latex-book .devcontainer/
 
-# Buch kompilieren
+# Kompilieren (2× wegen cross-refs)
+docker exec become-ai-book latexmk -xelatex -outdir=_build main.tex
 docker exec become-ai-book latexmk -xelatex -outdir=_build main.tex
 
 # Output: _build/main.pdf
 ```
 
-[Details →](https://github.com/amariwan/Become-an-AI-engineer/blob/main/AGENTS.md)
+Oder im laufenden Devcontainer:
 
-## 🏗️ Projektstruktur
+```bash
+docker exec <container-id> sh -c "cd /workspaces/Become-an-AI-engineer && latexmk -xelatex -outdir=_build main.tex"
+```
+
+## Projektstruktur
 
 ```
 .
-├── main.tex              # LaTeX-Quelldatei (LiX template)
+├── main.tex              # LaTeX-Quelldatei
 ├── chapters/             # 22 Kapitel als separate .tex-Dateien
 ├── imgs/                 # Buchabbildungen & Diagramme
-├── .devcontainer/        # Docker-Build-Config für LaTeX
-├── scripts/              # Hilfs-Skripte (PDF-Merge, EPUB-Export, etc.)
-├── skills/               # Markdown-Skills für KI-Assistenten
-├── .github/              # Issue/Pull Request Templates
-└── AGENTS.md             # Projekt-Dokumentation
+├── scripts/              # Hilfsskripte (Konsistenz-Checks, Changelog)
+├── skills/               # Claude Code / AI-Assistenten-Skills
+├── .devcontainer/        # Docker-Build-Config (Ubuntu 24.04 + texlive-full)
+├── .github/              # Issue/PR Templates
+├── AGENTS.md             # Entwicklerdokumentation
+├── interviewfragen.md    # Alle 210 Q&A im Markdown-Export
+└── LICENSE               # CC BY-SA 4.0
 ```
 
-## 📄 Lizenz
+## Lizenz
 
-[CC BY-SA 4.0](LICENSE) — Open Source: frei teilbar und weiterverarbeitbar, auch kommerziell.
-
----
-
-*Viel Erfolg auf deinem Weg zum AI Engineer!* 🚀
+[CC BY-SA 4.0](LICENSE) — Frei teilbar und weiterverarbeitbar, auch kommerziell.

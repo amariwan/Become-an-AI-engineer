@@ -1,0 +1,35 @@
+# Kubernetes-Deployment für LLM-Service (YAML)
+# Quelle: chapters/11_deployment_beobachtbarkeit.tex (Zeile 658)
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: llm-service
+# spec:
+#   replicas: 3
+#   strategy:
+#     rollingUpdate:
+#       maxSurge: 1
+#       maxUnavailable: 0
+#   template:
+#     spec:
+#       containers:
+#         - name: llm-service
+#           image: llm-service:latest
+#           env:
+#             - name: OPENAI_API_KEY
+#               valueFrom:
+#                 secretKeyRef:
+#                   name: llm-secrets
+#                   key: openai-key
+#           resources:
+#             requests:
+#               memory: "512Mi"
+#               cpu: "500m"
+#             limits:
+#               memory: "1Gi"
+#               cpu: "1000m"
+#           livenessProbe:
+#             httpGet: {path: /health, port: 8000}
+#           readinessProbe:
+#             httpGet: {path: /ready, port: 8000}
+

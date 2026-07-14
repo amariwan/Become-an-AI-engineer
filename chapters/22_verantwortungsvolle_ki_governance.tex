@@ -21,9 +21,9 @@ Nach diesem Kapitel kannst du:
 % ============================================================
 \section{Motivation}
 
-KI-Systeme sind nicht nur technische Artefakte. Sie beeinflussen Menschen, Gesellschaft und Geschäftsprozesse. Deshalb reicht es nicht, dass ein Modell funktioniert: Es muss auch verlässlich, erklärbar und rechtskonform sein.
+KI-Systeme sind nicht nur technische Artefakte. Sie beeinflussen Menschen, Gesellschaft und Geschäftsprozesse. Ein Modell muss nicht nur funktionieren -- es muss verlässlich, erklärbar und rechtskonform sein.
 
-Responsible AI sorgt dafür, dass KI-Projekte nicht nur aus technischer Sicht erfolgreich sind, sondern auch ethisch verantwortbar, transparent und rechtlich abgesichert.
+Responsible AI sorgt dafür, dass KI-Projekte nicht nur technisch erfolgreich sind, sondern auch ethisch verantwortbar, transparent und rechtlich abgesichert.
 
 % ============================================================
 % GRUNDLAGEN
@@ -41,7 +41,7 @@ Responsible AI umfasst vier zentrale Säulen:
 
 \subsection{Abgrenzung zu Safety und Security}
 
-Responsible AI ergänzt AI Safety und KI-Sicherheit. Während Safety vor allem das Verhalten und die Risiken der Modelle betrachtet und Security den technischen Schutz adressiert, verbindet Responsible AI:
+Responsible AI ergänzt AI Safety und KI-Sicherheit. Während Safety das Verhalten und die Risiken der Modelle betrachtet und Security den technischen Schutz adressiert, verbindet Responsible AI:
 
 \begin{itemize}[leftmargin=*]
     \item ethische Prinzipien,
@@ -54,7 +54,7 @@ Responsible AI ergänzt AI Safety und KI-Sicherheit. Während Safety vor allem d
 % ============================================================
 \section{Governance-Struktur für KI-Projekte}
 
-Ein wirksames Governance-Setup definiert Rollen, Prozesse und Kontrollpunkte. Typische Rollen sind:
+Ein wirksames Governance-Setup definiert Rollen, Prozesse und Kontrollpunkte:
 
 \begin{itemize}[leftmargin=*]
     \item \textbf{KI-Verantwortlicher} (Model Owner): Entscheidung über Modellwahl und Betriebsparameter
@@ -62,6 +62,10 @@ Ein wirksames Governance-Setup definiert Rollen, Prozesse und Kontrollpunkte. Ty
     \item \textbf{Ethik-Reviewer}: Prüft Fairness, Transparenz und gesellschaftliche Auswirkungen
     \item \textbf{Security Owner}: Verantwortlich für Zugriffskontrolle, Secrets und Angriffsschutz
 \end{itemize}
+
+\begin{praxishinweis}
+Rollen allein reichen nicht. Jede Rolle braucht konkrete Entscheidungsbefugnisse und Eskalationspfade. Ein Ethik-Reviewer der nicht blocken kann ist ein Papiertiger.
+\end{praxishinweis}
 
 \subsection{Governance-Gates}
 
@@ -79,7 +83,7 @@ Governance wird wirksam durch klare Gates im Lebenszyklus:
 % ============================================================
 \section{Bias- und Fairness-Prüfungen}
 
-Bias entsteht spätestens dann, wenn Trainingsdaten oder Prompts systematisch bestimmte Gruppen bevorzugen oder benachteiligen.
+Bias entsteht, wenn Trainingsdaten oder Prompts systematisch bestimmte Gruppen bevorzugen oder benachteiligen.
 
 \subsection{Drei Bias-Quellen}
 
@@ -90,8 +94,6 @@ Bias entsteht spätestens dann, wenn Trainingsdaten oder Prompts systematisch be
 \end{enumerate}
 
 \subsection{Praktische Prüfungen}
-
-Beispiele zur Prüfung:
 
 \begin{itemize}[leftmargin=*]
     \item \textbf{Subgruppen-Tests}: Antworten nach Geschlecht, Sprache, Region oder Alter auswerten
@@ -104,7 +106,7 @@ Beispiele zur Prüfung:
 % ============================================================
 \section{Transparenz und Erklärbarkeit}
 
-Transparenz bedeutet nicht, dass jedes Token erklärt werden muss. Es geht um klare Antworten auf Fragen wie:
+Transparenz bedeutet nicht, dass jedes Token erklärt werden muss. Es geht um klare Antworten auf:
 
 \begin{itemize}[leftmargin=*]
     \item Warum wurde dieses Modell ausgewählt?
@@ -119,7 +121,7 @@ Eine einfache Maßnahme ist die \textbf{Model Card} mit Angaben zu Einsatzgebiet
 % ============================================================
 \section{Datenschutz und Compliance}
 
-KI-Projekte müssen Datenschutzgesetze erfüllen, insbesondere wenn personenbezogene Daten verarbeitet werden.
+KI-Projekte müssen Datenschutzgesetze erfüllen, besonders bei personenbezogenen Daten.
 
 \subsection{Wichtige Prinzipien}
 
@@ -141,6 +143,10 @@ Audit-Trails sollten alle relevanten Entscheidungen und Änderungen festhalten:
     \item Produktionsmetriken, die auf Bias oder Drift hinweisen
 \end{itemize}
 
+\begin{praxishinweis}
+Audit-Logs sind nur wertvoll, wenn sie vollständig und manipulationssicher sind. Nutze append-only Storage (WORM) für Compliance-relevante Logs. Ein überschreibbarer Audit-Log ist vor Gericht wertlos.
+\end{praxishinweis}
+
 % ============================================================
 % PRAXISBEISPIEL
 % ============================================================
@@ -161,7 +167,7 @@ Ein verantwortungsbewusster AI Engineer dokumentiert nicht nur technische Entsch
 % ============================================================
 \section{Der EU AI Act und regulatorische Anforderungen}
 
-Der EU AI Act (2024) ist die weltweit erste umfassende Regulierung für KI-Systeme. Als AI Engineer musst du die Grundzüge verstehen, da sie direkte Auswirkungen auf Architektur und Betrieb haben.
+Der EU AI Act ist die weltweit erste umfassende Regulierung für KI-Systeme. Als AI Engineer musst du die Grundzüge verstehen -- sie haben direkte Auswirkungen auf Architektur und Betrieb.
 
 \subsection{Risikoklassen}
 
@@ -203,7 +209,7 @@ async def chat(request: Request):
             "model": "gpt-4o",
             "disclaimer":
                 "Diese Antwort wurde von einer KI generiert."
-                " Bitte überprüfe kritische Informationen."
+                " Bitte ueberpruefe kritische Informationen."
         }
     })
 \end{lstlisting}
@@ -222,7 +228,7 @@ Jedes KI-Projekt braucht eine definierte Meldekette:
 \begin{enumerate}[leftmargin=*]
     \item \textbf{Erkennung}: Automatisierte Metriken oder Nutzer-Feedback lösen einen Alarm aus.
     \item \textbf{Bewertung}: Das Incident-Team bewertet Schweregrad (Datenschutz? Bias? Sicherheit?) und Betroffene.
-    \item \textbf{Eskalation}: Bei schwerwiegenden Vorfällen wird die Geschäftsführung und ggf. die Aufsichtsbehörde informiert.
+    \item \textbf{Eskalation}: Bei schwerwiegenden Vorfällen werden Geschäftsführung und ggf. Aufsichtsbehörde informiert.
     \item \textbf{Maßnahmen}: Das System wird angehalten, zurückgesetzt oder mit zusätzlichen Guardrails versehen.
     \item \textbf{Bericht}: Ein Incident Report dokumentiert Ursache, Auswirkung und Maßnahmen.
 \end{enumerate}
@@ -231,7 +237,7 @@ Jedes KI-Projekt braucht eine definierte Meldekette:
 
 \begin{description}[leftmargin=*,style=nextline]
     \item[Gering] Einzelner fehlerhafter Output ohne Schaden -- Korrektur im nächsten Release.
-    \item[Mittel] Systematischer Bias oder wiederholte Fehler -- temporäre Abschaltung des Features, erneutes Training.
+    \item[Mittel] Systematischer Bias oder wiederholte Fehler -- temporäre Abschaltung des Features, Nachbesserung.
     \item[Hoch] Datenschutzverstoß oder Diskriminierung -- sofortige Abschaltung, Behördenmeldung, PR-Statement.
     \item[Kritisch] Personenschaden oder Grundrechtsverletzung -- vollständige Systemabschaltung, rechtliche Schritte.
 \end{description}
@@ -241,10 +247,14 @@ Jedes KI-Projekt braucht eine definierte Meldekette:
 Bevor ein Incident eskaliert, sollte er durch Monitoring auffallen:
 
 \begin{itemize}[leftmargin=*]
-    \item \textbf{Bias-Dashboards}: Vierteljährliche Audits der Output-Verteilung nach demografischen Gruppen
+    \item \textbf{Bias-Dashboards}: Regelmäßige Audits der Output-Verteilung nach demografischen Gruppen
     \item \textbf{Feedback-Loops}: Nutzer können problematische Antworten melden
     \item \textbf{Drift-Metriken}: Veränderungen im Antwortverhalten über Zeit
 \end{itemize}
+
+\begin{praxishinweis}
+Incidents in KI-Systemen eskalieren schneller als klassische IT-Incidents. Ein einziger diskriminierender Output kann innerhalb von Stunden viral gehen. Definiere eine "Hotline"-Eskalation für Bias- und Safety-Vorfälle -- keine normalen Ticket-SLAs.
+\end{praxishinweis}
 
 % ============================================================
 % BERICHTWESEN
@@ -289,53 +299,6 @@ Responsible AI macht KI-Projekte vertrauenswürdiger und sicherer. Governance is
     \item Erstelle eine Scorecard mit fünf Fairness-Metriken für ein KI-System deiner Wahl.
     \item Skizziere einen quartalsweisen Governance-Report für ein Finanz-KI-System: Welche Kennzahlen, welche Zielgruppen, welche Entscheidungen?
 \end{uebungen}
-
-% ============================================================
-% INTERVIEWFRAGEN
-% ============================================================
-\section{Interviewfragen}
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Enterprise-Kunde fordert restlose Löschung aus der Vector-DB (Recht auf Vergessenwerden). Lösung?}
-
-    \textbf{Antwort:} Cryptographic Erasure. Jedes Tenant-Dokument wird vor dem Embedding mit individuellem KMS-Key verschlüsselt. Bei Kündigung wird der Key zerstört, Embeddings sind sofort unlesbar (Data Shredding).
-
-    \item \textbf{Auditable Chain-of-Custody für Finanz-LLMs?}
-
-    \textbf{Antwort:} Immutable WORM-Storage. \texttt{trace\_id} verknüpft System-Prompt Hash, abgerufene RAG-Dokumenten-Hashes, User-Input und Model-Output. Signiert via HMAC gegen nachträgliche Manipulation.
-
-    \item \textbf{EU AI Act: Risikoklasse von RAG-HR-Tools?}
-
-    \textbf{Antwort:} "High Risk" (Beschäftigung/Personal). Erfordert striktes Bias-Auditing, menschliche Aufsicht (Human-in-the-Loop), Logging-Pflichten und Registrierung in EU-Datenbank.
-
-    \item \textbf{EU AI Act: Transparenzpflicht für Chatbots (Limited Risk)?}
-
-    \textbf{Antwort:} Nutzer müssen aktiv und unmissverständlich darüber informiert werden, dass sie mit einer KI interagieren (System-Disclaimer im UI), bevor die Interaktion startet.
-
-    \item \textbf{Vendor Lock-in bei Embedding-Modellen verhindern?}
-
-    \textbf{Antwort:} Rohdaten in Postgres halten und Indexierungs-Pipelines für Batch-Re-Processing (Wechsel auf Modell B) vorhalten.
-
-    \item \textbf{Open-Source Lizenz-Fallstricke (Llama 3 vs Apache 2.0)?}
-
-    \textbf{Antwort:} Llama 3 hat MAU-Limits (700 Mio) und verbietet die Nutzung seiner Outputs zum Trainieren konkurrierender KI-Modelle. Apache 2.0 (Mistral) ist voll kommerziell frei.
-
-    \item \textbf{Copyright Infringement beim Fine-Tuning interner Modelle?}
-
-    \textbf{Antwort:} "Fair Use" ist bei gewerblicher LLM-Nutzung extrem umstritten. Niemals externe, urheberrechtlich geschützte Werke scrapen. Nur intern lizenziertes oder gekauftes Data-Material fine-tunen.
-
-    \item \textbf{Interne Red-Teaming Compliance für Enterprise-Releases?}
-
-    \textbf{Antwort:} Vor Release muss ein unabhängiges QA-Team den Release Candidate systematisch mit Adversarial Prompts (OWASP LLM Top 10) bombardieren. Report wird ans C-Level eskaliert.
-
-    \item \textbf{SLA Management für KI-Features verhandeln?}
-
-    \textbf{Antwort:} SLA nicht auf "Korrektheit" abschließen, sondern auf "System-Verfügbarkeit", "Time-to-First-Token" und "RAG-Retrieval-Hit-Rate" (deterministische IT-Metriken).
-
-    \item \textbf{Data Residency (DSGVO) bei Nutzung von OpenAI via Microsoft Azure?}
-
-    \textbf{Antwort:} Explizites EU-Region-Deployment wählen UND Opt-Out-Formular für Data-Abuse-Monitoring unterschreiben, damit Microsoft Prompts/Outputs nicht 30 Tage zwecks Abuse-Checks auf Servern zwischenspeichert.
-\end{enumerate}
 
 \section{Ressourcen}
 

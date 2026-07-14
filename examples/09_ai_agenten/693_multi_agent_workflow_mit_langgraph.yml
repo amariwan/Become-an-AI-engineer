@@ -1,0 +1,31 @@
+# Multi-Agent-Workflow mit LangGraph
+# Quelle: chapters/09_ai_agenten.tex (Zeile 693)
+from langgraph.graph import StateGraph, MessagesState, END
+
+class AgentWorkflow:
+    def __init__(self):
+        graph = StateGraph(MessagesState)
+
+        graph.add_node("supervisor", self._supervisor)
+        graph.add_node("researcher", self._researcher)
+        graph.add_node("analyst", self._analyst)
+        graph.add_node("writer", self._writer)
+
+        graph.set_entry_point("supervisor")
+        graph.add_conditional_edges(
+            "supervisor",
+            self._route,
+            {"research": "researcher", "end": END},
+        )
+        graph.add_edge("researcher", "analyst")
+        graph.add_edge("analyst", "writer")
+        graph.add_edge("writer", END)
+
+        self.app = graph.compile()
+
+    async def run(self, user_input: str) -> str:
+        result = await self.app.ainvoke(
+            {"messages": [("user", user_input)]}
+        )
+        return result["messages"][-1].content
+

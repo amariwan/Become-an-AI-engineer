@@ -21,11 +21,11 @@ Nach diesem Kapitel kannst du:
 % ============================================================
 \section{Motivation}
 
-In der klassischen Softwareentwicklung sind Tests Standard: Unit-Tests, Integrationstests, End-to-End-Tests. Jeder Commit durchläuft eine Pipeline, die Regressionen erkennt. Doch LLMs sind probabilistische Systeme -- sie liefern bei identischem Input nicht garantiert denselben Output. Ein Prompt-Update, das einen Fall verbessert, kann zehn andere verschlechtern.
+In der klassischen Softwareentwicklung ist Testing Standard: Unit-Tests, Integrationstests, E2E-Tests. Jeder Commit durchläuft eine Pipeline, die Regressionen erkennt. LLMs sind probabilistische Systeme -- sie liefern bei identischem Input nicht garantiert denselben Output. Ein Prompt-Update, das einen Fall verbessert, kann zehn andere verschlechtern.
 
-Ohne systematische Evaluation ist jede Prompt-Änderung reines Raten. Du weisst nicht, ob dein System besser oder schlechter geworden ist. Du weisst nicht, welche Kosten deine Änderung verursacht. Und du weisst nicht, ob die Qualität in der Produktion nachlässt, während du schläfst.
+Ohne systematische Evaluation ist jede Prompt-Änderung Raten. Du weisst nicht, ob das System besser oder schlechter geworden ist. Du weisst nicht, welche Kosten die Änderung verursacht. Und du weisst nicht, ob die Qualität in Produktion nachlässt.
 
-LLMOps -- die Übertragung von DevOps-Prinzipien auf LLM-Workflows -- schliesst genau diese Lücke: reproduzierbare Tests, kontinuierliches Monitoring und datengetriebene Entscheidungen über Prompt-Änderungen.
+LLMOps -- die Übertragung von DevOps-Prinzipien auf LLM-Workflows -- schliesst diese Lücke: reproduzierbare Tests, kontinuierliches Monitoring und datengetriebene Entscheidungen über Prompt-Änderungen.
 
 % ============================================================
 % GRUNDLAGEN
@@ -41,6 +41,10 @@ Jede LLM-Evaluation misst drei Dimensionen:
 \end{description}
 
 Diese drei Dimensionen stehen im Trade-off: Ein grösseres Modell liefert oft bessere Qualität, kostet aber mehr und ist langsamer. Evaluation hilft dir, den optimalen Punkt für deinen Anwendungsfall zu finden.
+
+\begin{praxishinweis}
+Ohne Golden Dataset ist jede Prompt-Änderung geraten. Ein Dataset mit 50--100 Testfällen reicht für den Start -- aber es muss wachsen. Sammle jeden Produktions-Fehler als neuen Testfall. Die Kombination aus Offline-Evaluation (vor Deployment) und Online-Monitoring (in Produktion) ist Pflicht -- keine der beiden Ebenen ersetzt die andere.
+\end{praxishinweis}
 
 \subsection{Evaluationsstufen}
 
@@ -226,11 +230,10 @@ def evaluate_prompt(dataset: list[dict], prompt_fn) -> list[EvalResult]:
             score = sum(1 for kw in example["expected_keywords"] if kw in actual_output.lower()) / len(example["expected_keywords"])
         elif example["expected_output_type"] == "json_schema":
             try:
-                import json
                 parsed = json.loads(actual_output)
                 passed = all(k in parsed for k in example["expected_schema"])
                 score = sum(1 for k in example["expected_schema"] if k in parsed) / len(example["expected_schema"])
-            except:
+            except (json.JSONDecodeError, KeyError):
                 passed, score = False, 0.0
         else:
             passed, score = False, 0.0
@@ -310,6 +313,10 @@ for example in GOLDEN_DATASET:
     )
     print(f"Score: {judge_result['score']}/10 fuer '{example['input'][:40]}...")
 \end{lstlisting}
+
+\begin{praxishinweis}
+LLM-as-a-Judge hat systematische Biases. Ein GPT-4o-Judge bevorzugt lange, ausführliche Antworten; Claude bevorzugt vorsichtige; Gemini bevorzugt Aufzählungen. Gegenmaßnahmen: Multi-Judge (3 Modelle, Majority Vote), Rubric-basierte Bewertung statt freier Skala, Position-Swapping bei Pairwise-Vergleichen.
+\end{praxishinweis}
 
 \subsection{Judge-Typen im Vergleich}
 
@@ -758,6 +765,10 @@ Modelle $\times$ 200 Tokens = 300.000 Tokens pro Run. Optimierungen:
 % ============================================================
 \section{Sicherheit in Evaluations-Pipelines}
 
+\begin{praxishinweis}
+Evaluations-Pipelines verarbeiten oft sensitive Daten: User-Inputs aus Produktion, interne Dokumente, Ground-Truth-Antworten mit Geschäftsgeheimnissen. Golden Datasets gehören nie in öffentliche Repositories. Separate API-Keys mit Budget-Limits für Evals nutzen, nicht die Produktions-Keys.
+\end{praxishinweis}
+
 Evaluations-Pipelines verarbeiten oft sensitive Daten -- User-Inputs aus der Produktion, interne Dokumente, korrekte Antworten mit Geschäftsgeheimnissen. Sicherheitsaspekte:
 
 \begin{itemize}[leftmargin=*]
@@ -807,56 +818,6 @@ Ohne Golden Dataset ist jede Prompt-Änderung geraten. Ein Dataset mit 50--100 T
 
 \textbf{Erweiterung:} Integriere die Pipeline in GitHub Actions, sodass sie bei jedem Push automatisch läuft.
 Füge ein Budget-Limit hinzu, das die Pipeline abbricht, wenn die Evaluationskosten 5 \$ übersteigen.
-
-% ============================================================
-% INTERVIEWFRAGEN
-% ============================================================
-\section{Interviewfragen}
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Offline-Evaluation vs Online-Monitoring?}
-
-    \textbf{Antwort:} Offline (CI/CD) testet deterministisch gegen Golden Datasets vor dem Merge. Online (Produktion) misst probabilistisch Drift, Latenz und User-Feedback.
-
-    \item \textbf{Was ist ein Golden Dataset und wie pflegt man es?}
-
-    \textbf{Antwort:} Manuelle Edge-Cases (Inputs + erwartete Outputs). Pflege durch "Hard-Mining": Fehlerhafte Prod-Queries werden korrigiert und per DVC ins Set aufgenommen.
-
-    \item \textbf{LLM-as-a-Judge Biases mitigieren?}
-
-    \textbf{Antwort:} Position Bias und Verbosity Bias bekämpfen durch Answer-Swapping, granulare Rubriken statt 1-10 Skalen und Few-Shot Kalibrierung.
-
-    \item \textbf{Prompt-Update verbessert Use-Case A, zerstört B. Vorgehen?}
-
-    \textbf{Antwort:} Intent-Splitting. Semantic Router vorschalten: Use-Case A bekommt den neuen Prompt, B wird über die alte, stabile Baseline geroutet.
-
-    \item \textbf{LLM-Judge-Score sinkt plötzlich von 8.5 auf 6.2 in Produktion. Erste Analyse?}
-
-    \textbf{Antwort:} Prüfen auf stillschweigende Model-Weight-Updates beim Provider oder Data Drift (User fragen plötzlich nach Themen außerhalb des RAG-Kontexts).
-
-    \item \textbf{RAGAS Metriken: Faithfulness vs Answer Relevance?}
-
-    \textbf{Antwort:} Faithfulness = Basieren alle Aussagen strikt auf den RAG-Chunks? Answer Relevance = Beantwortet der Text die User-Query präzise (ohne Ausschweifungen)?
-
-    \item \textbf{Wie testest du Non-Deterministic Outputs (Kreatives Schreiben)?}
-
-    \textbf{Antwort:} Exact Match funktioniert nicht. Semantic Similarity Search (Embedding der Antwort vs Ground Truth) oder LLM-basierte Kriterien-Prüfung (z.B. "Enthält 3 Argumente").
-
-    \item \textbf{A/B Testing von LLMs in Produktion?}
-
-    \textbf{Antwort:} Shadow Deployment. Request geht an Modell A (antwortet User) und asynchron an Modell B (nur geloggt). Offline vergleicht ein Judge die Outputs.
-
-    \item \textbf{Kosten von kontinuierlichen LLM-Evals senken?}
-
-    \textbf{Antwort:} Für Evals auf kleine, extrem stark instruktions-getunte OSS-Modelle (Prometheus-Eval) ausweichen statt jede Eval-Zeile über GPT-4o zu jagen.
-
-    \item \textbf{Wie validierst du den LLM-Judge selbst?}
-
-    \textbf{Antwort:} Meta-Evaluation. Menschliche Annotatoren bewerten 200 Samples. Die Übereinstimmung (Cohen's Kappa) zwischen Mensch und LLM-Judge muss > 0.8 liegen.
-
-
-\end{enumerate}
-
 
 % ============================================================
 % RESSOURCEN

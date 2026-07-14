@@ -21,26 +21,26 @@ Nach diesem Kapitel kannst du:
 % ============================================================
 \section{Motivation}
 
-Safety und Ethics sind keine PR-Themen oder Marketing-Features -- sie sind eine \textbf{Engineering-Pflicht}. Ein unsicheres KI-System kann deinem Unternehmen rechtliche, reputationale und finanzielle Schäden zufügen.
+Safety und Ethics sind keine PR-Themen -- sie sind eine \textbf{Engineering-Pflicht}. Ein unsicheres KI-System kann deinem Unternehmen rechtliche, reputationale und finanzielle Schäden zufügen.
 
-Die Realität: LLMs halluzinieren, sie reproduzieren Biases aus den Trainingsdaten, sie können durch Prompt Injection manipuliert werden, und sie verarbeiten oft personenbezogene Daten ohne ausreichenden Schutz. Als AI Engineer bist du die erste Verteidigungslinie.
+LLMs halluzinieren, reproduzieren Biases aus Trainingsdaten, lassen sich durch Prompt Injection manipulieren, und verarbeiten oft personenbezogene Daten ohne ausreichenden Schutz. Als AI Engineer bist du die erste Verteidigungslinie.
 
-Die EU hat mit dem AI Act (2024/1689) zudem einen regulatorischen Rahmen geschaffen, der Safety und Ethics von der Optionalität in die Pflicht überführt. Systeme, die gegen diese Standards verstossen, riskieren Bussgelder von bis zu 35 Mio. EUR oder 7\% des weltweiten Jahresumsatzes.
+Der EU AI Act (2024/1689) hat Safety und Ethics von der Optionalität in die Pflicht überführt. Verstösse riskieren Bussgelder von bis zu 35 Mio. EUR oder 7\% des weltweiten Jahresumsatzes.
 
 % ============================================================
 % GRUNDLAGEN
 % ============================================================
 \section{Grundlagen -- Safety-Dimensionen}
 
-KI-Sicherheit umfasst mehrere Dimensionen, die alle im Produktionssystem adressiert werden müssen:
+KI-Sicherheit umfasst mehrere Dimensionen:
 
 \begin{description}[leftmargin=*,style=nextline]
     \item[Factuality] Das Modell sollte korrekte Fakten liefern und Unsicherheit kommunizieren. Halluzinationen sind die grösste Herausforderung.
     \item[Fairness / Bias] Das Modell sollte keine Gruppen systematisch benachteiligen oder stereotypisieren. Bias entsteht durch unausgewogene Trainingsdaten.
     \item[Privacy] Personenbezogene Daten dürfen nicht ungeschützt an LLM-APIs gesendet werden. Data Masking und Anonymisierung sind Pflicht.
     \item[Security] Das System sollte gegen Prompt Injection, Jailbreaks und andere Angriffe resistent sein. Der OWASP LLM Top 10 Katalog beschreibt die Risiken.
-    \item[Transparency] Nutzer sollten wissen, dass sie mit einer KI interagieren. Die Entscheidungsgrundlage des Modells sollte nachvollziehbar sein.
-    \item[Accountability] Es muss klar sein, wer für die Ausgaben des Systems verantwortlich ist. Human-in-the-Loop ist bei kritischen Entscheidungen erforderlich.
+    \item[Transparency] Nutzer sollten wissen, dass sie mit einer KI interagieren. Die Entscheidungsgrundlage sollte nachvollziehbar sein.
+    \item[Accountability] Es muss klar sein, wer für die Ausgaben verantwortlich ist. Human-in-the-Loop ist bei kritischen Entscheidungen erforderlich.
 \end{description}
 
 % ============================================================
@@ -48,7 +48,7 @@ KI-Sicherheit umfasst mehrere Dimensionen, die alle im Produktionssystem adressi
 % ============================================================
 \section{Architektur einer Safety-Pipeline}
 
-Safety ist kein nachträgliches Feature, sondern muss als mehrschichtige Architektur in das System eingebaut werden:
+Safety ist kein nachträgliches Feature, sondern eine mehrschichtige Architektur:
 
 \begin{verbatim}
 +------------------+     +------------------+     +------------------+
@@ -62,7 +62,7 @@ Safety ist kein nachträgliches Feature, sondern muss als mehrschichtige Archite
         |                       |                        |
         v                       v                        v
 +-----------------------------------------------------------+
-|                     Audit-Log / Tracing                   |
+|                     Audit-Log / Tracing                  |
 |              Jeder Schritt wird protokolliert             |
 +-----------------------------------------------------------+
 \end{verbatim}
@@ -71,10 +71,14 @@ Jede Schicht hat spezifische Aufgaben:
 
 \begin{enumerate}[leftmargin=*]
     \item \textbf{Input-Layer}: Validiert und bereinigt den User-Input vor dem LLM-Call. Entfernt PII, erkennt Prompt-Injection-Versuche, prüft auf übermässige Länge.
-    \item \textbf{LLM-Layer}: Der eigentliche Modell-Aufruf mit gehärtetem System-Prompt, niedriger Temperatur und Token-Limits.
+    \item \textbf{LLM-Layer}: Der Modell-Aufruf mit gehärtetem System-Prompt, niedriger Temperatur und Token-Limits.
     \item \textbf{Output-Layer}: Prüft die Modell-Antwort auf Safety-Probleme: Bias, Halluzinationen, PII, schädliche Inhalte.
     \item \textbf{Audit-Log}: Jeder Schritt wird protokolliert, um im Fehlerfall die Ursache zurückverfolgen zu können.
 \end{enumerate}
+
+\begin{praxishinweis}
+Der Audit-Log selbst ist ein Angriffsziel. Speichere PII-maskierte Inputs im Log, nicht die Rohdaten. Sonst wird deine Compliance-Massnahme selbst zum Datenschutzproblem.
+\end{praxishinweis}
 
 % ============================================================
 % THEORIE
@@ -86,9 +90,9 @@ Jede Schicht hat spezifische Aufgaben:
 Halluzinationen lassen sich in drei Kategorien einteilen:
 
 \begin{enumerate}[leftmargin=*]
-    \item \textbf{Factual Hallucination}: Das Modell behauptet etwas Falsches. Beispiel: "Das Goethe-Institut wurde 1951 gegründet" (richtig: 1951 -- aber die Begründung im Kontext stimmt nicht). Tritt auf, wenn das Modell auf Wissenslücken mit plausiblen Erfindungen reagiert.
-    \item \textbf{Contextual Hallucination}: Das Modell ignoriert den bereitgestellten Kontext. Beispiel: Du gibst ein Dokument mit "Der Umsatz betrug 42 Mio." -- das Modell antwortet "Der Umsatz betrug 50 Mio." Tritt auf, wenn der Kontext zu lang ist oder das Modell sich auf sein Training statt auf den Kontext stützt.
-    \item \textbf{Syophantic Hallucination}: Das Modell stimmt dem User zu, auch wenn dieser falsch liegt. Beispiel: User sagt "Die Hauptstadt von Australien ist Sydney" -- das Modell bestätigt "Ja, Sydney ist die Hauptstadt". Tritt auf, weil RLHF das Modell dazu trainiert, hilfreich zu sein.
+    \item \textbf{Factual Hallucination}: Das Modell behauptet etwas Falsches. Tritt auf, wenn das Modell auf Wissenslücken mit plausiblen Erfindungen reagiert.
+    \item \textbf{Contextual Hallucination}: Das Modell ignoriert den bereitgestellten Kontext. Tritt auf, wenn der Kontext zu lang ist oder das Modell sich auf sein Training statt auf den Kontext stützt.
+    \item \textbf{Syophantic Hallucination}: Das Modell stimmt dem User zu, auch wenn dieser falsch liegt. Tritt auf, weil RLHF das Modell dazu trainiert, hilfreich zu sein.
 \end{enumerate}
 
 \subsection{Bias -- Entstehung und Verstärkung}
@@ -96,9 +100,9 @@ Halluzinationen lassen sich in drei Kategorien einteilen:
 Bias in LLMs entsteht auf mehreren Ebenen:
 
 \begin{description}[leftmargin=*,style=nextline]
-    \item[Data Bias] Die Trainingsdaten sind nicht repräsentativ. Englischsprachige, westliche, männlich dominierte Perspektiven überrepräsentiert. Folge: Das Modell reproduziert diese Asymmetrien.
-    \item[Annotation Bias] Menschliche Annotatoren bringen eigene Vorurteile in RLHF-Datasets ein. Ein Annotator in Kenia bewertet einen Prompt anders als einer in Kalifornien.
-    \item[Algorithmic Bias] Die Optimierungsziele (hilfreich, harmlos, ehrlich) sind nicht perfekt balanciert. Ein Modell, das zu stark auf "harmlos" optimiert ist, verweigert Antworten auf harmlose Fragen.
+    \item[Data Bias] Nicht repräsentative Trainingsdaten. Englischsprachige, westliche, männlich dominierte Perspektiven überrepräsentiert. Folge: Das Modell reproduziert diese Asymmetrien.
+    \item[Annotation Bias] Menschliche Annotatoren bringen eigene Vorurteile in RLHF-Datasets ein. Ein Annotator in Kenia bewertet anders als einer in Kalifornien.
+    \item[Algorithmic Bias] Die Optimierungsziele (hilfreich, harmlos, ehrlich) sind nicht perfekt balanciert. Ein auf "harmlos" optimiertes Modell verweigert Antworten auf harmlose Fragen.
     \item[Deployment Bias] Selbst ein bias-freies Modell kann im Deployment benachteiligend wirken, wenn die User-Gruppe nicht repräsentativ ist.
 \end{description}
 
@@ -176,12 +180,16 @@ def safe_response(query: str, context: str) -> dict:
 
 # Beispiel
 result = safe_response(
-    "Wie hoch war der Umsatz 2024?",
-    "Der Umsatz 2024 betrug 42 Millionen Euro."
+    "Wie hoch war der Umsatz?",
+    "Der Umsatz betrug 42 Millionen Euro."
 )
 print(f"Antwort: {result['answer']}")
 print(f"Risiko: {result['risk']:.2%}")
 \end{lstlisting}
+
+\begin{praxishinweis}
+Logprobs sind kein perfekter Halluzinations-Indikator. Ein Modell kann hoch confident falsch liegen. Kombiniere Confidence-Scoring immer mit RAG und Faktenchecks. Logprobs sind ein Frühwarnsystem, kein Beweis.
+\end{praxishinweis}
 
 % ============================================================
 % BIAS
@@ -319,18 +327,22 @@ def safe_llm_query(user_input: str) -> str:
     return response.choices[0].message.content
 \end{lstlisting}
 
+\begin{praxishinweis}
+Regex-basierte PII-Maskierung ist ein guter Start, aber nicht ausreichend. Namen in unerwarteten Formaten, kontextabhängige PII oder verschlüsselte Daten erkennt Regex nicht. Ergänze mit einem NLP-basierten PII-Detector (Microsoft Presidio) für Produktion.
+\end{praxishinweis}
+
 % ============================================================
 % ANTHROPIC SAFETY
 % ============================================================
 \section{Anthropics Core Views on AI Safety}
 
-Anthropic hat sich als einer der wenigen Anbieter explizit zu KI-Safety positioniert:
+Anthropic hat sich explizit zu KI-Safety positioniert:
 
 \begin{itemize}[leftmargin=*]
-    \item \textbf{KI sollte menschliche Autonomie erhöhen, nicht verringern}: KIs sollten Menschen in die Lage versetzen, bessere Entscheidungen zu treffen -- nicht sie zu manipulieren.
+    \item \textbf{KI sollte menschliche Autonomie erhöhen, nicht verringern}: KIs sollten Menschen befähigen, bessere Entscheidungen zu treffen -- nicht sie manipulieren.
     \item \textbf{Transparenz statt Black Box}: KI-Systeme sollten ihre Entscheidungsgrundlagen offenlegen können.
-    \item \textbf{Proportionale Sicherheit nach Risikostufe}: Je mächtiger das Modell, desto mehr Sicherheitsmassnahmen sind notwendig.
-    \item \textbf{Historisches Lernen}: Fehleinschätzungen früherer KI-Systeme als Lerngrundlage für bessere Safety by Design.
+    \item \textbf{Proportionale Sicherheit nach Risikostufe}: Je mächtiger das Modell, desto mehr Sicherheitsmassnahmen sind nötig.
+    \item \textbf{Historisches Lernen}: Fehleinschätzungen früherer KI-Systeme als Grundlage für bessere Safety by Design.
 \end{itemize}
 
 Andere Anbieter haben ähnliche, aber unterschiedliche Ansätze:
@@ -351,19 +363,19 @@ Mistral & Le Chat Moderation + EU-Compliance-First \\
 \caption{Safety-Ansätze der wichtigsten KI-Anbieter}
 \end{table}
 
-% ===========================================================%
+% ============================================================%
 % BEST PRACTICES
 % ============================================================
 \section{Best Practices für AI Safety}
 
 \begin{enumerate}[leftmargin=*]
-    \item \textbf{Safety by Design}: Sicherheit von Tag 1 an in die Architektur einbauen, nicht als nachträgliches Feature. Prompt-Injection-Schutz, Input-Masking und Output-Filtering gehören in den initialen Entwurf.
-    \item \textbf{Mehrschichtige Verteidigung}: Keine einzelne Massnahme ist ausreichend. Kombiniere Input-Validation, gehärtete System-Prompts, Output-Filtering und Post-Processing-Reviews.
+    \item \textbf{Safety by Design}: Sicherheit von Tag 1 in die Architektur einbauen, nicht als nachträgliches Feature. Prompt-Injection-Schutz, Input-Masking und Output-Filtering gehören in den initialen Entwurf.
+    \item \textbf{Mehrschichtige Verteidigung}: Keine einzelne Massnahme reicht. Kombiniere Input-Validation, gehärtete System-Prompts, Output-Filtering und Post-Processing-Reviews.
     \item \textbf{Regelmässiges Red Teaming}: Teste dein System systematisch auf Sicherheitslücken. Nutze automatisierte Tools (Garak, PyRIT) und manuelle Tests.
     \item \textbf{Nicht nur auf API-Safety verlassen}: OpenAI und Anthropic haben Content-Filter -- aber sie sind keine Garantie. Filtere und validiere immer selbst.
-    \item \textbf{Transparenz gegenüber Nutzern}: Kennzeichne KI-generierte Inhalte deutlich. Nutzer haben ein Recht zu wissen, ob sie mit einem Menschen oder einer KI interagieren.
+    \item \textbf{Transparenz gegenüber Nutzern}: Kennzeichne KI-generierte Inhalte. Nutzer haben ein Recht zu wissen, ob sie mit einem Menschen oder einer KI interagieren.
     \item \textbf{Human-in-the-Loop}: Bei kritischen Entscheidungen (Kreditvergabe, medizinische Diagnosen, Einstellungen) muss ein Mensch die finale Entscheidung treffen.
-    \item \textbf{Monitoring und Alarmierung}: Metriken wie Safety-Flag-Rate, User-Reporting-Rate und manuelle Review-Quote geben Aufschluss über die Safety-Qualität des Systems.
+    \item \textbf{Monitoring und Alarmierung}: Metriken wie Safety-Flag-Rate, User-Reporting-Rate und manuelle Review-Quote geben Aufschluss über die Safety-Qualität.
 \end{enumerate}
 
 % ============================================================
@@ -372,15 +384,15 @@ Mistral & Le Chat Moderation + EU-Compliance-First \\
 \section{Anti-Patterns -- was du vermeiden solltest}
 
 \begin{description}[leftmargin=*,style=nextline]
-    \item[Safety erst nach dem Launch] Sicherheit sollte nie ein nachträglicher Gedanke sein. Prompt-Injection-Schutz und Input-Masking gehören ins initiale System-Design.
-    \item[Nur auf API-Safety-Layer verlassen] Die Content-Filter der API-Anbieter sind opak, nicht konfigurierbar und nicht auf deinen Use-Case optimiert. Du musst selbst filtern.
-    \item[DSGVO ignorieren] Personenbezogene Daten im LLM-Prompt zu schicken ist kein technischer Fehler, sondern ein potenziell strafbarer Verstoss. Data Masking ist Pflicht, nicht Optionalität.
-    \item[Halluzinationen akzeptieren] "LLMs halluzinieren halt" ist keine akzeptable Haltung für ein Produktivsystem. Du kannst Halluzinationen durch RAG, Confidence-Scoring und Faktenchecks drastisch reduzieren.
-    \item[Bias nicht testen] Wenn du nicht testest, ob dein System bias-frei ist, wirst du es erst merken, wenn Nutzer sich beschweren -- oder die Presse darüber berichtet.
-    \item[Kein Red Teaming] Ohne systematische Sicherheitstests weisst du nicht, ob dein System gegen Jailbreaks oder Prompt Injection resistent ist. Bis es jemand ausnutzt.
+    \item[Safety erst nach dem Launch] Sicherheit gehört ins initiale System-Design, nicht als nachträglicher Gedanke.
+    \item[Nur auf API-Safety-Layer verlassen] Content-Filter der API-Anbieter sind opak und nicht auf deinen Use-Case optimiert. Du musst selbst filtern.
+    \item[DSGVO ignorieren] Personenbezogene Daten im LLM-Prompt zu schicken ist kein technischer Fehler, sondern ein potenziell strafbarer Verstoss.
+    \item[Halluzinationen akzeptieren] "LLMs halluzinieren halt" ist keine akzeptable Haltung. RAG, Confidence-Scoring und Faktenchecks reduzieren Halluzinationen drastisch.
+    \item[Bias nicht testen] Wenn du nicht testest, ob dein System bias-frei ist, merkst du es erst bei Beschwerden -- oder wenn die Presse berichtet.
+    \item[Kein Red Teaming] Ohne systematische Sicherheitstests weisst du nicht, ob dein System gegen Jailbreaks oder Prompt Injection resistent ist.
 \end{description}
 
-% ===========================================================%
+% ============================================================%
 % CODE -- Safety-Monitoring-Dashboard
 % ============================================================
 \section{Codebeispiele -- Safety-Monitoring-System}
@@ -462,7 +474,7 @@ monitor.log_call(
 \section{EU AI Act in der Praxis}
 \label{sec:eu-ai-act}
 
-Der \textbf{EU AI Act (2024/1689)} ist das erste umfassende KI-Gesetz weltweit. Seit 2025 gilt die Risikoklassifikation, ab 2026 die vollen Compliance-Pflichten für High-Risk-Systeme. Als AI Engineer betrifft dich das direkt: Jedes System, das du in der EU in Produktion bringst, muss klassifiziert und dokumentiert sein.
+Der \textbf{EU AI Act (2024/1689)} ist das erste umfassende KI-Gesetz weltweit. Als AI Engineer betrifft dich das direkt: Jedes KI-System, das du in der EU in Produktion bringst, muss klassifiziert und dokumentiert sein.
 
 \subsection{Risikoklassifikation}
 
@@ -660,6 +672,10 @@ Der EU AI Act ist kein einmaliges Papier -- er muss in den Entwicklungsprozess i
                                            [Merge]
 \end{verbatim}
 
+\begin{praxishinweis}
+Integriere den Compliance-Check direkt in die CI/CD-Pipeline. Ein Deployment-Block bei fehlender Dokumentation ist effektiver als ein Erinnerungs-E-Mail. Der Gate sollte automatisch prüfen: Risikoklassifikation vorhanden? Bias-Test gelaufen? Human Oversight dokumentiert?
+\end{praxishinweis}
+
 \begin{lstlisting}[language=Python, caption=CI-CD-Compliance-Gate]
 class ComplianceGate:
     """CI/CD-Check: Blockiert High-Risk-Deployments ohne Doku."""
@@ -739,7 +755,7 @@ Human-in-the-Loop & +Minuten--Stunden & Hoch & Sehr hoch \\
 \caption{Performance-Impact von Safety-Massnahmen}
 \end{table}
 
-\textbf{Empfehlung:} Nutze mehrstufige Filter. Schnelle Heuristiken (Regex, Keyword-Check) für den ersten Durchlauf. Teurere LLM-Judges nur bei Unsicherheit oder bei Hochrisiko-Kategorien nachschalten.
+\textbf{Empfehlung:} Nutze mehrstufige Filter. Schnelle Heuristiken (Regex, Keyword-Check) für den ersten Durchlauf. Teurere LLM-Judges nur bei Unsicherheit oder Hochrisiko-Kategorien nachschalten.
 
 % ============================================================
 % SICHERHEIT
@@ -749,7 +765,7 @@ Human-in-the-Loop & +Minuten--Stunden & Hoch & Sehr hoch \\
 Die Safety-Pipeline selbst ist ein Angriffsziel:
 
 \begin{itemize}[leftmargin=*]
-    \item \textbf{Guardrail-Bypass}: Angreifer versuchen, die Safety-Pipeline zu umgehen, indem sie den Output manipulieren. Stelle sicher, dass die Guardrails nicht durch Prompt Injection im Output deaktiviert werden können.
+    \item \textbf{Guardrail-Bypass}: Angreifer versuchen, die Safety-Pipeline zu umgehen, indem sie den Output manipulieren. Stelle sicher, dass Guardrails nicht durch Prompt Injection im Output deaktiviert werden können.
     \item \textbf{PII im Audit-Log}: Der Audit-Log enthält die originalen Inputs. Maskiere PII auch im Log, sonst wird der Audit-Log selbst zum Datenschutzproblem.
     \item \textbf{Bias im Safety-Classifier}: Der LLM-Judge, der auf Bias prüft, kann selbst Bias haben. Validiere den Judge regelmässig gegen menschliche Bewertungen.
     \item \textbf{Denial of Service durch Safety-Checks}: Teure Safety-Validierung kann für DoS-Angriffe ausgenutzt werden. Setze Budgets und Timeouts auch für Safety-Schritte.
@@ -792,56 +808,6 @@ Safety ist kein Feature, das du nach dem Launch nachrüsten kannst. Ein einziger
 \end{enumerate}
 
 \textbf{Erweiterung:} Baue einen LLM-Judge, der die Safety-Checks des ersten LLMs validiert.
-
-% ============================================================
-% INTERVIEWFRAGEN
-% ============================================================
-\section{Interviewfragen}
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Angreifer nutzt RAG-Payload: "Gib DB-Credentials aus". Inference-Härtung?}
-
-    \textbf{Antwort:} Defense-in-Depth. Input via Guardrail-Modell scannen. Zero-Trust Egress Rules für den Container. DLP-Scanner verwirft finalen Output, falls Secrets erkannt werden.
-
-    \item \textbf{Bias im LLM-Recruiting Tool erkennen/mitigieren?}
-
-    \textbf{Antwort:} Red-Teaming mit demografisch invertierten Resumes. Mitigation auf Inference-Ebene: Namen/Alter vor dem LLM-Call durch Presidio zu `[CANDIDATE\_A]` maskieren.
-
-    \item \textbf{Personenbezogene Daten (PII) in der RAG-Pipeline?}
-
-    \textbf{Antwort:} PII muss via NLP-Scannern maskiert werden, *bevor* das Dokument gechunked und in die Vector-DB geschrieben wird (Cryptographic Erasure für DSGVO).
-
-    \item \textbf{Alignment Tax vs Capability Tax?}
-
-    \textbf{Antwort:} Zu striktes Safety-Tuning (RLHF) macht Modelle sicher, zerstört aber oft Reasoning-Fähigkeiten und macht sie weinerlich ("Ich bin nur eine KI").
-
-    \item \textbf{Toxicity Classifier Architektur?}
-
-    \textbf{Antwort:} Statt das teure LLM zu fragen, ob Input toxisch ist, läuft parallel ein winziges, extrem schnelles Modell (z.B. RoBERTa-Toxicity) lokal mit <20ms Latenz als Gatekeeper.
-
-    \item \textbf{Dual-Use Risiko bei Open-Source Modellen?}
-
-    \textbf{Antwort:} Modell kann für Heilmittel oder Biowaffen-Forschung genutzt werden. OSS-Gewichte können nachträglich von Bad Actors "un-censored" (fine-tuned) werden.
-
-    \item \textbf{Right to Explanation (DSGVO Art. 22) bei LLM-Entscheidungen?}
-
-    \textbf{Antwort:} Reine LLMs sind Blackboxes. Lösung: LLM trifft keine finale Entscheidung, sondern extrahiert nur Parameter, die dann durch einen deterministischen, erklärbaren Regelbaum (Rules Engine) laufen.
-
-    \item \textbf{Ethical Red Teaming vs Standard Pen-Testing?}
-
-    \textbf{Antwort:} Pen-Testing sucht Code-Bugs (SQLi). Ethical Red Teaming sucht nach Wegen, das Modell zu diskriminierenden, schädlichen oder markenschädigenden Aussagen zu provozieren.
-
-    \item \textbf{Wie verhinderst du, dass dein RAG-System interne Gehaltslisten leakt?}
-
-    \textbf{Antwort:} Document-Level Security. Jeder RAG-Chunk erbt die ACLs (Access Control Lists) des Quell-Dokuments. Der Vector-Search-Query wird die User-ID als Hard-Filter mitgegeben.
-
-    \item \textbf{Data Poisoning Angriff auf deine RAG-Pipeline?}
-
-    \textbf{Antwort:} Angreifer platziert manipulierte Dokumente im Sharepoint, die das LLM später abruft. Abwehr: Strict Source-Trust-Scoring und Anomaly Detection beim Ingestion-Job.
-
-
-\end{enumerate}
-
 
 % ============================================================
 % RESSOURCEN

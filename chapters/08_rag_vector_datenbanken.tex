@@ -21,18 +21,18 @@ Nach diesem Kapitel kannst du:
 % ============================================================
 \section{Motivation}
 
-Pre-trained Models haben zwei fundamentale Limitationen für Business-Anwendungen:
+Pre-trained Models haben zwei fundamentale Limitationen:
 
 \begin{enumerate}[leftmargin=*]
-    \item \textbf{Kein Firmenwissen}: Modelle kennen keine internen Dokumente, Produktdatenbanken oder Kundendaten deines Unternehmens.
-    \item \textbf{Veraltete Information}: Der Knowledge Cutoff ist ein reales Problem -- Modelle wissen nichts über aktuelle Events, Produkte oder Preisänderungen.
+    \item \textbf{Kein Firmenwissen}: Modelle kennen keine internen Dokumente, Produktdatenbanken oder Kundendaten.
+    \item \textbf{Veraltete Information}: Der Knowledge Cutoff ist real -- Modelle wissen nichts über aktuelle Events, Produkte oder Preisänderungen.
 \end{enumerate}
 
-Fine-Tuning könnte beide Probleme lösen, ist aber teuer, aufwendig und unflexibel: Ein fine-getuntes Modell kann nur das Wissen, das zum Zeitpunkt des Trainings existierte. Neue Produkte oder aktualisierte Richtlinien bedeuten ein erneutes Training.
+Fine-Tuning könnte beide Probleme lösen, ist aber teuer, aufwendig und unflexibel: Ein fine-getuntes Modell hat nur das Wissen des Trainingszeitpunkts. Neue Produkte bedeuten erneutes Training.
 
-\textbf{RAG (Retrieval-Augmented Generation)} löst beide Probleme grundlegend anders: Statt Wissen in den Modellgewichten zu speichern, wird es bei jeder Anfrage aus einer externen Wissensdatenbank abgerufen und als Kontext in den Prompt eingefügt. Das Ergebnis sind aktuelle, faktenbasierte Antworten -- ohne Fine-Tuning, ohne Modell-Updates, mit vollständiger Kontrolle über die Wissensbasis.
+\textbf{RAG (Retrieval-Augmented Generation)} löst beide Probleme anders: Statt Wissen in Modellgewichten zu speichern, wird es bei jeder Anfrage aus einer externen Wissensdatenbank abgerufen und als Kontext in den Prompt eingefügt. Ergebnis: aktuelle, faktenbasierte Antworten -- ohne Fine-Tuning, ohne Modell-Updates, mit vollständiger Kontrolle über die Wissensbasis.
 
-RAG ist 2026 das dominierende Pattern für LLM-Produktionssysteme: über 70\,\% aller produktiven LLM-Deployments nutzen RAG.
+RAG ist das dominierende Pattern für LLM-Produktionssysteme: über 70\,\% aller produktiven LLM-Deployments nutzen RAG.
 
 % ============================================================
 % GRUNDLAGEN
@@ -40,6 +40,10 @@ RAG ist 2026 das dominierende Pattern für LLM-Produktionssysteme: über 70\,\% 
 \section{Grundlagen -- RAG-Konzepte}
 
 \subsection{Das Problem, das RAG löst}
+
+\begin{praxishinweis}
+RAG ist kein Fine-Tuning-Ersatz. RAG liefert Kontext \textit{zur Laufzeit}, Fine-Tuning formt Modellgewichte \textit{dauerhaft}. RAG gewinnt, wenn sich das Wissen häufig ändert; Fine-Tuning, wenn Stil oder Verhalten dauerhaft angepasst werden müssen. In der Praxis ergänzen sich beide.
+\end{praxishinweis}
 
 \begin{verbatim}
    Ohne RAG:
@@ -159,7 +163,11 @@ Embeddings sind gut für semantische Ähnlichkeit, aber \textbf{schlecht für ex
 
 \subsection{Das Relevanz-Problem}
 
-Nicht jedes ähnliche Chunk ist auch relevant für die Beantwortung einer Frage. Cosine Similarity misst Text-Ähnlichkeit, nicht Question-Answering-Relevanz. Ein Chunk über "Rückgabepolitik" und eine Frage zu "Rückgabepolitik" haben hohe Similarity -- aber ein Chunk über "Versandkosten" kann für die Frage "Wie hoch sind die Versandkosten?" trotzdem irrelevant sein, wenn das Chunk nur "Versandkosten sind im Preis enthalten" sagt.
+Cosine Similarity misst Text-Ähnlichkeit, nicht Question-Answering-Relevanz. Ein Chunk über "Rückgabepolitik" kann hohe Similarity zur Frage haben -- aber das Chunk "Versandkosten sind im Preis enthalten" ist für "Wie hoch sind die Versandkosten?" trotzdem irrelevant.
+
+\begin{praxishinweis}
+Ein Cross-Encoder Re-Ranker ist der effektivste Einzel-Hebel für Retrieval-Qualität ab 10.000+ Chunks. Bi-Encoder (Embedding-Suche) findet schnell die Top-100; der Cross-Encoder bewertet Query+Dokument gemeinsam durch Attention-Layers und sortiert die Top-5 optimal für den LLM-Kontext.
+\end{praxishinweis}
 
 \textbf{Lösung}: Cross-Encoder Re-Ranker verbessern die Retrieval-Qualität signifikant (siehe Abschnitt~\ref{sec:reranker}).
 
@@ -275,6 +283,10 @@ class ChunkingStrategy:
 
 \subsection{Empfehlungen}
 
+\begin{praxishinweis}
+Die Chunking-Strategie ist der größte Hebel für RAG-Qualität -- wichtiger als das Embedding-Modell. Falsche Chunk-Größe oder fehlender Overlap ruinieren jedes Retrieval. Start mit Recursive Chunking (512 Tokens, 64 Overlap), dann systematisch messen: Hit Rate @ 5 vor und nach jeder Änderung.
+\end{praxishinweis}
+
 \begin{itemize}[leftmargin=*]
     \item \textbf{Starte mit Recursive Chunking} (512 Tokens, 64 Overlap) -- es funktioniert für 80\,\% der Fälle
     \item \textbf{Füge Metadaten hinzu}: Document-ID, Heading-Hierarchie, Seitenzahl. Das verbessert das Retrieval.
@@ -303,7 +315,7 @@ BAAI/bge-m3 (Open Source) & Selbst gehostet, multilingual & 1024 & Kostenlos \\
 intfloat/multilingual-e5-large & Hohe Qualität, selbst gehostet & 1024 & Kostenlos \\
 \midrule
 \end{tabularx}
-\caption{Embedding-Modelle 2026 im Vergleich}
+\caption{Embedding-Modelle im Vergleich}
 \label{tab:embeddings}
 \end{table}
 
@@ -375,7 +387,7 @@ Qdrant & Self-hosted / Cloud & HNSW + Product Quantization & Sharding \\
 Milvus & Distributed & IVF, HNSW, DiskANN & 100B+ Vektoren \\
 \midrule
 \end{tabularx}
-\caption{Vector Databases 2026 im Vergleich}
+\caption{Vector Databases im Vergleich}
 \label{tab:vectordbs}
 \end{table}
 
@@ -779,6 +791,10 @@ class TenantAwareRetriever:
         )
 \end{lstlisting}
 
+\begin{praxishinweis}
+Jedes Dokument im Vector Store ist ein potenzielles Injection-Vehikel. Ein Angreifer lädt ein Dokument mit "Ignore previous instructions" hoch -- wenn es retrieved wird, gelangt die Injection in den LLM-Kontext. Gegenmaßnahmen: Dokument-Scanning vor Indexierung, Output-Content-Filter, strikte Tenant-Isolation auf Datenbankebene.
+\end{praxishinweis}
+
 \textbf{Weitere Sicherheitsmaßnahmen:}
 \begin{itemize}[leftmargin=*]
     \item \textbf{Input-Sanitization}: Dokumente vor dem Indexieren auf schädliche Anweisungen scannen
@@ -839,56 +855,6 @@ Baue ein RAG-System, das Kundenanfragen zu einem fiktiven E-Commerce-Produktkata
 \textbf{Testdaten:} 10 Produktbeschreibungen + 20 Testfragen (10 einfach, 5 komplex, 5 die kein Produkt betreffen).
 
 \textbf{Erfolgskriterium:} Hit Rate @ 5 > 0,9, Faithfulness > 0,85. Keine Daten von Tenant A landen in Tenant Bs Antworten. HyDE verbessert Hit Rate um mindestens 5\,\%.
-
-% ============================================================
-% INTERVIEWFRAGEN
-% ============================================================
-\section{Interviewfragen}
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Vier Phasen einer RAG-Pipeline?}
-
-    \textbf{Antwort:} 1) Indexing (Chunken/Embedden). 2) Retrieval (Vektor-Suche). 3) Augmentation (Kontext in Prompt packen). 4) Generation (LLM-Antwort).
-
-    \item \textbf{Cosine Similarity vs MMR (Maximal Marginal Relevance)?}
-
-    \textbf{Antwort:} Cosine liefert hochähnliche, aber oft redundante Ergebnisse. MMR bestraft Redundanz und erzwingt diverse Informationsabdeckung.
-
-    \item \textbf{Schlechte RAG-Antworten — Debugging-Reihenfolge?}
-
-    \textbf{Antwort:} 1) Retrieval prüfen (Hit Rate @ K). 2) Chunk-Qualität sichten. 3) LLM-Prompt isoliert testen. (Der Fehler liegt meist beim Retrieval, nicht beim LLM).
-
-    \item \textbf{HyDE (Hypothetical Document Embeddings)?}
-
-    \textbf{Antwort:} LLM generiert eine fiktive Antwort auf die Query. Diese Antwort (statt der Query) wird geembeddet, um das semantische Gap bei kurzen User-Suchbegriffen zu schließen.
-
-    \item \textbf{Tenant-Isolation in RAG-Systemen sicherstellen?}
-
-    \textbf{Antwort:} Niemals dem LLM überlassen. Harte Metadaten-Filter (Tenant-ID) *vor* der Vector-Similarity-Search auf Datenbankebene anwenden.
-
-    \item \textbf{Cross-Encoder Re-Ranker Architektur?}
-
-    \textbf{Antwort:} Bi-Encoder sucht schnell die Top-100. Cross-Encoder füttert Query+Dokument gemeinsam durch Attention-Layers für hochpräzises, aber rechenintensives Re-Ranking der Top-5.
-
-    \item \textbf{VectorDB wächst auf 100 Mio Chunks, RAM läuft voll. Skalierungs-Strategie?}
-
-    \textbf{Antwort:} Product Quantization (PQ) + Scalar Quantization (SQ) zur 80\%igen RAM-Reduktion, gepaart mit Two-Stage-Retrieval (grob im RAM, exakt auf SSD).
-
-    \item \textbf{Wie wählst du Chunk-Size und Overlap?}
-
-    \textbf{Antwort:} Deterministisch, nicht raten. Chunk-Size basierend auf dem Embedding-Modell-Limit (z.B. 512 Tokens). Overlap (10-20\%) zur Erhaltung des semantischen Kontexts an Schnittkanten.
-
-    \item \textbf{GraphRAG vs VectorRAG: Wann wechselst du?}
-
-    \textbf{Antwort:} VectorRAG versagt bei globalen Zusammenhängen ("Was ist das Leitthema über alle Dokumente?"). GraphRAG extrahiert Entitäten/Beziehungen (Knowledge Graph) für holistische Queries.
-
-    \item \textbf{Selbst-Querying Retriever?}
-
-    \textbf{Antwort:} LLM übersetzt natürliche Sprache ("Zeige PDFs von 2023 über AI") in eine strukturierte Query mit Metadaten-Filtern (`year=2023`, `tag=AI`) *plus* Vector-Search.
-
-
-\end{enumerate}
-
 
 % ===========================================================%
 % WEITERFÜHRENDE RESSOURCEN

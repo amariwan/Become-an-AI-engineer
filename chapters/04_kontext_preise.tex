@@ -72,7 +72,7 @@ Qwen 2.5 & 128K Tokens \\
 DeepSeek-V3 & 128K Tokens \\
 \bottomrule
 \end{tabularx}
-\caption{Kontextfenster der wichtigsten Modelle (2026)}
+\caption{Kontextfenster der wichtigsten Modelle}
 \end{table}
 
 \subsection{Input- vs. Output-Tokens}
@@ -94,7 +94,7 @@ APIs berechnen Input- und Output-Tokens getrennt:
                  + Output-Tokens * Output-Preis
 \end{verbatim}
 
-\subsection{Token-Kosten pro Millionen Tokens (2026)}
+\subsection{Token-Kosten pro Millionen Tokens}
 
 \begin{table}[H]
 \centering
@@ -112,9 +112,13 @@ DeepSeek-V3 & 0,27 \$ & 1,10 \$ \\
 Llama 3 (lokal) & Stromkosten & Stromkosten \\
 \bottomrule
 \end{tabularx}
-\caption{API-Kosten pro Million Tokens (Stand 2026)}
+\caption{API-Kosten pro Million Tokens}
 \label{tab:api-kosten-kontext}
 \end{table}
+
+\begin{praxishinweis}
+Der größte Kostenfehler: Jeden Request mit dem teuersten Modell zu bearbeiten. GPT-4o-mini reicht für 80\,\% aller Aufgaben. Ein Semantic Router, der einfache Queries automatisch an günstigere Modelle leitet, spart 60--80\,\% der Kosten.
+\end{praxishinweis}
 
 % ============================================================
 % ARCHITEKTUR
@@ -159,7 +163,7 @@ Jeder LLM-Call durchläuft ein Context-Budgeting:
     Selektion. Aufwändig, aber am besten für RAG-Systeme.
 
     \item[Hybrid] Sliding Window für kurze Konversationen + Summary
-    Compression für lange Sessions. Der Standard 2026.
+    Compression für lange Sessions. Der Standard.
 \end{description}
 
 % ============================================================
@@ -220,6 +224,10 @@ also werfe ich einfach alle meine Dokumente rein.\grqq{} Das funktioniert
 nicht -- LLMs sind nicht dafür optimiert, in riesigen Textmengen die
 Nadel im Heuhaufen zu finden. Dafür brauchst du RAG mit einem
 Retrieval-System, das die relevanten Dokumente vorselektiert.
+
+\begin{praxishinweis}
+Lost in the Middle ist kein Randphänomen -- es betrifft jeden Prompt über 10K Tokens. Strukturiere deinen Kontext immer nach dem Prinzip: wichtigste Info an den Anfang, zweitwichtigste ans Ende, der Rest in die Mitte. Oder besser: nutze RAG, um die Dokumentenmasse vorab zu filtern.
+\end{praxishinweis}
 
 % ============================================================
 % PRAXIS -- Kostenrechnung
@@ -393,6 +401,10 @@ print(f"Cache Input: {response.usage.cache_read_input_tokens}")
 print(f"Cache Create: {response.usage.cache_creation_input_tokens}")
 \end{lstlisting}
 
+\begin{praxishinweis}
+Prompt-Caching funktioniert nur bei exaktem Prefix-Match. Stelle sicher, dass der System-Prompt immer am Anfang des Message-Arrays steht und sich zwischen Requests nicht ändert. Dynamische Elemente wie User-Name oder Datum gehören in den User-Prompt, nicht in den System-Prompt.
+\end{praxishinweis}
+
 % ===========================================================%
 % BEST PRACTICES
 % ============================================================
@@ -561,6 +573,10 @@ class CostTracker:
         return None
 \end{lstlisting}
 
+\begin{praxishinweis}
+Kosten-Monitoring ohne Alarme ist sinnlos. Ein Cost-Exploit (Angreifer füllt den Kontext mit 100K Tokens) oder ein fehlerhafter Batch-Job können innerhalb von Minuten das Monatsbudget aufbrauchen. Setze harte Limits pro Request, pro User und pro Tag.
+\end{praxishinweis}
+
 % ===========================================================%
 % SICHERHEIT
 % ============================================================
@@ -645,59 +661,9 @@ und Prompt-Längen. Zeige die Kostenunterschiede der Optimierungsstufen.
 warnt bei Budget-Überschreitung und macht automatisch
 Optimierungsvorschläge.
 
-% ============================================================
-% INTERVIEWFRAGEN
-% ============================================================
-\section{Interviewfragen}
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Erste drei Optimierungsmaßnahmen bei hohen API-Kosten?}
-
-    \textbf{Antwort:} 1) Semantic Router (Mini für Standard). 2) Prompt Caching für statische Kontexte. 3) Strikte `max\_tokens` Limitierung zur DoS-Prävention.
-
-    \item \textbf{RAG mit 50K Kontext im 128K Fenster. Antworten oft ungenau. Problem?}
-
-    \textbf{Antwort:} Lost in the Middle. Lösung: Re-Ranker nutzen und den Kontext dynamisch auf die Top-K Tokens (z.B. 10K) eindampfen.
-
-    \item \textbf{Monatskosten bei 100K Queries/Tag (GPT-4o-mini, 1K In, 500 Out)?}
-
-    \textbf{Antwort:} (1.000 * \$0.15/1M + 500 * \$0.60/1M) * 100.000 * 30 = ca. \$1.350/Monat.
-
-    \item \textbf{Wann lohnt sich Self-Hosting gegenüber APIs finanziell?}
-
-    \textbf{Antwort:} Break-Even liegt meist ab ca. 50-100 Mio. Tokens/Tag, vorausgesetzt GPU-Abschreibung und MLOps-Personalkosten sind einkalkuliert.
-
-    \item \textbf{Wie evaluierst du Routing-Entscheidungen (Small vs Large Model)?}
-
-    \textbf{Antwort:} Golden Dataset mit 500 Queries. Metrik: Routing Accuracy (gehts ans richtige Modell?) + Cost-Impact (wieviel \$ gespart?).
-
-    \item \textbf{Wie vermeidest du Context Window Overflows zuverlässig?}
-
-    \textbf{Antwort:} Pre-Call-Token-Counting mit `tiktoken`. RAG-Chunks oder Chat-History dynamisch trimmen, bevor der API-Call abgesetzt wird.
-
-    \item \textbf{Prompt-Caching zeigt 0 \% Hits, obwohl der System-Prompt gleich bleibt. Fehler?}
-
-    \textbf{Antwort:} Die Reihenfolge. Dynamische Elemente (User-Input) stehen vor dem statischen System-Prompt. Prefix-Matching bricht sofort ab.
-
-    \item \textbf{Modell A (\$1 In/\$1 Out) vs. Modell B (\$0.50 In/\$3 Out). Welches ist für RAG günstiger?}
-
-    \textbf{Antwort:} Modell B. RAG ist stark asymmetrisch (Massiv Input-Tokens für Kontext, wenig Output-Tokens für Antwort).
-
-    \item \textbf{Ein User sendet 100x ein 120K Token Dokument und fragt "Zusammenfassung?". Kosten explodieren. Prävention?}
-
-    \textbf{Antwort:} Input-Token-Rate-Limiting pro User und Tag implementieren, nicht nur Request-Rate-Limiting.
-
-    \item \textbf{Warum verbraucht ein "JSON Mode" Output mehr Tokens als ein reiner String?}
-
-    \textbf{Antwort:} Wegen Whitespaces, Zeilenumbrüchen und Keys. Lösung: Minifiziertes JSON ohne Einrückungen anfordern.
-
-
-\end{enumerate}
-
-
 % ===========================================================%
 % WEITERFÜHRENDE RESSOURCEN
-% ===========================================================%
+% ============================================================
 \section{Weiterführende Ressourcen}
 
 \begin{itemize}[leftmargin=*]

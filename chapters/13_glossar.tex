@@ -3,12 +3,12 @@
 \label{chap:glossar}
 
 \begin{lernziele}
-Dieses Glossar dient als alphabetisches Nachschlagewerk für alle wichtigen Begriffe, Abkürzungen und Konzepte, die in diesem Buch verwendet werden. Nutze es, wenn du auf einen Begriff stösst, den du nicht kennst oder vertiefen möchtest.
+Alphabetisches Nachschlagewerk für Fachbegriffe, Abkürzungen und Konzepte. Nachschlagen bei unbekannten Begriffen.
 \end{lernziele}
 
 \section{A}
 
-\textbf{AGI (Artificial General Intelligence)}: KI mit menschenähnlicher allgemeiner Intelligenz -- ein Modell, das beliebige intellektuelle Aufgaben gleich gut wie ein Mensch löst. Bisher existiert AGI nicht; alle aktuellen Modelle sind Narrow AI.
+\textbf{AGI (Artificial General Intelligence)}: KI mit menschenähnlicher allgemeiner Intelligenz -- ein Modell, das beliebige intellektuelle Aufgaben gleich gut wie ein Mensch löst. Bisher existiert AGI nicht; alle Modelle sind Narrow AI.
 
 \textbf{AI Act}: Die EU-Verordnung 2024/1689 zur Regulierung von Künstlicher Intelligenz. Kategorisiert KI-Systeme nach Risikoklassen (minimal, limited, high, unacceptable) und definiert Konformitätsanforderungen.
 
@@ -44,21 +44,21 @@ Dieses Glossar dient als alphabetisches Nachschlagewerk für alle wichtigen Begr
 
 \textbf{Circuit Breaker}: Ein Architekturmuster, das bei wiederholten Fehlern einer externen Abhängigkeit (z.B. LLM-API) automatisch weitere Anfragen blockiert und eine Fallback-Antwort liefert.
 
-\textbf{Claude}: Anthropics Familie von LLMs (Opus, Sonnet, Haiku). Die Alternative zu OpenAIs GPT-Reihe.
+\textbf{Claude}: Anthropics Familie von LLMs (Opus, Sonnet, Haiku). Die Alternative zu OpenAIs GPT-Reihe. Die konkreten Modellversionen ändern sich regelmässig.
 
-\textbf{Context Window / Kontextfenster}: Die maximale Anzahl von Tokens, die ein Modell auf einmal verarbeiten kann -- z.B. 128K Tokens bei GPT-4o oder 200K bei Claude 4 Sonnet.
+\textbf{Context Window / Kontextfenster}: Die maximale Anzahl von Tokens, die ein Modell auf einmal verarbeiten kann -- je nach Modell zwischen 8K und 1M Tokens.
 
 \textbf{Constitutional AI}: Anthropics Methode für Alignment, bei dem das Modell gegen eine schriftliche Verfassung (Constitution) trainiert wird. Das Modell lernt, eigene Outputs gegen diese Prinzipien zu prüfen und zu korrigieren.
 
 \textbf{Cosine Similarity}: Ein Mass für die Ähnlichkeit zwischen zwei Vektoren (Embeddings). Werte nahe 1 bedeuten hohe Ähnlichkeit, Werte nahe 0 keine. Die Standard-Metrik für semantische Suche in Vector Databases.
 
-\textbf{Cutoff Date}: Das Datum, bis zu dem ein Modell im Training Daten gesehen hat. Ein Modell mit Cutoff Januar 2026 weiss nichts über Ereignisse ab Februar 2026.
+\textbf{Cutoff Date}: Das Datum, bis zu dem ein Modell im Training Daten gesehen hat. Ein Modell kennt nur Daten bis zu seinem Cutoff-Datum. Ereignisse danach sind ihm unbekannt.
 
 \section{D}
 
 \textbf{Data Poisoning}: Ein Angriff, bei dem manipulierte Daten in den Trainingsdatensatz eines Modells eingeschleust werden, um sein Verhalten gezielt zu beeinflussen.
 
-\textbf{Decoder}: Der Teil eines Transformer-Modells, der Text generiert (im Gegensatz zum Encoder, der Text repräsentiert). Decoder-only-Modelle wie GPT-4o, Claude und Llama sind der aktuelle Standard.
+\textbf{Decoder}: Der Teil eines Transformer-Modells, der Text generiert (im Gegensatz zum Encoder, der Text repräsentiert). Decoder-only-Modelle (GPT, Claude, Llama) sind der aktuelle Standard.
 
 \textbf{Deep Learning}: Ein Teilbereich des ML, der neuronale Netze mit vielen Schichten verwendet -- die Grundlage aller modernen LLMs.
 
@@ -90,19 +90,23 @@ Dieses Glossar dient als alphabetisches Nachschlagewerk für alle wichtigen Begr
 
 \textbf{Garak}: Open-Source-Tool für automatisierte LLM-Sicherheitstests. Prüft ein Modell systematisch auf Jailbreak-Resistenz, Halluzinationen, Toxizität und weitere Risikokategorien.
 
-\textbf{Gemini}: Googles Familie von LLMs (Ultra, Pro, Flash, Nano). Besonders stark in Multimodalität und dem längsten Kontextfenster (bis 1M Tokens).
+\textbf{Gemini}: Googles Familie von LLMs. Besonders stark in Multimodalität und sehr grossen Kontextfenstern.
 
 \textbf{Golden Dataset}: Eine Sammlung von Input-Output-Paaren mit bekannten, korrekten Antworten -- der Standard für reproduzierbare Prompt-Evaluation.
 
-\textbf{GPT (Generative Pre-trained Transformer)}: Die von OpenAI entwickelte Modellfamilie. GPT-4o (Omni) ist 2026 das meistgenutzte Multimodal-Modell.
+\textbf{GPT (Generative Pre-trained Transformer)}: Die von OpenAI entwickelte Modellfamilie. Die jeweils aktuelle Version ist das meistgenutzte Multimodal-Modell des Anbieters.
 
-\textbf{GPU (Graphics Processing Unit)}: Ursprünglich für Grafikberechnung entwickelt, heute das Standard-Hardware für KI-Training und -Inference. NVIDIA H100/B200 sind 2026 die führenden KI-GPUs.
+\textbf{GPU (Graphics Processing Unit)}: Ursprünglich für Grafikberechnung entwickelt, heute das Standard-Hardware für KI-Training und -Inference. NVIDIA H100/B200 sind die führenden KI-GPUs.
 
 \textbf{Guardrails}: Ein Framework oder eine Schicht, die die Ausgabe eines LLMs gegen definierte Regeln validiert und bei Verstössen eingreift (blockieren, umformulieren, eskalieren).
 
 \section{H}
 
 \textbf{Halluzination}: Wenn ein LLM falsche oder erfundene Informationen als Fakten ausgibt. Das Modell erfindet Inhalte mit absolutem Selbstvertrauen -- kein Bug, sondern inhärente Eigenschaft generativer Modelle.
+
+\begin{praxishinweis}
+Halluzinationen lassen sich nie vollständig eliminieren -- nur reduzieren. Bewährte Strategien: RAG mit Quellenangabe, Golden Dataset für Regressionstests, LLM-as-a-Judge für Output-Validierung. Bei sicherheitskritischen Anwendungen: Human-in-the-Loop einplanen.
+\end{praxishinweis}
 
 \textbf{HITL (Human-in-the-Loop)}: Ein Workflow, bei dem ein Mensch bei kritischen Entscheidungen eingreift oder die finale Freigabe gibt. Pflicht bei Hochrisiko-KI-Systemen.
 
@@ -134,7 +138,7 @@ Dieses Glossar dient als alphabetisches Nachschlagewerk für alle wichtigen Begr
 
 \textbf{Langfuse}: Open-Source-Plattform für Tracing, Monitoring und Evaluation von LLM-Anwendungen. Ermöglicht detaillierte Einblicke in Kosten, Latenz und Qualität.
 
-\textbf{LLM (Large Language Model)}: Ein neuronales Netz, das auf riesigen Textkorpora trainiert wurde, um natürliche Sprache zu verstehen und zu generieren -- z.B. GPT-4o, Claude, Gemini, Llama.
+\textbf{LLM (Large Language Model)}: Ein neuronales Netz, das auf riesigen Textkorpora trainiert wurde, um natürliche Sprache zu verstehen und zu generieren. Wichtigste aktuelle Vertreter: GPT (OpenAI), Claude (Anthropic), Gemini (Google), Llama (Meta).
 
 \textbf{LLM-as-a-Judge}: Eine Evaluationsmethode, bei der ein LLM die Qualität der Antwort eines anderen LLMs bewertet. Günstig und skalierbar, aber anfällig für Bias (Position, Länge, Stil).
 
@@ -152,7 +156,7 @@ Dieses Glossar dient als alphabetisches Nachschlagewerk für alle wichtigen Begr
 
 \textbf{MoE (Mixture of Experts)}: Eine Architektur, bei der das Modell mehrere kleinere Experten-Netzwerke hat und nur die relevantesten pro Token aktiviert -- spart Rechenkosten bei grossen Modellen.
 
-\textbf{Multimodalität}: Die Fähigkeit eines Modells, mehrere Datentypen zu verarbeiten (Text, Bilder, Audio, Video). GPT-4o und Gemini 2.5 Pro sind multimodale Modelle.
+\textbf{Multimodalität}: Die Fähigkeit eines Modells, mehrere Datentypen zu verarbeiten (Text, Bilder, Audio, Video). Die Flaggschiff-Modelle von OpenAI, Google und zunehmend Anthropic sind multimodal.
 
 \section{N}
 
@@ -164,7 +168,7 @@ Dieses Glossar dient als alphabetisches Nachschlagewerk für alle wichtigen Begr
 
 \section{O}
 
-\textbf{OpenAI}: Das Unternehmen hinter GPT-4o, DALL-E, Whisper und der OpenAI-Plattform. 2026 der meistgenutzte LLM-Anbieter weltweit.
+\textbf{OpenAI}: Das Unternehmen hinter GPT, DALL-E, Whisper und der OpenAI-Plattform. Der meistgenutzte LLM-Anbieter weltweit.
 
 \textbf{Output-Token}: Das vom Modell generierte Token -- fast immer teurer als Input-Token (3--5x Faktor) und damit ein kritischer Kostenfaktor.
 
@@ -196,6 +200,10 @@ Dieses Glossar dient als alphabetisches Nachschlagewerk für alle wichtigen Begr
 
 \textbf{RAG (Retrieval-Augmented Generation)}: Eine Architektur, bei der ein LLM vor der Antwort-Generierung relevante Dokumente aus einer externen Wissensdatenbank zieht -- das Standardmuster für Firmenwissen-Integration.
 
+\begin{praxishinweis}
+RAG ist meist der bessere erste Schritt als Fine-Tuning. Erlaubt Wissensaktualisierung ohne Retraining, reduziert Halluzinationen durch Quellenbindung. Faustregel: RAG zuerst, Fine-Tuning nur für Stil- oder Format-Anpassungen.
+\end{praxishinweis}
+
 \textbf{Rate Limiting}: Die Begrenzung der Anzahl von API-Requests pro Zeitfenster. Schützt vor Kosten-Explosion und Abuse.
 
 \textbf{ReAct (Reasoning + Acting)}: Ein Agent-Pattern, bei dem das Modell zwischen Reasoning (Thought) und Action (Tool Call) abwechselnd durchläuft bis zur Lösung der Aufgabe.
@@ -222,7 +230,7 @@ Dieses Glossar dient als alphabetisches Nachschlagewerk für alle wichtigen Begr
 
 \section{T}
 
-\textbf{Temperature}: Ein Parameter, der die Kreativität der LLM-Generierung steuert. 0 = deterministisch (immer gleiche Antwort), 1 = kreativ/variiert, >1 = extrem volatil.
+\textbf{Temperature}: Ein Parameter, der die Kreativität der LLM-Generierung steuert. 0 = weitgehend deterministisch (reduziert Varianz drastisch, garantiert aber keine Bit-Identität -- serverseitiges Batching kann die Floating-Point-Arithmetik minimal verschieben), 1 = kreativ/variiert, >1 = extrem volatil.
 
 \textbf{Token}: Die kleinste Einheit, die ein LLM verarbeitet. Ein Token kann ein Wort, ein Teilwort oder ein einzelnes Zeichen sein.
 
@@ -242,7 +250,7 @@ Dieses Glossar dient als alphabetisches Nachschlagewerk für alle wichtigen Begr
 
 \section{U}
 
-\textbf{Uv}: Moderner Python-Package-Manager (Alternative zu pip). Extrem schnell, geschrieben in Rust. 2026 der empfohlene Paketmanager für neue KI-Projekte.
+\textbf{Uv}: Moderner Python-Package-Manager (Alternative zu pip). Extrem schnell, geschrieben in Rust. der empfohlene Paketmanager für neue KI-Projekte.
 
 \section{V}
 
@@ -303,6 +311,4 @@ TTFT & Time to First Token \\
 
 \section*{Quellen für dieses Glossar}
 
-Dieses Glossar basiert auf dem AI Engineer Roadmap Glossary von roadmap.sh, den technischen Dokumentationen von OpenAI, Anthropic, Google DeepMind und der Forschungscommunity. Die Definitionen sind bewusst praxisorientiert formuliert -- als Nachschlagewerk für Entwickler:innen im AI-Engineering-Alltag.
-
-\textbf{Nächster Schritt:} Im nächsten Kapitel findest du fünf Praxisprojekte mit steigendem Schwierigkeitsgrad -- vom einfachen Chatbot bis zur Multi-Agent-Produktionspipeline.
+Basiert auf dem AI Engineer Roadmap Glossary (roadmap.sh), den technischen Dokumentationen von OpenAI, Anthropic, Google DeepMind und der Forschungscommunity. Definitionen praxisorientiert -- Nachschlagewerk für den AI-Engineering-Alltag.

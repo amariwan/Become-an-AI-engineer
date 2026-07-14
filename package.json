@@ -1,0 +1,9 @@
+{
+  "name": "become-an-ai-engineer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "verify": "node --check"
+  }
+}

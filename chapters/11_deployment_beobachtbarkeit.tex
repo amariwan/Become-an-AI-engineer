@@ -21,28 +21,32 @@ Nach diesem Kapitel kannst du:
 % ============================================================
 \section{Motivation}
 
-Eine LLM-Anwendung in Produktion zu bringen unterscheidet sich grundlegend vom klassischen Software-Deployment. In einer traditionellen Web-App ist das Verhalten deterministisch: Gleicher Input, gleicher Output. Bei LLMs ist das nicht der Fall -- und das hat weitreichende Konsequenzen.
+Eine LLM-Anwendung in Produktion zu bringen unterscheidet sich grundlegend vom klassischen Software-Deployment. In einer traditionellen Web-App ist das Verhalten deterministisch: Gleicher Input, gleicher Output. Bei LLMs nicht -- das hat weitreichende Konsequenzen.
 
 Drei Herausforderungen machen LLM-Deployment einzigartig:
 
 \begin{enumerate}[leftmargin=*]
-    \item \textbf{External Dependencies}: Deine App hängt von der API-Verfügbarkeit ab (OpenAI, Anthropic). Wenn die API ausfällt, fällt deine App mit aus. Du hast keine direkte Kontrolle über die Latenz oder Verfügbarkeit.
-    \item \textbf{Kosten-Kontrolle}: Jeder Request kostet Geld. Ohne Monitoring explodieren die Kosten bei Popularität. Ein unerwarteter Traffic-Spike kann innerhalb von Stunden tausende Euro kosten.
-    \item \textbf{Probabilistisches Verhalten}: Dein Test kann heute bestehen und morgen trotzdem falsche Antworten liefern. Deterministische Unit-Tests allein reichen nicht -- du brauchst kontinuierliche Evaluation in der Produktion.
+    \item \textbf{External Dependencies}: Deine App hängt von der API-Verfügbarkeit ab (OpenAI, Anthropic). Fällt die API aus, fällt deine App mit aus. Keine direkte Kontrolle über Latenz oder Verfügbarkeit.
+    \item \textbf{Kosten-Kontrolle}: Jeder Request kostet Geld. Ohne Monitoring explodieren die Kosten bei Popularität. Ein Traffic-Spike kann innerhalb von Stunden tausende Euro kosten.
+    \item \textbf{Probabilistisches Verhalten}: Dein Test kann heute bestehen und morgen trotzdem falsche Antworten liefern. Deterministische Unit-Tests allein reichen nicht -- kontinuierliche Evaluation in Produktion ist nötig.
 \end{enumerate}
+
+\begin{praxishinweis}
+External Dependencies sind kein reines Availability-Problem. Ein API-Provider kann verfügbar sein, aber plötzlich 10x höhere Latenz liefern. Baue Timeout-Monitoring und Latenz-Alarme ein -- nicht nur Health-Checks.
+\end{praxishinweis}
 
 % ============================================================
 % GRUNDLAGEN
 % ============================================================
 \section{Grundlagen -- Deployment-Arten für LLMs}
 
-Es gibt vier grundlegende Deployment-Modelle für LLM-Anwendungen:
+Vier grundlegende Deployment-Modelle für LLM-Anwendungen:
 
 \begin{description}[leftmargin=*,style=nextline]
-    \item[API-basiert (Managed)] Du rufst eine externe API auf (OpenAI, Anthropic, Google). Kein Modell-Hosting notwendig. Pay-per-Token. Einfachster Einstieg, aber Vendor-Lock-in und Latenz-abhängig.
-    \item[Self-hosted Open Source] Du hostest ein Open-Source-Modell (Llama, Mistral, Qwen) auf eigener Infrastruktur. Volle Kontrolle, keine Datenverlassen den Server. Aber hohe Infrastruktur-Kosten (GPUs).
-    \item[Managed Inference (Cloud)] Du nutzt einen Inference-Anbieter (Together AI, Fireworks, Groq), der Open-Source-Modelle als API anbietet. Kompromiss aus Kontrolle und Einfachheit.
-    \item[Edge Deployment] Das Modell läuft auf dem Endgerät (Smartphone, Laptop). Minimale Latenz, keine Internetverbindung nötig. Aber stark limitierte Modellgrösse.
+    \item[API-basiert (Managed)] Externe API (OpenAI, Anthropic, Google). Kein Modell-Hosting. Pay-per-Token. Einfachster Einstieg, aber Vendor-Lock-in und Latenz-abhängig.
+    \item[Self-hosted Open Source] Open-Source-Modell (Llama, Mistral, Qwen) auf eigener Infrastruktur. Volle Kontrolle, keine Daten verlassen den Server. Hohe Infrastruktur-Kosten (GPUs).
+    \item[Managed Inference (Cloud)] Inference-Anbieter (Together AI, Fireworks, Groq) bietet Open-Source-Modelle als API. Kompromiss aus Kontrolle und Einfachheit.
+    \item[Edge Deployment] Modell läuft auf Endgerät (Smartphone, Laptop). Minimale Latenz, keine Internetverbindung nötig. Stark limitierte Modellgrösse.
 \end{description}
 
 \subsection{Entscheidungsmatrix}
@@ -97,6 +101,10 @@ Jede Schicht hat spezifische Aufgaben:
     \item \textbf{Tracing}: Protokolliert jeden Request für Debugging und Kosten-Tracking
 \end{enumerate}
 
+\begin{praxishinweis}
+API Gateway und LLM-Service sollten getrennte Deployments sein. Ein Rate-Limit-Treffer soll nicht den gesamten Service blockieren, sondern nur den entsprechenden Client. Trennung erlaubt unabhängiges Skalieren.
+\end{praxishinweis}
+
 % ============================================================
 % THEORIE
 % ============================================================
@@ -112,9 +120,9 @@ T_{total} = T_{network} + T_{queue} + T_{prompt} + T_{generation} + T_{post}
 
 \begin{description}[leftmargin=*,style=nextline]
     \item[$T_{network}$] Netzwerk-Latenz zwischen Client und API. Bei Cloud-APIs typisch 50--200ms. Standort-Wahl (us-east vs. eu-west) macht bis zu 100ms Unterschied.
-    \item[$T_{queue}$] Wartezeit auf dem Server. Bei hoher Auslastung der API können Requests Minuten in der Queue hängen. Rate Limiting verstärkt diesen Effekt.
+    \item[$T_{queue}$] Wartezeit auf dem Server. Bei hoher Auslastung können Requests Minuten in der Queue hängen. Rate Limiting verstärkt diesen Effekt.
     \item[$T_{prompt}$] Zeit für die Verarbeitung des Inputs (Pre-fill). Skaliert linear mit der Prompt-Länge. Ein 10K-Token-Prompt dauert ca. 5--15x länger als ein 1K-Token-Prompt.
-    \item[$T_{generation}$] Zeit für die Generierung des Outputs. Skaliert linear mit der Anzahl Output-Tokens und quadratisch mit der Kontextlänge (Attention). Streaming reduziert die Wahrnehmung, nicht die tatsächliche Dauer.
+    \item[$T_{generation}$] Zeit für die Generierung des Outputs. Skaliert linear mit Output-Tokens und quadratisch mit der Kontextlänge (Attention). Streaming reduziert die Wahrnehmung, nicht die Dauer.
     \item[$T_{post}$] Post-Processing: Output-Parsing, Safety-Checks, Logging. Typisch < 10ms.
 \end{description}
 
@@ -278,6 +286,10 @@ async def chat_stream(request: Request, user_input: str):
     return await stream_chat(user_input)
 \end{lstlisting}
 
+\begin{praxishinweis}
+Streaming verbessert die subjektive Latenz massiv, reduziert aber nicht die Gesamtverarbeitungszeit. Der erste Token kommt schneller, die komplette Antwort braucht gleich lang. Für UX zählt Time-to-First-Token mehr als Total-Time.
+\end{praxishinweis}
+
 % ============================================================
 % FEHLER-TOLERANZ
 % ============================================================
@@ -332,7 +344,7 @@ async def robust_chat(messages: list[dict]) -> str:
 
 \subsection{Circuit-Breaker-Pattern}
 
-Bei wiederholten API-Fehlern verhindert ein Circuit-Breaker weitere Versuche und gibt stattdessen eine Fallback-Antwort:
+Bei wiederholten API-Fehlern verhindert ein Circuit-Breaker weitere Versuche und gibt eine Fallback-Antwort:
 
 \begin{lstlisting}[language=Python, caption=Circuit-Breaker für LLM-API-Ausfälle]
 import time
@@ -427,12 +439,10 @@ def monitored_llm_call(model: str, messages: list) -> str:
         tokens = response.usage.total_tokens
         cost = calculate_cost(model, tokens)
 
-        # Prometheus-Metriken aktualisieren
         LLM_REQUESTS.labels(model=model, status="success").inc()
         LLM_LATENCY.labels(model=model).observe(latency)
         LLM_COST.labels(model=model).inc(cost)
 
-        # Strukturiertes Logging
         logger.info("llm_call_completed",
             model=model,
             latency_s=round(latency, 3),
@@ -545,7 +555,7 @@ Context-Window-Management & 10--20\% \\
 \caption{Kostenspar-Techniken für LLM-Produktionssysteme}
 \end{table}
 
-% ===========================================================%
+% ============================================================%
 % CODE -- Kubernetes-Deployment
 % ============================================================
 \section{Codebeispiele -- Deployment-Optimierung}
@@ -626,7 +636,6 @@ async def readiness():
     """Readiness-Check: Testet, ob die LLM-API erreichbar ist."""
     try:
         async with httpx.AsyncClient(timeout=5) as client:
-            # Leichter Test-Call, minimale Kosten
             resp = await client.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers={"Authorization": "Bearer sk-..."},
@@ -680,6 +689,10 @@ async def readiness():
 #           readinessProbe:
 #             httpGet: {path: /ready, port: 8000}
 \end{lstlisting}
+
+\begin{praxishinweis}
+Kubernetes-Proben unterscheiden: livenessProbe = "Pod neu starten", readinessProbe = "Traffic stoppen". Ein LLM-Service mit Timeout sollte readiness-failen (Traffic umleiten), nicht liveness-failen (was einen Restart auslöst der Minuten dauert).
+\end{praxishinweis}
 
 % ============================================================
 % SICHERHEIT
@@ -735,56 +748,6 @@ LLM-Deployment ist nicht wie klassisches Web-Deployment. External Dependencies, 
 
 \textbf{Erweiterung:} Füge einen Multi-Provider-Fallback hinzu (OpenAI -> Anthropic -> lokales Modell).
 Füge Readiness-Probes und Kubernetes-Manifeste für das Deployment hinzu.
-
-% ============================================================
-% INTERVIEWFRAGEN
-% ============================================================
-\section{Interviewfragen}
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{LLM-Anwendung für 10.000 User deployen. Architektur?}
-
-    \textbf{Antwort:} Stateless Container via Kubernetes (EKS). API-Gateway (Apisix) für Rate Limiting. LiteLLM als Backend-Proxy für Provider-Load-Balancing und Async-Logging via ClickHouse.
-
-    \item \textbf{Vertikale vs Horizontale Skalierung bei LLMs?}
-
-    \textbf{Antwort:} Vertikal (mehr VRAM) ist zwingend, um das Modell überhaupt in den Speicher zu laden. Horizontal (mehr Nodes) fängt den RPS-Durchsatz (Concurrency) ab.
-
-    \item \textbf{Latenz steigt nach Deployment 5x. Erste Debug-Schritte?}
-
-    \textbf{Antwort:} Distributed Tracing (OpenTelemetry) prüfen. Bottlenecks: KV-Cache-Eviction durch lange Prompts, DB-I/O-Latenz oder endlos generierende Tokens wegen fehlendem Max-Limit.
-
-    \item \textbf{Readiness-Probes für eine LLM-API?}
-
-    \textbf{Antwort:} Health-Endpoint pingt Vector-DB *und* macht einen 1-Token-Generierungstest ("Antworte OK"). Bei Fail wird der Pod vom Traffic isoliert.
-
-    \item \textbf{Wie designst du Multi-Region Failover für RAG?}
-
-    \textbf{Antwort:} Active-Active Setup hinter Global Load Balancer. Vektordatenbank asynchron replizieren. Session-State (Chat History) in globalem Redis/DynamoDB halten.
-
-    \item \textbf{Streaming Load Balancer Problem?}
-
-    \textbf{Antwort:} SSE-Verbindungen (Server-Sent Events) sind long-lived. Standard-Load-Balancer verteilen schlecht. Lösung: Layer-7 Balancing mit Least-Connections Algorithmus.
-
-    \item \textbf{Cold Start bei Serverless LLMs (z.B. AWS SageMaker Serverless)?}
-
-    \textbf{Antwort:} Das Laden von 150GB Gewichten in den VRAM dauert Minuten. Serverless ist für synchrone LLMs tot. Provisioned Concurrency (immer laufende GPUs) ist zwingend.
-
-    \item \textbf{Tracking von Token-Limits pro Tenant in Echtzeit?}
-
-    \textbf{Antwort:} Token-Bucket-Algorithmus in Redis. Nach jedem API-Call wird der zurückgelieferte Token-Verbrauch asynchron vom Mandanten-Bucket subtrahiert.
-
-    \item \textbf{Semantic Caching Deployment?}
-
-    \textbf{Antwort:} Dedizierter Microservice *vor* dem LLM-Gateway. Nutzt schnelles lokales Embedding-Modell und Vektor-Suche in Redis (RedisVL) mit 95\% Confidence-Threshold.
-
-    \item \textbf{Welche 3 Metriken im Dashboard sind nachts um 3 Uhr Pager-würdig?}
-
-    \textbf{Antwort:} 1) Error Rate der Provider-API > 5\%. 2) Time-to-First-Token (TTFT) P95 > 2 Sekunden. 3) Token-Budget Spend-Rate Threshold überschritten.
-
-
-\end{enumerate}
-
 
 % ============================================================
 % RESSOURCEN
