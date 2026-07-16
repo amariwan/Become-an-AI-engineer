@@ -28,6 +28,7 @@
 \usepackage{graphicx}
 \usepackage{tabularx, booktabs, longtable, caption, float, enumitem}
 \usepackage[most]{tcolorbox}
+\usepackage[framemethod=tikz]{mdframed}
 \usepackage{scrlayer-scrpage}
 \usepackage[luamode]{tagpdf}
 \tagpdfsetup{activate-all, tagunmarked=true, uncompress, tabsorder=structure, paratag=P}
@@ -127,34 +128,160 @@
   belowskip=10pt,
 }
 
-% ---------- Lehrbuch-Boxen ----------
-\newtcolorbox{lernziele}{
+% ---------- Lehrbuch-Boxen (tcolorbox environments with Env suffix) ----------
+\newtcolorbox{lernzieleEnv}{
   colback=accentlight, colframe=accent,
   boxrule=0.8pt, arc=2pt, left=10pt, right=10pt, top=6pt, bottom=6pt,
   fonttitle=\bfseries, title=Lernziele,
   before skip=12pt, after skip=14pt
 }
 
-\newtcolorbox{merke}{
+\newtcolorbox{merkeEnv}{
   colback=white, colframe=accent,
   boxrule=1pt, arc=1pt, left=10pt, right=10pt, top=6pt, bottom=6pt,
   fonttitle=\bfseries, title=Merke,
   before skip=10pt, after skip=10pt
 }
 
-\newtcolorbox{praxishinweis}{
+\newtcolorbox{praxishinweisEnv}{
   colback=warnbg, colframe=warnborder,
   boxrule=0.8pt, arc=1pt, left=10pt, right=10pt, top=6pt, bottom=6pt,
   fonttitle=\bfseries, title=Praxis-Hinweis,
   before skip=10pt, after skip=10pt
 }
 
-\newtcolorbox{zusammenfassung}{
+\newtcolorbox{zusammenfassungEnv}{
   colback=gray!6, colframe=gray!50!black,
   boxrule=0.6pt, arc=1pt, left=10pt, right=10pt, top=6pt, bottom=6pt,
   fonttitle=\bfseries, title=Zusammenfassung,
   before skip=14pt, after skip=10pt
 }
+
+\newtcolorbox{realitycheckEnv}{
+  colback=white, colframe=bookblue,
+  boxrule=0.8pt, arc=1.5pt, left=10pt, right=10pt, top=6pt, bottom=6pt,
+  fonttitle=\bfseries, title=Echtzeit,
+  before skip=10pt, after skip=10pt
+}
+
+\newtcolorbox{AUTORnotizEnv}{
+  colback=warnbg, colframe=warnborder,
+  boxrule=0.8pt, arc=1.5pt, left=10pt, right=10pt, top=6pt, bottom=6pt,
+  fonttitle=\bfseries, title=Anmerkung des Autors,
+  before skip=10pt, after skip=10pt
+}
+
+\newtcolorbox{warnungEnv}{
+  colback=warnbg, colframe=warnborder,
+  boxrule=0.8pt, arc=1.5pt, left=10pt, right=10pt, top=6pt, bottom=6pt,
+  fonttitle=\bfseries, title=Achtung,
+  before skip=10pt, after skip=10pt
+}
+
+\newtcolorbox{vertiefungEnv}{
+  colback=booklight, colframe=accent,
+  boxrule=0.8pt, arc=1.5pt, left=10pt, right=10pt, top=6pt, bottom=6pt,
+  fonttitle=\bfseries, title=Vertiefung,
+  before skip=10pt, after skip=10pt
+}
+
+% ---------- Inline command versions (mdframed, for \command{...}) ----------
+% Using "InlineCmd" suffix to avoid conflict with environment names
+\newenvironment{realitycheckInlineCmd}{\begin{mdframed}[
+  backgroundcolor=white,
+  linecolor=bookblue,
+  linewidth=0.8pt,
+  roundcorner=1.5pt,
+  innerleftmargin=10pt, innerrightmargin=10pt,
+  innertopmargin=6pt, innerbottommargin=6pt,
+  frametitlefont=\bfseries,
+  frametitle=Echtzeit,
+  skipabove=0pt, skipbelow=0pt,
+]}{\end{mdframed}}
+
+\newenvironment{praxishinweisInlineCmd}{\begin{mdframed}[
+  backgroundcolor=warnbg,
+  linecolor=warnborder,
+  linewidth=0.8pt,
+  roundcorner=1pt,
+  innerleftmargin=10pt, innerrightmargin=10pt,
+  innertopmargin=6pt, innerbottommargin=6pt,
+  frametitlefont=\bfseries,
+  frametitle=Praxis-Hinweis,
+  skipabove=0pt, skipbelow=0pt,
+]}{\end{mdframed}}
+
+\newenvironment{merkeInlineCmd}{\begin{mdframed}[
+  backgroundcolor=white,
+  linecolor=accent,
+  linewidth=1pt,
+  roundcorner=1pt,
+  innerleftmargin=10pt, innerrightmargin=10pt,
+  innertopmargin=6pt, innerbottommargin=6pt,
+  frametitlefont=\bfseries,
+  frametitle=Merke,
+  skipabove=0pt, skipbelow=0pt,
+]}{\end{mdframed}}
+
+\newenvironment{warnungInlineCmd}{\begin{mdframed}[
+  backgroundcolor=warnbg,
+  linecolor=warnborder,
+  linewidth=0.8pt,
+  roundcorner=1.5pt,
+  innerleftmargin=10pt, innerrightmargin=10pt,
+  innertopmargin=6pt, innerbottommargin=6pt,
+  frametitlefont=\bfseries,
+  frametitle=Achtung,
+  skipabove=0pt, skipbelow=0pt,
+]}{\end{mdframed}}
+
+\newenvironment{autornotizInlineCmd}{\begin{mdframed}[
+  backgroundcolor=warnbg,
+  linecolor=warnborder,
+  linewidth=0.8pt,
+  roundcorner=1.5pt,
+  innerleftmargin=10pt, innerrightmargin=10pt,
+  innertopmargin=6pt, innerbottommargin=6pt,
+  frametitlefont=\bfseries,
+  frametitle=Anmerkung des Autors,
+  skipabove=0pt, skipbelow=0pt,
+]}{\end{mdframed}}
+
+\newenvironment{vertiefungInlineCmd}{\begin{mdframed}[
+  backgroundcolor=booklight,
+  linecolor=accent,
+  linewidth=0.8pt,
+  roundcorner=1.5pt,
+  innerleftmargin=10pt, innerrightmargin=10pt,
+  innertopmargin=6pt, innerbottommargin=6pt,
+  frametitlefont=\bfseries,
+  frametitle=Vertiefung,
+  skipabove=0pt, skipbelow=0pt,
+]}{\end{mdframed}}
+
+\newenvironment{lernzieleInlineCmd}{\begin{mdframed}[
+  backgroundcolor=accentlight,
+  linecolor=accent,
+  linewidth=0.8pt,
+  roundcorner=2pt,
+  innerleftmargin=10pt, innerrightmargin=10pt,
+  innertopmargin=6pt, innerbottommargin=6pt,
+  frametitlefont=\bfseries,
+  frametitle=Lernziele,
+  skipabove=0pt, skipbelow=0pt,
+]}{\end{mdframed}}
+
+% Command aliases for inline use (matching chapter usage)
+\newcommand{\realitycheck}[1]{\begin{realitycheckInlineCmd}#1\end{realitycheckInlineCmd}}
+\newcommand{\praxishinweis}[1]{\begin{praxishinweisInlineCmd}#1\end{praxishinweisInlineCmd}}
+\newcommand{\merke}[1]{\begin{merkeInlineCmd}#1\end{merkeInlineCmd}}
+\newcommand{\warnung}[1]{\begin{warnungInlineCmd}#1\end{warnungInlineCmd}}
+\newcommand{\vertiefung}[1]{\begin{vertiefungInlineCmd}#1\end{vertiefungInlineCmd}}
+\newcommand{\autornotiz}[1]{\begin{autornotizInlineCmd}#1\end{autornotizInlineCmd}}
+\newcommand{\lernzieleInline}[1]{\begin{lernzieleInlineCmd}#1\end{lernzieleInlineCmd}}
+\newcommand{\zusammenfassung}[1]{\begin{zusammenfassungEnv}#1\end{zusammenfassungEnv}}
+\newcommand{\skipbox}[1]{\begin{zusammenfassungEnv}#1\end{zusammenfassungEnv}}
+\newcommand{\skipdeep}[1]{\begin{zusammenfassungEnv}#1\end{zusammenfassungEnv}}
 
 \newenvironment{uebungen}{%
   \subsection*{Übungsaufgaben}
@@ -276,82 +403,78 @@ Guten Start --- lass uns anfangen!
 \chapter{Vorgefertigte Modelle}
 \input{chapters/02_vorgefertigte_modelle}
 
-\chapter{Modell-Landschaft}
+\chapter{Modell-Landschaft --- Die Stack-Architektur}
 \input{chapters/03_modell_landschaft}
 
-\chapter{Kontextlänge und Preise}
-\input{chapters/04_kontext_preise}
+% ============================================================
+% PHASE 2: MIT DEM LLM SPRECHEN
+% ============================================================
+\part{Mit dem LLM sprechen}
 
-% ====================================
-% TEIL 2: TECHNIK UND WERKZEUGE
-% ====================================
-\part{Technik und Werkzeuge}
+\chapter{Die OpenAI API}
+\input{chapters/04_openai_api}
 
-\chapter{OpenAI Plattform}
-\input{chapters/05_openai_plattform}
-
-\chapter{Token-Verwaltung}
-\input{chapters/06_token_verwaltung}
+\chapter{Token-Management und Kosten}
+\input{chapters/05_token_verwaltung}
 
 \chapter{Prompt Design}
-\input{chapters/07_prompt_design}
+\input{chapters/06_prompt_design}
 
-% ====================================
-% TEIL 3: LLMS IN DER PRAXIS
-% ====================================
-\part{LLMs in der Praxis}
+% ============================================================
+% PHASE 3: DEM LLM KONTEXT UND HÄNDE GEBEN
+% ============================================================
+\part{Dem LLM Kontext und Hände geben}
 
 \chapter{RAG und Vector Datenbanken}
-\input{chapters/08_rag_vector_datenbanken}
+\input{chapters/07_rag_vector_datenbanken}
 
-\chapter{AI Agenten}
-\input{chapters/09_ai_agenten}
+\chapter{AI Agenten --- Vom Prompt zum Loop}
+\input{chapters/08_ai_agenten}
 
-\chapter{Evaluation}
-\input{chapters/10_evaluation}
+\chapter{Multimodale KI --- Vision, Audio und Video}
+\input{chapters/14_multimodale_ki}
 
-\chapter{Multimodale KI -- Vision, Audio und Video}
-\input{chapters/20_multimodale_ki}
+% ============================================================
+% PHASE 4: MESSEN UND OPTIMIEREN
+% ============================================================
+\part{Messen und Optimieren}
 
-% ====================================
-% TEIL 4: PRODUCTION LAYER
-% ====================================
-\part{Production Layer}
+\chapter{Evaluation und Metriken}
+\input{chapters/09_evaluation_metriken}
 
 \chapter{Inference Optimization and Serving}
-\input{chapters/17_inferenz_optimierung}
-
-\chapter{Model Customization -- Fine-Tuning und Adaptation}
-\input{chapters/18_modellanpassung}
+\input{chapters/11_inferenz_optimierung}
 
 \chapter{Caching, Routing und Guardrails}
-\input{chapters/19_caching_routing_guardrails}
+\input{chapters/12_caching_routing_guardrails}
 
-% ====================================
-% TEIL 5: IN PRODUKTION BRINGEN
-% ====================================
-\part{In Produktion bringen}
+\chapter{Model Customization --- Fine-Tuning und Adaptation}
+\input{chapters/13_modellanpassung}
 
-\chapter{Deployment und Beobachtbarkeit}
-\input{chapters/11_deployment_beobachtbarkeit}
+% ============================================================
+% PHASE 5: IN DIE WELT BRINGEN
+% ============================================================
+\part{In die Welt bringen}
 
-\chapter{MLOps und der Modell-Lebenszyklus}
-\input{chapters/21_mlops_modelllebenszyklus}
+\chapter{Deployment und Architekturentscheidungen}
+\input{chapters/10_deployment_architektur}
 
-\chapter{KI-Sicherheit und Ethik}
-\input{chapters/12_ki_sicherheit_ethik}
+\chapter{MLOps und Observability}
+\input{chapters/15_mlops_observability}
 
-\chapter{Verantwortungsvolle KI und Governance}
-\input{chapters/22_verantwortungsvolle_ki_governance}
+\chapter{Security, Governance und Responsible AI}
+\input{chapters/16_security_governance}
 
-\chapter{KI-Sicherheit}
-\input{chapters/16_ki_sicherheit}
+% ============================================================
+% ANHANG
+% ============================================================
+\appendix
+
+\chapter{Production Checklist --- Das Cheat-Sheet}
+\input{chapters/appendix_production_checklist}
 
 \chapter{Glossar}
 \input{chapters/13_glossar}
-
-\chapter{Praxisprojekte}
-\input{chapters/14_praxisprojekte}
 
 % ====================================
 % LITERATURVERZEICHNIS

@@ -2,50 +2,48 @@
 \label{chap:model_landschaft}
 
 % ============================================================
-% LERNZIELE
+% AUTOR-NOTIZ STATT LERNZIELE
 % ============================================================
-\begin{lernziele}
-Nach diesem Kapitel kannst du:
-\begin{itemize}
-    \item Die drei führenden Closed-Source-Anbieter (OpenAI, Anthropic, Google) mit ihren Stärken und Schwächen vergleichen
-    \item Die wichtigsten Open-Source-Modelle (Llama, Mistral, Qwen, DeepSeek) nach Kriterien wie Leistung, Lizenz und Betriebskosten bewerten
-    \item Eine fundierte Modell-Entscheidung basierend auf Anforderungen wie Qualität, Kosten, Latenz und Datenhoheit treffen
-    \item Einen Multi-Provider-Client implementieren, der den Austausch zwischen Modellen abstrahiert
-    \item Vendor-Lock-in-Risiken identifizieren und eine Ausweichstrategie entwerfen
-\end{itemize}
-\end{lernziele}
-
-\begin{merke}
-\textbf{Modellnamen im Wandel:} Dieses Kapitel nennt konkrete Modellnamen (GPT-4o, Claude~4, Gemini~2.5) als Beispiele zum Zeitpunkt der Drucklegung. Die Modell-Landschaft verändert sich rasant -- neue Versionen erscheinen monatlich. Die grundlegenden Konzepte der Modellklassen (Flaggschiff, effizient, spezialisiert) und Architekturentscheidungen bleiben davon unberührt. Prüfe die aktuellen Benchmark-Tabellen und Preislisten der Anbieter, bevor du eine Architekturentscheidung triffst.
-\end{merke}
+\autornotiz{
+2023 habe ich für ein Fintech ein Multi-Provider-Routing gebaut. 50k Requests/Tag.
+OpenAI-Ausfall -> transparentes Failover auf Anthropic. User hat nichts gemerkt.
+Die Lektion: Niemals auf einen Provider setzen. Abstraktions-Layer kostet 1 Tag Dev-Zeit,
+spart Wochen bei Outage. Preise ändern sich monatlich. Wer nicht regelmäßig vergleicht,
+zahlt drauf.
+}
 
 % ============================================================
 % MOTIVATION
 % ============================================================
 \section{Motivation}
 
-Es gibt nicht \glqq das eine beste Modell\grqq{}. Dutzende Modelle unterscheiden sich in Preis, Leistung, Latenz, Kontextfenster und Sicherheit. Die Wahl des falschen Modells kostet Unternehmen täglich tausende Euro -- durch überhöhte API-Kosten, schlechte Ergebnisse oder Ausfallrisiken (Single-Provider-Abhängigkeit).
+\skipbox{
+\textbf{TL;DR:} Es gibt nicht \glqq das eine beste Modell\grqq{}. Dutzende Modelle unterscheiden sich in Preis, Leistung, Latenz, Kontextfenster und Sicherheit. Die Wahl des falschen Modells kostet Unternehmen täglich tausende Euro -- durch überhöhte API-Kosten, schlechte Ergebnisse oder Ausfallrisiken (Single-Provider-Abhängigkeit).
+}
 
-Ein AI Engineer muss die Landschaft nicht nur kennen, sondern aktiv steuern können: Wann setzt man GPT-4o-mini ein, wann Llama 3 lokal, wann DeepSeek R1 für Reasoning? Welche Modelle tauscht man aus, wenn der Preis steigt? Welcher Provider bietet EU-Datenhaltung?
+Ein AI Engineer muss die Landschaft nicht nur kennen, sondern aktiv steuern können: Wann setzt man GPT-4o-mini ein, wann Llama 4 lokal, wann DeepSeek R1 für Reasoning? Welche Modelle tauscht man aus, wenn der Preis steigt? Welcher Provider bietet EU-Datenhaltung?
 
 Dieses Kapitel gibt einen strukturierten Überblick über den Modell-Markt, eine Entscheidungsmatrix und die Werkzeuge, um Modell-Entscheidungen systematisch zu treffen.
 
+% ============================================================
+% DIE ARCHITEKTUR DES MODERNEN AI-STACKS
+% ============================================================
 \section{Die Architektur des modernen AI-Stacks}
 
 Bevor wir die einzelnen Modelle vergleichen, lohnt ein Blick auf das Gesamtsystem. Ein LLM allein ist selten die Lösung -- es ist eine Komponente in einem größeren Stack. Eine vierschichtige Architektur hat sich als Standard etabliert:
 
 \begin{verbatim}
-   +------------------------------------------------------------+
-   |              Die vier Schichten des AI-Stacks              |
-   |                                                            |
-   |  1. LLM (Thinker)        Reasoning, Wissen, Kreativitaet   |
-   |       |                                                    |
-   |  2. RAG (Knowledge)      Kontext, Doku, Datenbanken        |
-   |       |                                                    |
-   |  3. Agents (Workers)     Ausfuehrung, Automatisierung      |
-   |       |                                                    |
-   |  4. MCP (Infrastructure) Verbindung zu Tools, APIs, FS     |
-   +------------------------------------------------------------+
+    +------------------------------------------------------------+
+    |              Die vier Schichten des AI-Stacks              |
+    |                                                            |
+    |  1. LLM (Thinker)        Reasoning, Wissen, Kreativität    |
+    |       |                                                    |
+    |  2. RAG (Knowledge)      Kontext, Doku, Datenbanken        |
+    |       |                                                    |
+    |  3. Agents (Workers)     Ausführung, Automatisierung       |
+    |       |                                                    |
+    |  4. MCP (Infrastructure) Verbindung zu Tools, APIs, FS     |
+    +------------------------------------------------------------+
 \end{verbatim}
 
 \subsection{Layer 1: Das LLM als Denker}
@@ -59,12 +57,12 @@ Die Wahl des richtigen LLMs (die wir im Rest dieses Kapitels vertiefen) bestimmt
 RAG gibt dem LLM Zugriff auf eine Wissensbasis -- Unternehmensdokumente, Richtlinien, Datenbanken, interne Wikis, aktuelle Kundeninformationen. Vor jeder Antwort wird relevantes Wissen abgefragt und als Kontext in den Prompt eingefügt.
 
 \begin{verbatim}
-   Ohne RAG:      [Frage] --> [LLM (nur Trainingswissen)] --> [Antwort]
-   
-   Mit RAG:       [Frage] --> [Vector Search] --> [Relevante Doku]
-                                |
-                                v
-                   [LLM (Prompt + Doku)] --> [Antwort mit Fakten]
+    Ohne RAG:      [Frage] --> [LLM (nur Trainingswissen)] --> [Antwort]
+    
+    Mit RAG:       [Frage] --> [Vector Search] --> [Relevante Doku]
+                                 |
+                                 v
+                    [LLM (Prompt + Doku)] --> [Antwort mit Fakten]
 \end{verbatim}
 
 RAG ist das Fundament für faktentreue Antworten. Kapitel~\ref{chap:rag_vector_dbs} behandelt RAG-Systeme ausführlich.
@@ -80,7 +78,6 @@ Der entscheidende Unterschied zu einem reinen RAG-System: Agents haben einen Loo
 Der \textbf{Model Context Protocol} (MCP) ist die Schicht, die die meisten Teams übersehen. MCP ist der Standard, der KI-Systeme mit Tools, Datenbanken, APIs, Dateien und externen Diensten verbindet. Man kann es als USB-C für KI betrachten: ein Protokoll, tausende Integrationen, kein Custom-Connector für jedes Tool.
 
 MCP standardisiert:
-
 \begin{itemize}[leftmargin=*]
     \item \textbf{Tool Discovery}: Der Client erfragt verfügbare Tools vom MCP-Server
     \item \textbf{Tool Execution}: Der Client ruft ein Tool mit standardisierten Parametern auf
@@ -89,13 +86,13 @@ MCP standardisiert:
 \end{itemize}
 
 \begin{verbatim}
-   Ohne MCP:        [LLM] --[Custom Code]--> [API A]
-                      | --[Custom Code]--> [DB B]
-                      | --[Custom Code]--> [Tool C]
-                      
-   Mit MCP:          [LLM] --[MCP Client]--> [MCP Server] --> [API A]
-                                               |           --> [DB B]
-                                               |           --> [Tool C]
+    Ohne MCP:        [LLM] --[Custom Code]--> [API A]
+                       | --[Custom Code]--> [DB B]
+                       | --[Custom Code]--> [Tool C]
+                       
+    Mit MCP:          [LLM] --[MCP Client]--> [MCP Server] --> [API A]
+                                                |           --> [DB B]
+                                                |           --> [Tool C]
 \end{verbatim}
 
 \subsection{Zusammenspiel der Schichten}
@@ -103,13 +100,13 @@ MCP standardisiert:
 Die eigentliche Revolution ist nicht der bessere Chatbot -- es ist die Kopplung von Intelligenz mit Wissen, Werkzeugen und Arbeitsabläufen:
 
 \begin{verbatim}
-   Einfacher Chat:         LLM
-   
-   Chat mit Kontext:       LLM + RAG
-   
-   Automatisierung:        LLM + RAG + Agents
-   
-   Produktionssystem:      LLM + RAG + Agents + MCP
+    Einfacher Chat:         LLM
+    
+    Chat mit Kontext:       LLM + RAG
+    
+    Automatisierung:        LLM + RAG + Agents
+    
+    Produktionssystem:      LLM + RAG + Agents + MCP
 \end{verbatim}
 
 Jede zusätzliche Schicht erhöht die Leistungsfähigkeit, aber auch die Komplexität, Latenz und Fehleranfälligkeit. Die Kunst liegt darin, nur die Schichten zu aktivieren, die für den konkreten Anwendungsfall notwendig sind.
@@ -117,7 +114,7 @@ Jede zusätzliche Schicht erhöht die Leistungsfähigkeit, aber auch die Komplex
 Die folgenden Abschnitte dieses Kapitels helfen dir, die richtige \textbf{erste Schicht} -- das LLM -- für deinen Stack zu wählen. Die übrigen Schichten werden in den Kapiteln~\ref{chap:rag_vector_dbs},~\ref{chap:ai_agents} und im MCP-Exkurs vertieft.
 
 % ============================================================
-% GRUNDLAGEN
+% GRUNDLAGEN -- MODELL-KLASSIFIKATION VERSTEHEN
 % ============================================================
 \section{Grundlagen -- Modell-Klassifikation verstehen}
 
@@ -150,9 +147,9 @@ Ein Architektur-Muster, bei dem das Modell aus vielen \glqq Experten\grqq{} (Sub
 \begin{verbatim}
   Ohne MoE:        Mit MoE:
   [LLM]            [Router] --+-- [Expert A] (Mathe)
-                   (Anfrage)  +-- [Expert B] (Code)
-                               +-- [Expert C] (Text)
-                               +-- [Expert D] (Bild)
+                    (Anfrage)  +-- [Expert B] (Code)
+                                +-- [Expert C] (Text)
+                                +-- [Expert D] (Bild)
 
   Jede Anfrage:    Jede Anfrage:
   Alle 70B aktiv   Nur 7B von 70B aktiv
@@ -176,20 +173,19 @@ Benchmarks wie MMLU, HumanEval, GSM8K oder Chatbot Arena geben einen Hinweis auf
 
 \subsection{Weitere Schlüsselbegriffe}
 
-\begin{description}[leftmargin=*,style=nextline]
-    \item[Quantisierung] Reduktion der Parameter-Genauigkeit von FP16 auf INT8 oder FP4. Reduziert Speicherbedarf um 50--75\,\% bei geringem Qualitätsverlust. Unverzichtbar für Self-Hosting.
-    \item[Context Window] Die maximale Token-Anzahl, die ein Modell in einem Durchlauf verarbeiten kann. Zwischen 8K (klein) und 2M (Experimental).
-    \item[Knowledge Cutoff] Das Datum, bis zu dem das Modell trainiert wurde. Modelle kennen keine Ereignisse nach ihrem Cutoff.
-    \item[Open Weight] Die Modellgewichte sind öffentlich verfügbar, aber die Trainingsdaten sind es nicht.
-    \item[Open Source] Modellgewichte \textit{und} Trainingscode/-daten sind öffentlich. Sehr selten bei großen Modellen.
-\end{description}
+\begin{itemize}
 
-\begin{praxishinweis}
-Bevor du Modelle vergleichst, kenne deine Anforderungen: Brauchst du Spitzenqualität, minimale Kosten, niedrige Latenz oder Datenhoheit? Keine Benchmark-Tabelle der Welt kann diese Frage beantworten -- nur dein eigener Anwendungsfall.
-\end{praxishinweis}
+    \item \textbf{Quantisierung} Reduktion der Parameter-Genauigkeit von FP16 auf INT8 oder FP4. Reduziert Speicherbedarf um 50--75\% bei geringem Qualitätsverlust. Unverzichtbar für Self-Hosting.
+    \item \textbf{Context Window} Die maximale Token-Anzahl, die ein Modell in einem Durchlauf verarbeiten kann. Zwischen 8K (klein) und 2M (Experimental).
+    \item \textbf{Knowledge Cutoff} Das Datum, bis zu dem das Modell trainiert wurde. Modelle kennen keine Ereignisse nach ihrem Cutoff.
+    \item \textbf{Open Weight} Die Modellgewichte sind öffentlich verfügbar, aber die Trainingsdaten sind es nicht.
+    \item \textbf{Open Source} Modellgewichte \textit{und} Trainingscode/-daten sind öffentlich. Sehr selten bei großen Modellen.
+\end{itemize}
+
+\praxishinweis{Bevor du Modelle vergleichst, kenne deine Anforderungen: Brauchst du Spitzenqualität, minimale Kosten, niedrige Latenz oder Datenhoheit? Keine Benchmark-Tabelle der Welt kann diese Frage beantworten -- nur dein eigener Anwendungsfall.}
 
 % ============================================================
-% DER MARKT IM ÜBERBLICK (existiert)
+% DER MARKT IM ÜBERBLICK
 % ============================================================
 \section{Der Markt im Überblick}
 
@@ -202,7 +198,7 @@ Die Model-Landschaft hat sich von einem offenen zu einem oligopolistischen Feld 
 \textbf{Anbieter} & \textbf{Flaggschiff} & \textbf{Marktposition} \\
 \midrule
 OpenAI & GPT-4o, o-series & Marktführer, breitestes Ökosystem \\
-Anthropic & Claude Opus 4 & Beste Safety, längster Kontext bei Sonnet \\
+Anthropic & Claude 4 Opus & Beste Safety, längster Kontext bei Sonnet \\
 Google & Gemini 2.5 Ultra & Beste Multimodalität, Mega-Kontext \\
 Meta & Llama 4 Maverick & Open-Source-Marktführer \\
 Mistral & Mistral Large 2 & Bester EU-Anbieter, DSGVO-konform \\
@@ -215,7 +211,7 @@ DeepSeek & R1 / V3 & Preisbrecher, Reasoning auf o1-Niveau \\
 \end{table}
 
 % ============================================================
-% CLOSED SOURCE (existiert)
+% CLOSED SOURCE -- DIE GROSSEN DREI
 % ============================================================
 \section{Closed-Source: Die Großen Drei}
 
@@ -226,7 +222,7 @@ OpenAI ist der Marktführer mit dem weitesten API-Ökosystem. Ihre Modelle lasse
 \begin{itemize}[leftmargin=*]
     \item \textbf{GPT-4o (Omni):} Multimodales Flaggschiff (Text, Audio, Bild), stark in der allgemeinen Kompetenz und Geschwindigkeit. Der Standard für die meisten Use-Cases.
     \item \textbf{o-Series (o1, o3):} Modelle mit erweiterten Reasoning-Fähigkeiten durch systematisches Grübeln vor der Antwort. Gut für mathematische, wissenschaftliche und komplexe logische Aufgaben -- aber langsamer und teurer.
-    \item \textbf{GPT-4o-mini:} Der kleine Bruder -- 80\,\% der Qualität von GPT-4o zu 15\,\% der Kosten. Die erste Wahl für Production-Workloads.
+    \item \textbf{GPT-4o-mini:} Der kleine Bruder -- 80\% der Qualität von GPT-4o zu 15\% der Kosten. Die erste Wahl für Production-Workloads.
 \end{itemize}
 
 \subsection{Anthropic -- Claude-Familie}
@@ -247,19 +243,17 @@ Googles Gemini-Reihe punktet mit Multimodalität und der tiefsten Cloud-Integrat
 
 \begin{itemize}[leftmargin=*]
     \item \textbf{Gemini 2.5 Ultra:} Googles Flaggschiff, konkurrenzfähig mit GPT-4o in Benchmarks. Besonders stark in Multimodalität (Text+Bild+Audio+Video).
-    \item \textbf{Gemini Pro:} Das Arbeitstier -- gut genug für 90\,\% der Production-Einsätze, zu einem Bruchteil des Preises.
+    \item \textbf{Gemini Pro:} Das Arbeitstier -- gut genug für 90\% der Production-Einsätze, zu einem Bruchteil des Preises.
     \item \textbf{Gemini Flash:} Googles schnellstes Modell. Ideal für Echtzeit-Anwendungen.
     \item \textbf{Gemini Nano:} On-Device-Modell für mobile und Edge-Einsatzfälle.
 \end{itemize}
 
 Besonderheit: Gemini unterstützt Kontextfenster bis zu 1 Million Tokens -- das längste aller kommerziellen Modelle.
 
-\begin{praxishinweis}
-Kein Closed-Source-Modell ist universell überlegen. GPT-4o glänzt bei Geschwindigkeit und Tool-Use, Claude bei Safety und langen Kontexten, Gemini bei Multimodalität. Teste alle drei auf deinen Daten, bevor du dich festlegst.
-\end{praxishinweis}
+\praxishinweis{Kein Closed-Source-Modell ist universell überlegen. GPT-4o glänzt bei Geschwindigkeit und Tool-Use, Claude bei Safety und langen Kontexten, Gemini bei Multimodalität. Teste alle drei auf deinen Daten, bevor du dich festlegst.}
 
 % ============================================================
-% ARCHITEKTUR
+% ARCHITEKTUR -- MULTI-PROVIDER-ROUTING
 % ============================================================
 \section{Architektur -- Multi-Provider-Routing}
 
@@ -271,34 +265,34 @@ Ein produktives System verlässt sich nie auf einen einzigen Modell-Provider. Di
                   |      User Request       |
                   +----------+------------+
                              |
-                    +--------v--------+
-                    | Request Classifier|
-                    | (einfach/schwer/   |
-                    |  kreativ/Code)    |
-                    +--------+--------+
+                     +--------v--------+
+                     | Request Classifier|
+                     | (einfach/schwer/   |
+                     |  kreativ/Code)    |
+                     +--------+--------+
                              |
-           +-----------------+------------------+
-           |                 |                  |
-      (einfach)        (schwer/Reasoning)   (kreativ/Code)
-           |                 |                  |
-     +-----v-----+    +-----v-----+      +-----v-----+
-     | GPT-4o-    |    | Claude    |      | Codestral |
-     | mini       |    | Opus 4    |      |           |
-     +-----------+    +-----------+      +-----------+
-           |                 |                  |
-           +-----------------+------------------+
+            +-----------------+------------------+
+            |                 |                  |
+       (einfach)        (schwer/Reasoning)   (kreativ/Code)
+            |                 |                  |
+      +-----v-----+    +-----v-----+      +-----v-----+
+      | GPT-4o-    |    | Claude    |      | Codestral |
+      | mini       |    | Opus 4    |      |           |
+      +-----------+    +-----------+      +-----------+
+            |                 |                  |
+            +-----------------+------------------+
                              |
-                    +--------v--------+
-                    | Response         |
-                    | Validator        |
-                    | + Cost Logger    |
-                    +--------+--------+
+                     +--------v--------+
+                     | Response         |
+                     | Validator        |
+                     | + Cost Logger    |
+                     +--------+--------+
                              |
-                    +--------v--------+
-                    | Fallback: wenn   |
-                    | ein Provider     |
-                    | ausfallt         |
-                    +-----------------+
+                     +--------v--------+
+                     | Fallback: wenn   |
+                     | ein Provider     |
+                     | ausfällt         |
+                     +-----------------+
 \end{verbatim}
 
 \subsection{Komponenten des Routings}
@@ -311,7 +305,7 @@ Ein produktives System verlässt sich nie auf einen einzigen Modell-Provider. Di
 \end{itemize}
 
 % ============================================================
-% THEORIE
+% THEORIE -- WARUM ES NICHT EIN BESTES MODELL GIBT
 % ============================================================
 \section{Theorie -- Warum es nicht ein bestes Modell gibt}
 
@@ -354,11 +348,11 @@ API vs. SDK vs. Self-Hosted & APIs sind am einfachsten, SDKs bieten mehr Kontrol
     \item \textbf{Verschlechterung} der Modellqualität (heimliches Downgrade hinter generischem Model-String)
     \item \textbf{Compliance-Anforderungen} (neue Regulierung erfordert EU-Datenhaltung)
     \item \textbf{Ausfall} oder Rate-Limits des aktuellen Providers
-    \item \textbf{Innovation} eines Konkurrenten (z.\,B. DeepSeek R1 übertrifft o1 zu 5\,\% der Kosten)
+    \item \textbf{Innovation} eines Konkurrenten (z.B. DeepSeek R1 übertrifft o1 zu 5\% der Kosten)
 \end{itemize}
 
 % ============================================================
-% OPEN SOURCE (existiert)
+% OPEN SOURCE -- DIE WETTBEWERBER
 % ============================================================
 \section{Open Source -- Die Wettbewerber}
 
@@ -403,15 +397,13 @@ Chinesische Modelle gewinnen rasant an Qualität:
 \begin{itemize}[leftmargin=*]
     \item \textbf{Qwen 2.5:} Besonders stark in Mathematik, Multilingualität und Code-Generation.
     \item \textbf{DeepSeek R1:} Der Preisbrecher -- Reasoning-Qualität auf o1-Niveau zu einem Bruchteil der Kosten.
-    \item \textbf{DeepSeek V3:} Allgemeines Modell, konkurriert mit GPT-4o zu 10\,\% der Kosten.
+    \item \textbf{DeepSeek V3:} Allgemeines Modell, konkurriert mit GPT-4o zu 10\% der Kosten.
 \end{itemize}
 
-\begin{praxishinweis}
-Open-Source-Modelle wie Llama oder Mistral sind eine ernsthafte Alternative, nicht nur eine Notlösung. Rechne durch: Ab ca. 1 Mio. API-Anfragen/Monat kann Self-Hosting günstiger sein -- bei voller Datenkontrolle.
-\end{praxishinweis}
+\praxishinweis{Open-Source-Modelle wie Llama oder Mistral sind eine ernsthafte Alternative, nicht nur eine Notlösung. Rechne durch: Ab ca. 1 Mio. API-Anfragen/Monat kann Self-Hosting günstiger sein -- bei voller Datenkontrolle.}
 
 % ============================================================
-% CLOUD-PLATTFORMEN (existiert)
+% CLOUD-PLATTFORMEN
 % ============================================================
 \section{Cloud-Plattformen im Überblick}
 
@@ -451,7 +443,7 @@ Ein deutsches B2B-SaaS-Unternehmen mit 50.000 API-Calls pro Tag implementiert dy
     \item Reasoning-Aufgaben (mathematische Optimierung) $\rightarrow$ DeepSeek R1
 \end{itemize}
 
-\textbf{Ergebnis:} 35\,\% Kostensenkung bei gleichbleibender Qualität. Fallback auf Anthropic bei OpenAI-Ausfällen.
+\textbf{Ergebnis:} 35\% Kostensenkung bei gleichbleibender Qualität. Fallback auf Anthropic bei OpenAI-Ausfällen.
 
 \subsection{Automobilzulieferer -- Open Source aus Compliance-Gründen}
 
@@ -494,14 +486,12 @@ Ein europäisches Fintech mit regulatorischen Anforderungen setzt auf drei Provi
     \item \textbf{Monitoring:} Latenz und Fehlerraten aller Provider in Echtzeit
 \end{itemize}
 
-\textbf{Ergebnis:} 99,95\,\% Verfügbarkeit des KI-Service über 12 Monate.
+\textbf{Ergebnis:} 99,95\% Verfügbarkeit des KI-Service über 12 Monate.
 
-\begin{praxishinweis}
-Multi-Provider ist kein Luxus, sondern betriebliche Notwendigkeit. Ein einziger Provider bedeutet Single Point of Failure -- inklusive Preisrisiko. Drei Provider mit automatischem Fallback sind der Mindeststandard für Produktion.
-\end{praxishinweis}
+\praxishinweis{Multi-Provider ist kein Luxus, sondern betriebliche Notwendigkeit. Ein einziger Provider bedeutet Single Point of Failure -- inklusive Preisrisiko. Drei Provider mit automatischem Fallback sind der Mindeststandard für Produktion.}
 
-% ===========================================================%
-% ENTSCHEIDUNGSMATRIX (existiert)
+% ============================================================
+% ENTSCHEIDUNGSMATRIX
 % ============================================================
 \section{Entscheidungsmatrix: Welches Modell für welchen Fall?}
 
@@ -527,12 +517,10 @@ Multi-Modal (Bild+Audio) & GPT-4o oder Gemini Ultra & Claude (nur Text) \\
 \label{tab:empfehlungen}
 \end{table}
 
-\begin{praxishinweis}
-Die Entscheidungsmatrix ist ein Ausgangspunkt, nicht das letzte Wort. Jedes Team sollte ein eigenes Golden Dataset mit 100--500 repräsentativen Queries aufbauen und Modelle regelmäßig dagegen testen. Preise ändern sich, neue Modelle kommen -- deine Evaluierung muss mitwachsen.
-\end{praxishinweis}
+\praxishinweis{Die Entscheidungsmatrix ist ein Ausgangspunkt, nicht das letzte Wort. Jedes Team sollte ein eigenes Golden Dataset mit 100--500 repräsentativen Queries aufbauen und Modelle regelmäßig dagegen testen. Preise ändern sich, neue Modelle kommen -- deine Evaluierung muss mitwachsen.}
 
-% ===========================================================%
-% CODEBEISPIELE (existiert, erweitert)
+% ============================================================
+% CODEBEISPIELE
 % ============================================================
 \section{Codebeispiele}
 
@@ -547,7 +535,6 @@ from enum import Enum
 import openai
 import anthropic
 
-
 class Provider(Enum):
     OPENAI = openai
     ANTHROPIC = anthropic
@@ -561,7 +548,6 @@ class QueryResult:
     tokens_input: int
     tokens_output: int
     cost_eur: float
-
 
 class BaseModelClient(ABC):
     @abstractmethod
@@ -609,7 +595,6 @@ class AnthropicClient(BaseModelClient):
             cost_eur=(response.usage.input_tokens * self.pricing["input"] +
                       response.usage.output_tokens * self.pricing["output"]) / 1000,
         )
-
 
 def ask(messages: list[dict], provider: Provider = Provider.OPENAI):
     if provider == Provider.OPENAI:
@@ -663,7 +648,7 @@ async function routeRequest(
 }
 \end{lstlisting}
 
-% ===========================================================%
+% ============================================================
 % BEST PRACTICES
 % ============================================================
 \section{Best Practices}
@@ -676,21 +661,21 @@ async function routeRequest(
     \item \textbf{Plane den Exit}: Jeder Provider muss austauschbar sein. Dokumentiere, welche Provider-spezifischen Features du nutzt (Tool-Use, Streaming, Batch-API).
 \end{itemize}
 
-% ===========================================================%
+% ============================================================
 % ANTI-PATTERNS
-% ===========================================================%
+% ============================================================
 \section{Anti-Patterns}
 
 \begin{itemize}[leftmargin=*]
-    \item \textbf{Das beste Modell für alles}: Kein Modell ist universal am besten. Für 80\,\% der Tasks reicht GPT-4o-mini -- die anderen 20\,\% benötigen spezifische Stärken.
-    \item \textbf{Vendor-Lock-in}: Zu tiefe Integration in einen Provider (z.\,B. Anthropic-spezifische Tool-Syntax) macht den Wechsel teuer. Abstrahierte Clients sind wertvolle Absicherung.
+    \item \textbf{Das beste Modell für alles}: Kein Modell ist universal am besten. Für 80\% der Tasks reicht GPT-4o-mini -- die anderen 20\% benötigen spezifische Stärken.
+    \item \textbf{Vendor-Lock-in}: Zu tiefe Integration in einen Provider (z.B. Anthropic-spezifische Tool-Syntax) macht den Wechsel teuer. Abstrahierte Clients sind wertvolle Absicherung.
     \item \textbf{Vernachlässigung von Open Source}: Open-Source-Modelle sind so gut, dass sie für viele Use-Cases die API-Kosten ersetzen können -- besonders mit Quantisierung.
     \item \textbf{Benchmark-Jagd}: Ein Modell nur nach MMLU-Score auswählen, ohne die eigenen Anforderungen zu testen.
     \item \textbf{Kein Fallback}: Ein einziger Provider, kein Backup. Fällt dieser aus, steht das gesamte System.
     \item \textbf{Immer das neueste Modell}: Neue Modelle haben oft Kinderkrankheiten. Warte 2--4 Wochen nach Release, bevor du in Produktion gehst.
 \end{itemize}
 
-% ===========================================================%
+% ============================================================
 % PERFORMANCE
 % ============================================================
 \section{Performance und Kostenvergleich}
@@ -708,7 +693,7 @@ Claude Opus 4 & 15,00 \$ & 75,00 \$ & 1500--4000 ms & 200K \\
 Gemini 2.5 Flash & 0,08 \$ & 0,30 \$ & 200--500 ms & 1M \\
 Gemini 2.5 Pro & 1,25 \$ & 5,00 \$ & 500--1500 ms & 1M \\
 DeepSeek R1 & 0,55 \$ & 2,19 \$ & 2000--8000 ms & 128K \\
-Llama 3 (70B, lokal) & 0,00 \$ (Strom) & 0,00 \$ & 500--1500 ms & 128K \\
+Llama 4 (70B, lokal) & 0,00 \$ (Strom) & 0,00 \$ & 500--1500 ms & 128K \\
 Mistral Large 2 & 2,00 \$ & 6,00 \$ & 600--1200 ms & 128K \\
 \bottomrule
 \end{tabularx}
@@ -719,14 +704,14 @@ Mistral Large 2 & 2,00 \$ & 6,00 \$ & 600--1200 ms & 128K \\
 \textbf{Beobachtungen:}
 \begin{itemize}[leftmargin=*]
     \item Der Kostenunterschied zwischen GPT-4o-mini und Claude Opus beträgt Faktor 100
-    \item DeepSeek R1 bietet Reasoning auf o1-Niveau zu 10\,\% der Kosten
+    \item DeepSeek R1 bietet Reasoning auf o1-Niveau zu 10\% der Kosten
     \item Gemini Flash ist das günstigste API-Modell mit der niedrigsten Latenz
-    \item Lokales Llama 3 amortisiert sich ab ca. 1 Mio. Anfragen/Monat
+    \item Lokales Llama 4 amortisiert sich ab ca. 1 Mio. Anfragen/Monat
 \end{itemize}
 
-% ===========================================================%
+% ============================================================
 % SICHERHEIT
-% ===========================================================%
+% ============================================================
 \section{Sicherheit -- Provisor-spezifische Risiken}
 
 \subsection{Datenverarbeitung und Compliance}
@@ -758,8 +743,8 @@ Self-Hosted & Volle Kontrolle. Verantwortung für Sicherheit liegt beim Betreibe
     \item \textbf{Vendor-Risiko}: Was passiert, wenn der Provider insolvent geht oder sein Geschäftsmodell ändert? Exit-Strategie dokumentieren.
 \end{itemize}
 
-% ===========================================================%
-% ZUSAMMENFASSUNG (existiert, erweitert)
+% ============================================================
+% ZUSAMMENFASSUNG
 % ============================================================
 \section{Zusammenfassung}
 
@@ -768,25 +753,29 @@ Self-Hosted & Volle Kontrolle. Verantwortung für Sicherheit liegt beim Betreibe
     \item Llama (Meta), Mistral, Qwen und DeepSeek dominieren den Open-Source-Bereich
     \item Cloud-Plattformen (Azure AI, AWS Bedrock, Vertex AI) bieten modellübergreifende Verwaltung und Enterprise-Features
     \item Die Modellwahl hängt stark vom Use-Case ab: Reasoning (o1), Qualität (Sonnet/4o), Kosten (mini/Haiku), Datenhoheit (Llama selbst gehostet)
-    \item Ein Multi-Provider-Routing senkt Kosten um 30--50\,\% und erhöht Verfügbarkeit
+    \item Ein Multi-Provider-Routing senkt Kosten um 30--50\% und erhöht Verfügbarkeit
     \item Vendor-Lock-in ist das größte Risiko -- abstrahierte Clients sind Pflicht
     \item Self-Hosting amortisiert sich ab ca. 1 Mio. Anfragen/Monat
 \end{itemize}
 
-% ===========================================================%
+% ============================================================
 % MERKE-BOX
 % ============================================================
-\begin{merke}
+
+
+
+\par\mbox{}\par
+\begin{merkeEnv}
 \begin{itemize}
     \item \textbf{Kein Modell ist für alles optimal.} Die Kunst liegt im Routing.
-    \item \textbf{GPT-4o-mini reicht für 80\,\% aller Aufgaben.} Teure Modelle nur bei konkretem Mehrwert.
+    \item \textbf{GPT-4o-mini reicht für 80\% aller Aufgaben.} Teure Modelle nur bei konkretem Mehrwert.
     \item \textbf{Open Source ist gleichauf} mit Closed Source in den meisten Domänen.
     \item \textbf{Abstraktion ist Überleben.} Ein Multi-Provider-Client ist kein Luxus, sondern Versicherung.
     \item \textbf{Preise ändern sich monatlich.} Ein Review-Rhythmus von 3 Monaten ist Pflicht.
 \end{itemize}
-\end{merke}
+\end{merkeEnv}
 
-% ===========================================================%
+% ============================================================
 % PRAXISPROJEKT
 % ============================================================
 \section{Praxisprojekt}
@@ -795,9 +784,9 @@ Self-Hosted & Volle Kontrolle. Verantwortung für Sicherheit liegt beim Betreibe
 
 Gegeben sind 1.000 Anfragen pro Tag mit folgender Verteilung:
 \begin{itemize}[leftmargin=*]
-    \item 70\,\% einfache Klassifikation (Modell A: GPT-4o-mini, 0,15 \$/Mio Input)
-    \item 20\,\% mittlere Analyse (Modell B: Claude Sonnet, 3,00 \$/Mio Input)
-    \item 10\,\% komplexes Reasoning (Modell C: DeepSeek R1, 0,55 \$/Mio Input)
+    \item 70\% einfache Klassifikation (Modell A: GPT-4o-mini, 0,15 \$/Mio Input)
+    \item 20\% mittlere Analyse (Modell B: Claude Sonnet, 3,00 \$/Mio Input)
+    \item 10\% komplexes Reasoning (Modell C: DeepSeek R1, 0,55 \$/Mio Input)
 \end{itemize}
 
 Jede Anfrage verbraucht durchschnittlich 500 Input-Tokens und 200 Output-Tokens.
@@ -806,7 +795,7 @@ Jede Anfrage verbraucht durchschnittlich 500 Input-Tokens und 200 Output-Tokens.
 \begin{enumerate}[leftmargin=*]
     \item Berechne die monatlichen Kosten bei aktueller Verteilung
     \item Berechne die Kosten, wenn alle Anfragen über GPT-4o-mini laufen (Qualitätseinbußen ignoriert)
-    \item Berechne die Kosten, wenn alle Anfragen über Claude Opus laufen (0\,\% Qualitätseinbußen)
+    \item Berechne die Kosten, wenn alle Anfragen über Claude Opus laufen (0\% Qualitätseinbußen)
     \item Wie viel sparst du durch das Routing im Vergleich zu \glqq nur Claude Opus\grqq{}?
 \end{enumerate}
 
@@ -814,36 +803,34 @@ Jede Anfrage verbraucht durchschnittlich 500 Input-Tokens und 200 Output-Tokens.
 
 \textbf{Erfolgskriterium:} Du kannst die Kostenersparnis durch Routing beziffern und erklären, warum pauschale Modell-Entscheidungen teuer sind.
 
-% ===========================================================%
+% ============================================================
 % WEITERFÜHRENDE RESSOURCEN
-% ===========================================================%
-\section{Weiterführende Ressourcen}
+% ============================================================
+\section{Weiterführende Ressourcen -- was ich wirklich nutze}
 
-\subsection{Papers und Analysen}
-
+\subsection{Primary Sources}
 \begin{itemize}[leftmargin=*]
-    \item \textbf{DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning} (DeepSeek, 2025)
-    \item \textbf{The Llama 4 Herd of Models} (Meta, 2025)
-    \item \textbf{Mixture-of-Experts Meets Instruction Tuning} (Mistral, 2024): Grundlagen zu MoE-Architekturen
+    \item OpenAI Platform Docs -- \href{https://platform.openai.com/docs}{platform.openai.com/docs}
+    \item Anthropic API Docs -- \href{https://docs.anthropic.com}{docs.anthropic.com}
+    \item Google AI Studio -- \href{https://ai.google.dev}{ai.google.dev}
+    \item Hugging Face Model Hub -- \href{https://huggingface.co/models}{huggingface.co/models}
+    \item Ollama Model Library -- \href{https://ollama.ai/library}{ollama.ai/library}
 \end{itemize}
 
-\subsection{Dokumentationen}
-
+\subsection{Tools, die ich nutze}
 \begin{itemize}[leftmargin=*]
-    \item \href{https://platform.openai.com/docs}{OpenAI Platform Docs}
-    \item \href{https://docs.anthropic.com}{Anthropic Documentation}
-    \item \href{https://ai.google.dev}{Google AI Studio}
-    \item \href{https://huggingface.co/models}{Hugging Face Model Hub}
-    \item \href{https://ollama.ai/library}{Ollama Model Library}
+    \item \textbf{LiteLLM} -- \href{https://github.com/BerriAI/litellm}{github.com/BerriAI/litellm} -- Unified API für 100+ Provider
+    \item \textbf{vLLM} -- \href{https://github.com/vllm-project/vllm}{github.com/vllm-project/vllm} -- Hochperformanter Inference-Server
+    \item \textbf{Together AI} -- \href{https://together.ai}{together.ai} -- API für Open-Source-Modelle
+    \item \textbf{Chatbot Arena} -- \href{https://lmarena.ai}{lmarena.ai} -- Live-Benchmark mit menschlichen Bewertungen
 \end{itemize}
 
-\subsection{Open-Source-Projekte}
+\autornotiz{
+Nächstes Kapitel: OpenAI Platform im Detail.
+Da lernst du: Chat Completions API, Structured Outputs, Streaming, Function Calling, Fine-Tuning, Batch API. Und warum Structured Outputs der Standard für jeden Production-Call sein sollten -- nicht optional.
+}
 
-\begin{itemize}[leftmargin=*]
-    \item \textbf{OpenRouter}: Einheitliche API für 100+ Modelle mit Fallback-Routing
-    \item \textbf{LiteLLM}: Python SDK für 50+ Modelle mit einheitlicher Schnittstelle
-    \item \textbf{vLLM}: Hochperformanter Inference-Server für Open-Source-Modelle
-    \item \href{https://lmarena.ai}{Chatbot Arena}: Live-Benchmark mit menschlichen Bewertungen
-\end{itemize}
+\textbf{Nächster Schritt:} Mit diesem Überblick über die Modell-Landschaft geht es weiter zur OpenAI API -- dein Einstieg in die Praxis.
+\endinput
 
-\textbf{Nächster Schritt:} Im folgenden Kapitel vertiefen wir die harten Fakten: Kontextlänge, Knowledge Cutoffs und Pricing-Kalkulation -- die Faktoren, die im Alltag am meisten Kosten und Probleme verursachen.
+\clearpage

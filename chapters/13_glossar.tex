@@ -1,10 +1,13 @@
 \chapter{Glossar -- Common Terminology}
-
 \label{chap:glossar}
 
-\begin{lernziele}
+
+
+
+\par\mbox{}\par
+\begin{lernzieleEnv}
 Alphabetisches Nachschlagewerk f체r Fachbegriffe, Abk체rzungen und Konzepte. Nachschlagen bei unbekannten Begriffen.
-\end{lernziele}
+\end{lernzieleEnv}
 
 \section{A}
 
@@ -104,9 +107,13 @@ Alphabetisches Nachschlagewerk f체r Fachbegriffe, Abk체rzungen und Konzepte. Nac
 
 \textbf{Halluzination}: Wenn ein LLM falsche oder erfundene Informationen als Fakten ausgibt. Das Modell erfindet Inhalte mit absolutem Selbstvertrauen -- kein Bug, sondern inh채rente Eigenschaft generativer Modelle.
 
-\begin{praxishinweis}
+
+
+
+\par\mbox{}\par
+\begin{praxishinweisEnv}
 Halluzinationen lassen sich nie vollst채ndig eliminieren -- nur reduzieren. Bew채hrte Strategien: RAG mit Quellenangabe, Golden Dataset f체r Regressionstests, LLM-as-a-Judge f체r Output-Validierung. Bei sicherheitskritischen Anwendungen: Human-in-the-Loop einplanen.
-\end{praxishinweis}
+\end{praxishinweisEnv}
 
 \textbf{HITL (Human-in-the-Loop)}: Ein Workflow, bei dem ein Mensch bei kritischen Entscheidungen eingreift oder die finale Freigabe gibt. Pflicht bei Hochrisiko-KI-Systemen.
 
@@ -154,6 +161,8 @@ Halluzinationen lassen sich nie vollst채ndig eliminieren -- nur reduzieren. Bew�
 
 \textbf{MHA (Multi-Head Attention)}: Die Variante der Attention in Transformatoren, bei der mehrere Heads parallel arbeiten und unterschiedliche Aspekte des Kontexts erfassen. Standard in allen modernen LLMs.
 
+\textbf{ML (Machine Learning)}: Maschinelles Lernen.
+
 \textbf{MoE (Mixture of Experts)}: Eine Architektur, bei der das Modell mehrere kleinere Experten-Netzwerke hat und nur die relevantesten pro Token aktiviert -- spart Rechenkosten bei grossen Modellen.
 
 \textbf{Multimodalit채t}: Die F채higkeit eines Modells, mehrere Datentypen zu verarbeiten (Text, Bilder, Audio, Video). Die Flaggschiff-Modelle von OpenAI, Google und zunehmend Anthropic sind multimodal.
@@ -200,9 +209,13 @@ Halluzinationen lassen sich nie vollst채ndig eliminieren -- nur reduzieren. Bew�
 
 \textbf{RAG (Retrieval-Augmented Generation)}: Eine Architektur, bei der ein LLM vor der Antwort-Generierung relevante Dokumente aus einer externen Wissensdatenbank zieht -- das Standardmuster f체r Firmenwissen-Integration.
 
-\begin{praxishinweis}
+
+
+
+\par\mbox{}\par
+\begin{praxishinweisEnv}
 RAG ist meist der bessere erste Schritt als Fine-Tuning. Erlaubt Wissensaktualisierung ohne Retraining, reduziert Halluzinationen durch Quellenbindung. Faustregel: RAG zuerst, Fine-Tuning nur f체r Stil- oder Format-Anpassungen.
-\end{praxishinweis}
+\end{praxishinweisEnv}
 
 \textbf{Rate Limiting}: Die Begrenzung der Anzahl von API-Requests pro Zeitfenster. Sch체tzt vor Kosten-Explosion und Abuse.
 
@@ -312,3 +325,6 @@ TTFT & Time to First Token \\
 \section*{Quellen f체r dieses Glossar}
 
 Basiert auf dem AI Engineer Roadmap Glossary (roadmap.sh), den technischen Dokumentationen von OpenAI, Anthropic, Google DeepMind und der Forschungscommunity. Definitionen praxisorientiert -- Nachschlagewerk f체r den AI-Engineering-Alltag.
+\endinput
+
+\clearpage

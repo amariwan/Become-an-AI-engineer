@@ -6,7 +6,7 @@ Von [Aland Baban](https://github.com/amariwan) · [tasiomind.dev](https://tasiom
 
 ---
 
-468 Seiten · 22 Kapitel · 210 Interviewfragen · CC BY-SA 4.0
+468 Seiten · 19 Kapitel · 190 Interviewfragen · CC BY-SA 4.0
 
 Deutschsprachiges Lehrbuch — vom Software-Entwickler zum AI Engineer. Basierend auf der [AI Engineer Roadmap](https://roadmap.sh/ai-engineer) von roadmap.sh.
 
@@ -19,9 +19,8 @@ Deutschsprachiges Lehrbuch — vom Software-Entwickler zum AI Engineer. Basieren
 | **III** | LLMs in der Praxis | 8–10, 20: RAG & Vector DBs, AI Agents, Evaluation, Multimodale KI |
 | **IV** | Production Layer | 17–19: Inference Optimization, Model Customization, Caching/Routing/Guardrails |
 | **V** | In Produktion bringen | 11, 21, 12, 22, 16: Deployment, MLOps, KI-Sicherheit, Governance |
-| **VI** | Karriere | 13–15: Glossar, Praxisprojekte, Bewerbungsprozess |
 
-Jedes Kapitel enthält **10 Interviewfragen** mit ausführlichen Antworten auf Senior-Niveau (210 gesamt).
+Jedes Kapitel enthält **10 Interviewfragen** mit ausführlichen Antworten auf Senior-Niveau (190 gesamt).
 
 ## Build
 
@@ -56,7 +55,7 @@ docker exec <container-id> sh -c "cd /workspaces/Become-an-AI-engineer && latexm
 ├── .devcontainer/        # Docker-Build-Config (Ubuntu 24.04 + texlive-full)
 ├── .github/              # Issue/PR Templates
 ├── AGENTS.md             # Entwicklerdokumentation
-├── interviewfragen.md    # Alle 210 Q&A im Markdown-Export
+├── interviewfragen.md    # Alle 190 Q&A im Markdown-Export
 └── LICENSE               # CC BY-SA 4.0
 ```
 

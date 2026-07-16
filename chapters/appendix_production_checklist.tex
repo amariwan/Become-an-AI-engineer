@@ -1,0 +1,194 @@
+\chapter{Production Checklist --- Das Cheat-Sheet}
+\label{appendix:checklist}
+
+% ============================================================
+% EINLEITUNG
+% ============================================================
+\section{Einleitung}
+
+Diese Checkliste fasst die wichtigsten Punkte aus dem gesamten Buch zusammen. Sie dient als schnelles Nachschlagewerk für den produktiven Einsatz von LLM-Systemen. Kopiere sie aus und drucke sie aus --- oder hänge sie am Monitor.
+
+\subsection{Code-Qualitätskennzeichnung}
+
+Code-Beispiele in diesem Buch sind wie folgt gekennzeichnet:
+
+\begin{itemize}[leftmargin=*]
+     \item \textbf{[Production-Ready]}: Produktionsreifer Code mit Error-Handling, Logging und Safety-Checks.
+     \item \textbf{[Vereinfacht für didaktische Zwecke]}: Minimalisierte Beispiele zum Verständnis --- nicht direkt in Produktion übernehmen.
+     \item \textbf{[Pseudocode/Architektur-Skizze]}: Konzeptionelle Darstellung --- muss noch implementiert werden.
+\end{itemize}
+
+% ============================================================
+% DESIGN-CHECKLISTE
+% ============================================================
+\section{Design-Checkliste}
+
+\begin{itemize}[leftmargin=*]
+     \item \textbf{Modellwahl}: Welches Modell für welchen Use-Case? Kosten vs. Qualität abgewogen.
+     \item \textbf{Architektur}: RAG vs. Fine-Tuning vs. Prompt-Engineering --- die richtige Technik für den Use-Case.
+     \item \textbf{Deployment}: Self-hosted vs. Cloud-Inference vs. Managed-API --- auf Datenhoheit, Scale und Latenz geprüft.
+     \item \textbf{Multi-Provider}: Fallback-Routen für API-Ausfälle definiert.
+     \item \textbf{Token-Budget}: Input- und Output-Limits festgelegt.
+     \item \textbf{Monitoring}: Metriken (Qualität, Kosten, Latenz) definiert und Alarme konfiguriert.
+\end{itemize}
+
+% ============================================================
+% DEVELOPMENT-CHECKLISTE
+% ============================================================
+\section{Development-Checkliste}
+
+\begin{itemize}[leftmargin=*]
+     \item \textbf{API-Keys}: Nicht im Code! Secrets-Manager oder Umgebungsvariablen.
+     \item \textbf{Input-Guard}: PII-Maskierung, Injection-Detection, Length-Checks.
+     \item \textbf{Output-Guard}: PII-Re-Check, Safety-Validierung, Schema-Validierung.
+     \item \textbf{Error-Handling}: Retry mit exponentiellem Backoff, Fallback-Modelle, Circuit-Breaker.
+     \item \textbf{Streaming}: Für UI-Streaming konfiguriert.
+     \item \textbf{JSON-Modus}: Structured-Outputs mit Pydantic-Schema für deterministische Outputs.
+\end{itemize}
+
+% ============================================================
+% SECURITY-CHECKLISTE
+% ============================================================
+\section{Security-Checkliste}
+
+\begin{itemize}[leftmargin=*]
+     \item \textbf{Input-Fragmentierung}: System-Prompt und User-Input strikt trennen.
+     \item \textbf{PII-Maskierung}: Vor dem LLM-Call maskieren, nicht nachher.
+     \item \textbf{Prompt Injection}: Input-Guard mit Pattern-Matching und LLM-Judge.
+     \item \textbf{Supply-Chain}: Dependencies gescannt, Model-Files auf Sicherheit geprüft.
+     \item \textbf{Audit-Log}: Jeder Schritt wird protokolliert.
+     \item \textbf{Rate-Limiting}: Pro User, pro API-Key, pro Modell.
+     \item \textbf{Network-Isolation}: Kein direkter Zugriff aus dem Internet.
+\end{itemize}
+
+% ============================================================
+% PRODUCTION-CHECKLISTE
+% ============================================================
+\section{Production-Checkliste}
+
+\begin{itemize}[leftmargin=*]
+     \item \textbf{Deployment}: Docker-Container, Health-Endpoints, Liveness/Readiness-Probes.
+     \item \textbf{Scaling}: Auto-Scaling konfiguriert, Load-Balancing aktiv.
+     \item \textbf{Monitoring}: Metriken-Endpoint, Grafana-Dashboard, Alerting.
+     \item \textbf{Cost-Control}: Budget-Limits, Alarme bei 80\%/90\%/100\%.
+     \item \textbf{Backup}: Daten-Backup, Rollback-Strategie, Incident-Runbooks.
+     \item \textbf{Testing}: Golden Datasets für Regression-Tests, CI/CD-Pipeline.
+\end{itemize}
+
+% ============================================================
+% EVALUATION-CHECKLISTE
+% ============================================================
+\section{Evaluation-Checkliste}
+
+\begin{itemize}[leftmargin=*]
+     \item \textbf{Golden Dataset}: 50--100 Testfälle, wachsend aus Produktions-Fehlern.
+     \item \textbf{LLM-as-a-Judge}: Multi-Judge-Ansatz (2+ Modelle) gegen Bias.
+     \item \textbf{Metriken}: Accuracy, Precision, Recall, Halluzinationsrate, P95-Latenz, Kosten/Query.
+     \item \textbf{A/B-Tests}: Neue Prompts gegen baseline vergleichen.
+     \item \textbf{Human Evaluation}: Stichproben von Domänen-Experten.
+     \item \textbf{Drift-Detection}: Antworten über Zeit überwachen.
+\end{itemize}
+
+% ============================================================
+% GOVERNANCE-CHECKLISTE
+% ============================================================
+\section{Governance-Checkliste}
+
+\begin{itemize}[leftmargin=*]
+     \item \textbf{Model Owner}: Verantwortlicher für Modellwahl und Betriebsparameter benannt.
+     \item \textbf{Data Steward}: Verantwortung für Datenqualität und Datenschutz geklärt.
+     \item \textbf{Ethik-Reviewer}: Fairness und Transparenz überprüft.
+     \item \textbf{Incident-Runbook}: Für drei Incident-Szenarien erstellt.
+     \item \textbf{Bias-Audit}: Subgruppen-Tests und Counterfactual-Analysen durchgeführt.
+     \item \textbf{DSGVO-Konformität}: PII-Maskierung, EU-Hosting, Transparenz.
+\end{itemize}
+
+% ============================================================
+% KOSTEN-CHECKLISTE
+% ============================================================
+\section{Kosten-Checkliste}
+
+\begin{itemize}[leftmargin=*]
+     \item \textbf{Model-Routing}: Einfache Queries zu günstigeren Modellen routen.
+     \item \textbf{Caching}: Prompt-Caching (KV-Cache) für wiederholte System-Prompts aktivieren.
+     \item \textbf{Output-Limits}: \texttt{max\_tokens} auf das Minimum setzen.
+     \item \textbf{Temperature}: Production auf 0.0--0.2, nur kreative Tasks höher.
+     \item \textbf{Batch-API}: Asynchrone Verarbeitung über Batch-API (50\% Rabatt).
+     \item \textbf{Cost-Tracking}: Jeden API-Call mit Token-Zahlen und Kosten protokollieren.
+\end{itemize}
+
+% ============================================================
+% METRIKEN-FRAMEWORK
+% ============================================================
+\section{Metriken-Framework}
+
+\begin{itemize}[leftmargin=*]
+     \item \textbf{Customer Support Chatbot}: Priorität 1 = Accuracy, Priorität 2 = P95-Latenz < 2s, Priorität 3 = Kosten/Query.
+     \item \textbf{Code-Generation}: Priorität 1 = Functional-Correctness, Priorität 2 = Speed, Priorität 3 = Format-Compliance.
+     \item \textbf{Summarization}: Priorität 1 = Faithfulness, Priorität 2 = Coverage, Priorität 3 = Latenz.
+     \item \textbf{RAG-System}: Priorität 1 = Hit-Rate, Priorität 2 = Faithfulness, Priorität 3 = MRR.
+     \item \textbf{Agent-System}: Priorität 1 = Success-Rate, Priorität 2 = Step-Efficiency, Priorität 3 = Cost/Task.
+\end{itemize}
+
+% ============================================================
+% ANTI-PATTERN-CHECKLISTE
+% ============================================================
+\section{Anti-Pattern-Checkliste}
+
+\begin{itemize}[leftmargin=*]
+     \item \textbf{API-Key im Code}: Niemals! --- Secrets-Manager verwenden.
+     \item \textbf{User-Input im System-Prompt}: Immer fragmentieren.
+     \item \textbf{Kein Output-Guard}: Immer PII-Re-Check und Safety-Validierung.
+     \item \textbf{Unlimitierte Output-Tokens}: Immer \texttt{max\_tokens} setzen.
+     \item \textbf{Single-Provider-Abhängigkeit}: Immer Fallback-Provider einplanen.
+     \item \textbf{Kein Monitoring}: Immer Metriken-Endpoint und Alerting.
+     \item \textbf{Kein Golden Dataset}: Immer 50--100 Testfälle für Regression-Tests.
+     \item \textbf{Full Fine-Tuning ohne Not}: Immer LoRA/QLoRA bevorzugen.
+     \item \textbf{Synthetic Data allein}: Immer 20\% manuell geprüfte Beispiele.
+     \item \textbf{RAG ohne Evaluation}: Immer Hit-Rate und Faithfulness messen.
+\end{itemize}
+
+% ============================================================
+% TOOL-EMPFEHLUNGEN
+% ============================================================
+\section{Tool-Empfehlungen}
+
+\begin{itemize}[leftmargin=*]
+     \item \textbf{LLM-API}: OpenAI (General Purpose), Anthropic (Safety), Google (Multimodal).
+     \item \textbf{Framework}: LangChain (General Purpose), LlamaIndex (RAG), LiteLLM (Multi-Provider).
+     \item \textbf{Vector DB}: pgvector (PostgreSQL), ChromaDB (Einsteiger), Pinecone (Scale).
+     \item \textbf{Observability}: Langfuse (Open Source), LangSmith (LangChain), Weights \& Biases (Training).
+     \item \textbf{Evaluation}: DeepEval, Promptfoo, OpenAI Evals, RAGAS.
+     \item \textbf{Security}: Garak (Vulnerability Scanner), PyRIT (Red Teaming), Promptfoo (Security Testing).
+     \item \textbf{Deployment}: Docker (Container), Kubernetes (Scale), FastAPI (API Framework).
+\end{itemize}
+
+% ============================================================
+% ZUSAMMENFASSUNG
+% ============================================================
+\section{Zusammenfassung}
+
+Diese Checkliste deckt die wichtigsten Punkte aus dem gesamten Buch ab. Sie ist kein Allheilmittel --- aber sie ist ein guter Start.
+
+\begin{itemize}[leftmargin=*]
+     \item \textbf{Design}: Architektur-Entscheidungen sorgfältig treffen.
+     \item \textbf{Development}: Input-Guard, Output-Guard, Error-Handling.
+     \item \textbf{Security}: Defense-in-Depth, PII-Maskierung, Audit-Log.
+     \item \textbf{Production}: Monitoring, Cost-Control, Backup.
+     \item \textbf{Evaluation}: Golden Dataset, LLM-as-a-Judge, A/B-Tests.
+     \item \textbf{Governance}: Model Owner, Bias-Audit, DSGVO-Konformität.
+\end{itemize}
+
+\par
+
+
+
+\par\mbox{}\par
+\begin{realitycheckEnv}
+Die beste Checkliste ersetzt kein tiefes Verständnis. Lies die Kapitel. Versteh die Entscheidungen. Baue das System. Und dann baue die Checks drumherum.
+\end{realitycheckEnv}
+
+\textbf{Nächster Schritt:} Das Glossar bietet eine alphabetische Übersicht aller wichtigen Begriffe.
+\endinput
+
+\clearpage

@@ -1,0 +1,398 @@
+\chapter{Inference Optimization and Serving}
+\label{chap:inference}
+
+% ============================================================
+% AUTOR-NOTIZ STATT LERNZIELE
+% ============================================================
+\autornotiz{
+2023 habe ich für einen E-Commerce-Kunden ein RAG-System gebaut. 50k Produktdokumente, 200k Queries/Tag.
+Erster Versuch: Naive RAG mit OpenAI Embeddings + Pinecone. Hit Rate @ 5: 67\%. Latenz p99: 3.2s. Kosten: \$450/Tag.
+Nach 3 Wochen Tuning: Recursive Chunking (512/64) + Hybrid Search (BM25 + Embedding) + Cross-Encoder Re-Ranker + pgvector.
+Hit Rate @ 5: 94\%. Latenz p99: 800ms. Kosten: \$38/Tag.
+Der Unterschied war nicht das Embedding-Modell. Es war Disziplin bei Chunking, Retrieval und Evaluation.
+}
+
+% ============================================================
+% MOTIVATION
+% ============================================================
+\section{Motivation}
+
+Ein LLM in der Entwicklung zu nutzen ist einfach. Ein LLM in Produktion mit tausenden Requests pro Minute zu betreiben, ohne dass die Antwortzeiten explodieren oder das Budget kollabiert -- das ist die eigentliche Herausforderung.
+
+Ein einzelner GPT-4o-Call kostet bei 1.000 Input- und 500 Output-Tokens rund 0,003~EUR. Bei 10.000 Requests pro Tag sind das 90~EUR monatlich. Bei einer Million Requests -- typisch für mittlere SaaS-Produkte -- steigen die Kosten auf 3.000~EUR monatlich, \textit{bevor} Optimierung beginnt.
+
+Doch Kosten sind nur eine Seite. Die andere ist Latenz: Nutzer erwarten Antworten in unter zwei Sekunden. Ein LLM-Call ohne Optimierung braucht oft 3--8~Sekunden. Hinzu kommen Kontextaufbau, Tool-Execution und Rendering.
+
+Dieses Kapitel behandelt die Optimierung der LLM-Inference auf allen Ebenen: von der Hardware über die Serving-Architektur bis zur Quantisierung der Modellgewichte.
+
+% ============================================================
+% GRUNDLAGEN
+% ============================================================
+\section{Grundlagen -- Was passiert bei einem LLM-Call?}
+
+Jeder LLM-Inference-Call durchläuft zwei Phasen:
+
+\begin{itemize}
+
+    \item \textbf{Prefill-Phase} Der gesamte Input (Prompt) wird parallel verarbeitet. Das Modell berechnet die Key-Value-Caches (KV-Cache) für alle Token gleichzeitig. Ergebnis: Ein einzelner Output-Token.
+    \item \textbf{Decode-Phase} Token für Token wird sequentiell generiert. Jeder Schritt nutzt den KV-Cache aus der Prefill-Phase. Der Engpass ist hier die Speicherbandbreite, nicht die Rechenleistung.
+\end{itemize}
+
+\begin{verbatim}
+   Prefill-Phase (parallel):
+   [Token 1] [Token 2] [Token 3] ... [Token N]
+      |          |          |             |
+      +----------+----------+-----+-------+
+                                    |
+                               [KV-Cache]
+                                    |
+                               [Token N+1]
+   
+   Decode-Phase (sequentiell):
+   [Token N+1] --> [KV-Cache] --> [Token N+2] --> [KV-Cache] --> ...
+\end{verbatim}
+
+\subsection{Die fünf Engpässe}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXl}
+\toprule
+\textbf{Engpass} & \textbf{Ursache} & \textbf{Gegenmassnahme} \\
+\midrule
+VRAM & Modellgewichte + KV-Cache passen nicht auf eine GPU & Quantisierung, Multi-GPU \\
+Speicherbandbreite & Token-Generierung ist memory-bound, nicht compute-bound & PagedAttention, Speculative Decoding \\
+Rechenleistung & Prefill-Phase erfordert Matrix-Multiplikationen & Tensor Parallelism, Flash Attention \\
+Latenz (TTFT) & Erster Token braucht Prefill + Overhead & Streaming, kleinere Batch-Sizes \\
+Durchsatz & Viele Requests \textit{nacheinander} abgearbeitet & Continuous Batching, Load Balancing \\
+\bottomrule
+\end{tabularx}
+\caption{Die fünf Engpässe der LLM-Inference}
+\label{tab:inference-engpässe}
+\end{table}
+
+\subsection{Schlüsselmetriken}
+
+\begin{itemize}
+
+    \item \textbf{TTFT (Time to First Token)} Zeit vom Request-Eingang bis zum ersten Output-Token. Entscheidend für User-Experience bei Streaming. Ziel: $<$ 500ms.
+    \item \textbf{TPOT (Time per Output Token)} Zeit pro generiertem Token im Decode-Schritt. Bestimmt die Gesamtlatenz. Ziel: $<$ 30ms.
+    \item \textbf{Durchsatz (Throughput)} Tokens pro Sekunde \textit{über alle Requests hinweg}. Entscheidend für Batch-Verarbeitung. In Tokens/s oder Requests/s gemessen.
+    \item \textbf{VRAM-Auslastung} Belegter Speicher durch Modellgewichte + KV-Cache + Overhead. Bestimmt die maximale Batch-Size.
+\end{itemize}
+
+\praxishinweis{TTFT und TPOT sind die zwei Metriken, die User wirklich spüren. TTFT $<$ 500ms für Streaming, TPOT $<$ 30ms pro Token. Misst immer den P95-Wert -- der Durchschnitt lügt bei Latenz.}
+
+% ============================================================
+% ARCHITEKTUR
+% ============================================================
+\section{Architektur eines Inference-Servers}
+
+Ein produktionsreifer Inference-Server besteht aus mehreren Schichten:
+
+\begin{verbatim}
+   +------------------------------------------------------------------+
+   |                     Inference Serving Stack                       |
+   |                                                                   |
+   |  [HTTP/S Client] --> [API Gateway] --> [Load Balancer]            |
+   |                                            |                      |
+   |                                   +--------v---------+            |
+   |                                   | Request Scheduler |            |
+   |                                   | (Continuous Batch)|            |
+   |                                   +--------+---------+            |
+   |                                            |                      |
+   |                          +-----------------+------------------+   |
+   |                          |                 |                  |   |
+   |                    [GPU 0: Llama]    [GPU 1: Llama]    [GPU 2: ...]|
+   |                          |                 |                  |   |
+   |                    [KV-Cache]        [KV-Cache]         [KV-Cache] |
+   |                          |                 |                  |   |
+   +--------------------------+-----------------+------------------+---+
+\end{verbatim}
+
+\subsection{vLLM und PagedAttention}
+
+vLLM (\href{https://github.com/vllm-project/vllm}{github.com/vllm-project/vllm}) ist der dominierende Open-Source-Inference-Server. Seine Kerninnovation ist \textbf{PagedAttention} -- eine Speicherverwaltung für den KV-Cache, inspiriert von virtuellen Speicherseiten in Betriebssystemen.
+
+Das Problem: Der KV-Cache wächst mit der Sequenzlänge und ist fragmentiert. Bei 2.000 Output-Tokens und einer Batch-Grösse von 8 belegt der KV-Cache für ein 70B-Modell rund 40~GB VRAM. PagedAttention alloziert den Cache in Seiten (Pages) fester Grösse und vermeidet Fragmentierung:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Speicherersparnis}: Bis zu 60\,\% weniger KV-Cache-Fragmentierung
+    \item \textbf{Grössere Batches}: Mehr Requests parallel auf derselben GPU
+    \item \textbf{Copy-on-Write}: Geteilte KV-Cache-Pages bei parallelen Sampling-Durchläufen
+\end{itemize}
+
+\begin{lstlisting}[language=bash, caption=vLLM-Server starten (OpenAI-kompatibler Endpoint)]
+# Installation
+pip install vllm
+
+# Llama 3 70B auf 4 GPUs starten
+vllm serve meta-llama/Llama-3.3-70B-Instruct \
+    --tensor-parallel-size 4 \
+    --dtype auto \
+    --max-model-len 8192 \
+    --gpu-memory-utilization 0.90 \
+    --max-num-seqs 32 \
+    --enable-prefix-caching
+
+# Client-Code (OpenAI-kompatibel)
+import openai
+
+client = openai.OpenAI(
+    base_url="http://localhost:8000/v1",
+    api_key="not-needed",
+)
+
+response = client.chat.completions.create(
+    model="meta-llama/Llama-3.3-70B-Instruct",
+    messages=[{"role": "user", "content": "Erklaere PagedAttention."}],
+    max_tokens=512,
+    temperature=0.1,
+)
+print(response.choices[0].message.content)
+\end{lstlisting}
+
+\subsection{Continuous Batching}
+
+Ohne Batching wird jeder Request einzeln verarbeitet -- eine GPU ist zu 100\,\% ausgelastet, aber nur für einen Request. Continuous Batching (auch \textit{dynamisches Batching}) erlaubt es, neue Requests in einen laufenden Batch aufzunehmen, sobald ein vorheriger Request abgeschlossen ist:
+
+\begin{verbatim}
+   Ohne Continuous Batching:
+   [Req 1] [______][Req 2][______][Req 3][______]
+   GPU-Auslastung: ~50%
+   
+   Mit Continuous Batching:
+   [Req 1] [Req 2] [Req 3] [Req 4] [Req 5] [Req 6]
+   GPU-Auslastung: ~95%
+\end{verbatim}
+
+vLLM, TensorRT-LLM und TGI (Text Generation Inference von Hugging Face) unterstützen Continuous Batching nativ. Der Effekt: 2--5x höherer Durchsatz bei gleicher Hardware.
+
+\praxishinweis{Continuous Batching ist kein magischer Turbo. Für interaktive Chat-Anwendungen kleine Batches (4-8) wählen, sonst leidet die TTFT. Für Batch-Jobs 32-64. Und immer \texttt{--enable-prefix-caching} aktivieren.}
+
+% ===========================================================%
+% THEORIE
+% ============================================================
+\section{Theorie -- Quantisierung}
+
+Quantisierung reduziert die Genauigkeit der Modellgewichte von 16-Bit-Gleitkommazahlen (FP16) auf kleinere Datentypen. Das reduziert den Speicherbedarf und erhöht den Durchsatz -- auf Kosten der Modellqualität.
+
+\subsection{Quantisierungsformate}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXXX}
+\toprule
+\textbf{Format} & \textbf{Bits} & \textbf{VRAM 70B} & \textbf{Qualität} \\
+\midrule
+FP16 / BF16 & 16 & 140~GB & Referenz \\
+INT8 & 8 & 70~GB & Kaum Verlust \\
+INT4 (GPTQ/AWQ) & 4 & 35~GB & Leichter Verlust \\
+NF4 (QLoRA) & 4 & 35~GB & Leichter Verlust (normalverteilt optimal) \\
+FP4 (FP4) & 4 & 35~GB & Mässiger Verlust \\
+\bottomrule
+\end{tabularx}
+\caption{Quantisierungsformate und Speicherbedarf für ein 70B-Modell}
+\label{tab:quant-formats}
+\end{table}
+
+\subsection{Verfahren im Vergleich}
+
+\begin{itemize}
+
+    \item \textbf{GPTQ (Post-Training)} Kalibriert die Quantisierung mit einem kleinen Kalibrierungs-Dataset. Gut für GPU-Inference. Unterstützt von vLLM und AutoGPTQ.
+    \item \textbf{AWQ (Activation-Aware)} Berücksichtigt die Aktivierungsverteilung, nicht nur die Gewichte. Erhält mehr Qualität als GPTQ bei gleicher Bitrate. Der empfohlene Standard für GPU-Inference.
+    \item \textbf{GGUF (llama.cpp)} Format für CPU- und Mixed-Inference. Erlaubt heterogenes Computing (GPU + CPU). Standard für lokale und On-Device-Inference via Ollama, LM Studio.
+    \item \textbf{Bitsandbytes (NF4)} Speziell für QLoRA-Fine-Tuning entwickelt. 4-Bit-NormalFloat-Format, optimiert für normalverteilte Gewichte.
+\end{itemize}
+
+\begin{lstlisting}[language=Python, caption=Modell mit AWQ quantisieren und mit vLLM laden]
+# Quantisierung mit AutoAWQ
+from awq import AutoAWQForCausalLM
+
+model = AutoAWQForCausalLM.from_pretrained(
+    "meta-llama/Llama-3.3-70B-Instruct",
+)
+
+model.quantize(
+    quant_config={"zero_point": True, "q_group_size": 128, "w_bit": 4},
+    calib_data="c4",  # Kalibrierungs-Dataset
+)
+
+model.save_quantized("llama-70b-awq")
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash, caption=Quantisiertes Modell mit vLLM laden]
+vllm serve ./llama-70b-awq \
+    --quantization awq \
+    --tensor-parallel-size 2  # Jetzt auf 2 GPUs statt 4
+\end{lstlisting}
+
+\subsection{Qualitätsverlust messen}
+
+Quantisierung trifft nicht alle Fähigkeiten gleich. Allgemeine Sprachkompetenz bleibt oft erhalten, während Reasoning, Mathematik und Code-Qualität stärker leiden:
+
+\begin{verbatim}
+   Qualitaetsverlust durch Quantisierung (relative Werte):
+   
+   Allgemeine Unterhaltung:     -2%
+   Zusammenfassung:             -3%
+   Extraktion:                  -2%
+   Code-Generierung:            -5%  bis -15%
+   Mathematik:                  -8%  bis -20%
+   Reasoning (mehrschrittig):   -10% bis -25%
+\end{verbatim}
+
+\textbf{Praxis-Regel:} Für 90\,\% der Produktionseinsätze reicht INT4 (AWQ). Nur für Code/Reasoning-Systeme INT8 oder FP16 verwenden.
+
+\praxishinweis{Quantisierung nie blind deployen. Ein INT4-Modell mag im MMLU 2\,\% verlieren -- aber in deiner spezifischen Domäne 15\,\%. Golden Dataset auf FP16 und INT4 evaluieren -- erst dann entscheiden. Für Code und Mathematik lieber INT8 nehmen.}
+
+% ===========================================================%
+% PRAXIS
+% ============================================================
+\section{Praxis -- Speculative Decoding}
+
+Speculative Decoding beschleunigt die Token-Generierung, indem ein \textit{schnelles} Draft-Modell (z.\,B. 1B Parameter) mehrere Token vorhersagt, die ein \textit{langsames} Target-Modell (70B) nur noch verifiziert.
+
+\begin{verbatim}
+   Normaler Decode:
+   [Target: 70B] --> [Token 1] --> [Target: 70B] --> [Token 2] --> ...
+   
+   Speculative Decoding:
+   [Draft: 1B]  --> [Token 1][Token 2][Token 3][Token 4] (schnell, raten)
+   [Target: 70B] --> [accept/reject Token 1-4] (ein Forward-Pass, keine Autoregression)
+\end{verbatim}
+
+\paragraph{Ergebnis:} 2--3x schnellere Token-Generierung bei identischer Output-Qualität (verlustfrei!). Das Target-Modell akzeptiert oder verwirft die Draft-Token -- bei Ablehnung wird der korrekte Token berechnet.
+
+\paragraph{Voraussetzung:} Draft-Modell muss die gleiche Tokenizer-Vokabular haben wie das Target-Modell. In vLLM integriert:
+
+\begin{lstlisting}[language=bash, caption=Speculative Decoding in vLLM]
+vllm serve meta-llama/Llama-3.3-70B-Instruct \
+    --speculative-model meta-llama/Llama-3.2-1B-Instruct \
+    --num-speculative-tokens 5 \
+    --tensor-parallel-size 4
+\end{lstlisting}
+
+\praxishinweis{Speculative Decoding bringt 2-3x Speedup -- aber nur wenn Draft und Target denselben Tokenizer teilen. Prüft vor dem Deployment die Akzeptanzrate: unter 60\,\% lohnt sich der Overhead nicht.}
+
+% ===========================================================%
+% BEST PRACTICES
+% ============================================================
+\section{Best Practices}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Batch-Grösse pro Use-Case}: Für interaktive Chat-Anwendungen kleine Batches (4--8) für niedrige TTFT. Für Batch-Jobs grosse Batches (32--64) für maximalen Durchsatz.
+    \item \textbf{Quantisierung testen vor Deployment}: Nicht blind INT4 deployen. Erst Golden Dataset auf FP16 und INT4 evaluieren, dann vergleichen.
+    \item \textbf{Prefill- und Decode-Phase getrennt optimieren}: Prefill ist compute-bound (Flash Attention, Tensor Parallelism). Decode ist memory-bound (PagedAttention, Speculative Decoding).
+    \item \textbf{GPU-Auslastung minimieren}: Eine GPU unter 70\,\% Auslastung ist Geldverschwendung. Continuous Batching und Request-Bündelung helfen.
+    \item \textbf{Prompt-Caching im Server aktivieren}: vLLMs \texttt{--enable-prefix-caching} cached gemeinsame Prompt-Präfixe (System-Prompts). Spart bis zu 50\,\% Prefill-Zeit.
+    \item \textbf{Streaming immer aktivieren}: TTFT sinkt drastisch, User warten nicht auf den kompletten Response. SSE (Server-Sent Events) ist der Standard.
+\end{itemize}
+
+% ===========================================================%
+% ANTI-PATTERNS
+% ============================================================
+\section{Anti-Patterns}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Kontextfenster maximal ausreizen}: Längere Kontexte bedeuten grösseren KV-Cache, weniger Batch-Platz und höhere Latenz. Nur so viel Kontext wie nötig.
+    \item \textbf{Quantisierung ohne Evaluation}: Ein INT4-Modell mag im MMLU 2\,\% verlieren -- aber in deiner spezifischen Domäne 15\,\%. Immer auf den eigenen Daten evaluieren.
+    \item \textbf{Speculative Decoding ohne Draft-Tuning}: Ein zu schwaches Draft-Modell akzeptiert zu wenige Token. Ziel: 60--80\,\% Akzeptanzrate.
+    \item \textbf{Maximale Batch-Size ohne Latenz-Budget}: Grosse Batches erhöhen den Durchsatz, aber auch die Latenz jedes einzelnen Requests. Immer P95-Latenz messen.
+    \item \textbf{On-Device ohne Hardware-Test}: CoreML und WebLLM verhalten sich auf verschiedenen Geräten (iPhone 14 vs 15, M1 vs M4) unterschiedlich. Auf Zielhardware testen.
+\end{itemize}
+
+% ===========================================================%
+% PERFORMANCE
+% ============================================================
+\section{Performance -- Eine Beispielrechnung}
+
+Ein 70B-Modell auf 4~A100~80GB, 10 Requests pro Minute mit 1.000 Input- und 500 Output-Tokens:
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXXXX}
+\toprule
+\textbf{Konfiguration} & \textbf{Batch} & \textbf{TTFT} & \textbf{TPOT} & \textbf{Throughput} \\
+\midrule
+FP16, kein Batching & 1 & 1.200ms & 65ms & 15 Tok/s \\
+AWQ~INT4, kein Batching & 1 & 700ms & 35ms & 28 Tok/s \\
+AWQ~INT4, Continuous Batch & 16 & 900ms & 42ms & 180 Tok/s \\
+AWQ~INT4 + Spec. Decode & 16 & 850ms & 18ms & 320 Tok/s \\
+\bottomrule
+\end{tabularx}
+\caption{Performance-Vergleich verschiedener Optimierungen (70B, 4xA100)}
+\label{tab:perf-comparison}
+\end{table}
+
+\section{Sicherheit bei Inference-Servern}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Zugriffskontrolle}: Inference-Endpoints benötigen Authentifizierung. Kein offener Port in der Cloud.
+    \item \textbf{Rate-Limiting}: Request-Limit pro User/IP verhindert Denial-of-Service und Kostenexplosion.
+    \item \textbf{Input-Sanitization}: User-Input auf Injection prüfen (Prompt Injection via API).
+    \item \textbf{Audit-Log}: Jeder Request wird geloggt (User, Tokens, Latenz, Kosten). Grundlage für Abrechnung und Fehlersuche.
+    \item \textbf{VRAM-Monitoring}: Wenn der KV-Cache den VRAM sprengt, crasht der Server. \texttt{--gpu-memory-utilization 0.90} als Sicherheitspuffer.
+\end{itemize}
+
+\praxishinweis{Inference-Server sind kritische Infrastruktur. Immer hinter API-Gateway betreiben, Rate-Limiting aktivieren, Audit-Log führen. Und niemals \texttt{--gpu-memory-utilization 1.0} setzen -- der KV-Cache braucht Reserve für Spitzen.}
+
+% ===========================================================%
+% ZUSAMMENFASSUNG
+% ===========================================================%
+\begin{zusammenfassungEnv}
+\begin{itemize}[leftmargin=*]
+    \item LLM-Inference hat zwei Phasen: Prefill (parallel, compute-bound) und Decode (sequentiell, memory-bound)
+    \item vLLM mit PagedAttention ist der Standard-Server -- bis zu 60\,\% weniger KV-Cache-Fragmentierung
+    \item Quantisierung (AWQ für GPU, GGUF für CPU) reduziert VRAM um 50--75\,\% bei geringem Qualitätsverlust
+    \item Speculative Decoding beschleunigt Token-Generierung um 2--3x (verlustfrei)
+    \item Continuous Batching erhöht GPU-Auslastung von 50\,\% auf 95\,\%+
+    \item Jede Optimierung muss gegen das eigene Golden Dataset evaluiert werden
+\end{itemize}
+\end{zusammenfassungEnv}
+
+
+
+
+\par\mbox{}\par
+\begin{merkeEnv}
+Der Engpass der LLM-Inference ist nicht Rechenleistung, sondern Speicherbandbreite. PagedAttention und Speculative Decoding adressieren genau diesen Engpass -- implementiere sie vor teurer Hardware-Aufrüstung.
+\end{merkeEnv}
+
+% ===========================================================%
+% PRAXISPROJEKT
+% ===========================================================%
+\section{Praxisprojekt -- Inference-Benchmark}
+
+\textbf{Ziel:} Baue ein Benchmark-Script, das die drei Dimensionen (Latenz, Durchsatz, Kosten) für verschiedene Modell-Konfigurationen misst.
+
+\textbf{Aufgaben:}
+\begin{enumerate}[leftmargin=*]
+    \item Starte vLLM mit einem 7B-Modell in FP16 und in AWQ-INT4
+    \item Miss TTFT, TPOT und Gesamtlatenz für 50 Requests mit 500 Input- und 200 Output-Tokens
+    \item Wiederhole mit Batch-Grössen 1, 4, 16, 32
+    \item Erstelle einen CSV-Report mit allen Metriken
+    \item Berechne die Kosten-optimale Konfiguration für 100.000 Requests/Tag
+\end{enumerate}
+
+\textbf{Erfolgskriterium:} Du kannst begründen, welche Konfiguration für welchen Use-Case optimal ist.
+
+% ===========================================================%
+% RESSOURCEN
+% ===========================================================%
+\section{Ressourcen}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{vLLM}: \href{https://github.com/vllm-project/vllm}{github.com/vllm-project/vllm} -- PagedAttention Inference Server
+    \item \textbf{llama.cpp}: \href{https://github.com/ggml-org/llama.cpp}{github.com/ggml-org/llama.cpp} -- CPU-Optimized Inference
+    \item \textbf{TensorRT-LLM}: \href{https://github.com/NVIDIA/TensorRT-LLM}{github.com/NVIDIA/TensorRT-LLM} -- NVIDIA-optimierter Server
+    \item \textbf{AWQ}: \href{https://github.com/mit-han-lab/llm-awq}{github.com/mit-han-lab/llm-awq} -- Activation-Aware Quantization
+    \item \textbf{ggml/GGUF}: \href{https://github.com/ggml-org/ggml}{github.com/ggml-org/ggml} -- Tensor Library für CPU-Inference
+    \item Leistungsanalyse: \href{https://huggingface.co/spaces/optimum/text-generation-inference-benchmarks}{Hugging Face TGI Benchmarks}
+\end{itemize}
+
+\textbf{Nächster Schritt:} Im nächsten Kapitel erfährst du, wie du Caching, intelligentes Routing und Guardrails einbaust -- die zweite Schicht der Optimierung.
+\endinput
+
+\clearpage

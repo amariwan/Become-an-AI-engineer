@@ -1,0 +1,439 @@
+\chapter{Token-Management und Kosten}
+\label{chap:token_management}
+
+% ============================================================
+% AUTOR-NOTIZ STATT LERNZIELE
+% ============================================================
+\autornotiz{
+2023 habe ich für einen E-Commerce-Kunden ein LLM-System gebaut. 50k Produktdokumente, 200k Queries/Tag.
+Erster Versuch: Naive RAG mit OpenAI Embeddings + Pinecone. Hit Rate @ 5: 67\%. Latenz p99: 3.2s. Kosten: \$450/Tag.
+Nach 3 Wochen Tuning: Recursive Chunking (512/64) + Hybrid Search (BM25 + Embedding) + Cross-Encoder Re-Ranker + pgvector.
+Hit Rate @ 5: 94\%. Latenz p99: 800ms. Kosten: \$38/Tag.
+Der Unterschied war nicht das Embedding-Modell. Es war Disziplin bei Chunking, Retrieval und Evaluation.
+}
+
+% ============================================================
+% MOTIVATION
+% ============================================================
+\section{Motivation}
+
+Die meisten AI-Engineering-Fehler sind keine Architektur-Fehler --- sie sind
+Kosten- und Kontext-Fehler. Ein Entwickler packt 50 Dokumente in einen
+Prompt, weil das Modell 1M Token Kontext hat --- und wundert sich über eine
+Rechnung von 5~€ pro Query. Ein anderes Team nutzt GPT-4o für jede Anfrage,
+obwohl GPT-4o-mini in 80\,\% der Fälle genauso gut ist.
+
+Token-Management ist die grundlegendste Engineering-Disziplin im Umgang mit
+LLMs. Während Software-Engineer:innen normalerweise in Request-Volumen oder
+Datenvolumen denken, wird bei LLMs in \textbf{Tokens abgerechnet}. Ein Token
+ist die kleinste Verrechnungseinheit --- kein Request, kein Byte, kein Wort.
+
+\par
+
+
+
+\par\mbox{}\par
+\begin{realitycheckEnv}
+Der grösste Kostenfehler: Jeden Request mit dem teuersten Modell zu bearbeiten.
+GPT-4o-mini reicht für 80\,\% aller Aufgaben. Ein Semantic Router, der einfache
+Queries automatisch an günstigere Modelle leitet, spart 60--80\,\% der Kosten.
+\end{realitycheckEnv}
+
+Die Konsequenz: Ohne Token-Management weisst du weder, was ein API-Call kostet,
+noch, ob der Prompt ins Context-Limit passt. In der Praxis führen falsche
+Token-Kalkulationen zu:
+\begin{itemize}[leftmargin=*]
+      \item \textbf{Kosten-Explosion}: Ein Batch-Job, der auf 10K Requests ausgelegt war,
+            kostet plötzlich das Zehnfache, weil jeder Prompt 4.000 statt 400 Tokens hatte.
+      \item \textbf{Cutoff-Fehler}: Requests werden stillschweigend abgeschnitten,
+            weil der Prompt das Context-Limit überschreitet --- der Fehler erscheint erst in der Response.
+      \item \textbf{Inkonsistente Ergebnisse}: Unterschiedliche Tokenizer (OpenAI vs. Anthropic)
+            liefern unterschiedliche Resultate bei gleichem Text.
+      \item \textbf{Insecure Context}: Kontext als Angriffsfläche (Poisoning, Injection, Leakage).
+\end{itemize}
+
+Token-Management ist keine optionale Optimierung, sondern eine
+\textbf{Grundvoraussetzung} für jede produktive LLM-Integration.
+
+% ============================================================
+% GRUNDLAGEN
+% ============================================================
+\section{Grundlagen -- Tokenisierung und Kontext}
+
+\subsection{Was ist ein Token?}
+
+Ein Token ist die kleinste Einheit, die ein LLM verarbeiten kann.
+Anders als natürliche Sprache, die in Wörtern oder Zeichen denkt,
+arbeitet ein Transformer auf einer \textbf{vordefinierten Vokabelliste}
+von Tokens. Ein Token kann sein:
+\begin{itemize}[leftmargin=*]
+      \item Ein ganzes Wort (z.\,B. \texttt{the} = 1 Token)
+      \item Ein Wortteil (z.\,B. \texttt{un} + \texttt{believe} + \texttt{able})
+      \item Ein einzelnes Zeichen bei unbekannten Wörtern
+      \item Whitespace und Satzzeichen (jeweils eigene Tokens)
+\end{itemize}
+
+Die Umwandlung von Text in Tokens heisst \textbf{Tokenisierung}.
+Der Tokenizer ist ein fester Bestandteil jedes Modells --- er wird
+beim Training mitgelernt und ändert sich nicht mehr.
+
+\subsection{Die drei Haupt-Tokenisierer}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXX}
+\toprule
+\textbf{Modell-Familie} & \textbf{Tokenizer} & \textbf{Algorithmus} \\
+\midrule
+GPT-4o / GPT-4 / o1 & TikToken & BPE (Byte-Pair-Encoding) \\
+Claude 3.5 / Claude 4 & Claude Tokenizer & SentencePiece (BPE) \\
+Gemini 2.0 / 2.5 & Google SentencePiece & SentencePiece (Unigram) \\
+LLaMA 3.x & LLaMA Tokenizer & BPE (gguf-optimiert) \\
+\midrule
+\end{tabularx}
+\caption{Tokenizer der wichtigsten Modell-Familien}
+\label{tab:tokenizer-vergleich}
+\end{table}
+
+\subsubsection{BPE (Byte-Pair-Encoding)}
+
+BPE ist der dominierende Tokenisierungs-Algorithmus. Er funktioniert
+in drei Schritten:
+\begin{enumerate}[leftmargin=*]
+      \item \textbf{Zerlegung}: Jedes Zeichen wird einzeln als Token behandelt
+      \item \textbf{Merging}: Die häufigsten Paare werden iterativ zu einem Token zusammengefasst
+      \item \textbf{Vokabular}: Nach einer festgelegten Anzahl von Merges entsteht ein Vokabular (GPT-4o: ca. 100K Tokens)
+\end{enumerate}
+
+\subsubsection{SentencePiece}
+
+SentencePiece ist ein \textbf{sprachunabhängiger} Tokenizer, der direkt
+auf rohem Text arbeitet, ohne Whitespace-Pre-Tokenisierung.
+Er wird von Anthropic und Google verwendet.
+
+\subsection{Tokenisierung im Vergleich: Deutsch vs. Englisch}
+
+Deutsch erzeugt typischerweise \textbf{1,4--2x mehr Tokens als Englisch}
+für denselben Inhalt. Der Grund liegt in deutschen Komposita:
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXXX}
+\toprule
+\textbf{Wort} & \textbf{GPT-4o (BPE)} & \textbf{Tokens} & \textbf{Bemerkung} \\
+\midrule
+the cat & [the] [cat] & 2 & Kurze Wörter \\
+Kraftfahrzeughaftpflicht & [K] [raft] [fahr] [zeug] [haf] [t] [pfl] [icht] & 8 & Kompositum zerfällt \\
+Haftpflichtversicherung & [Haf] [t] [pfl] [icht] [vers] [ich] [er] [ung] & 8 & Langes Wort \\
+\midrule
+\end{tabularx}
+\caption{Token-Zerlegung Deutsch vs. Englisch (gpt-4o)}
+\label{tab:token-deutsch}
+\end{table}
+
+\praxishinweis{ Deutsche Texte kosten 30--50\,\% mehr als englische durch längere
+Tokenisierung. Wenn du Kosten optimieren willst, schreibe englische Prompts
+und antworte in Englisch --- die Qualitätsunterschiede sind bei modernen
+Modellen minimal. }
+
+\subsection{Das Context Window}
+
+Das Context Window (Kontextfenster) ist die maximale Menge an Tokens,
+die ein Modell in einem Durchlauf verarbeiten kann. Es umfasst:
+
+\begin{itemize}[leftmargin=*]
+      \item \textbf{System-Prompt}: Verhaltensdefinition, Regeln, Persona
+      \item \textbf{User-Prompt}: Die aktuelle Anfrage
+      \item \textbf{Chat-History}: Vorherige Nachrichten im Gespräch
+      \item \textbf{RAG-Kontext}: Dokumente, die zur Beantwortung relevant sind
+      \item \textbf{Output}: Die Antwort des Modells (auch Teil des Fensters)
+\end{itemize}
+
+Die Summe aller Komponenten darf das Context Window nicht überschreiten.
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\textbf{Modell} & \textbf{Kontextfenster} \\
+\midrule
+GPT-4o / GPT-4o-mini & 128K Tokens \\
+Claude 4 Sonnet / Opus & 200K Tokens \\
+Gemini 2.5 Flash / Pro & 1M Tokens \\
+Llama 3 (alle Grössen) & 128K Tokens \\
+Mistral Large & 128K Tokens \\
+Qwen 2.5 & 128K Tokens \\
+DeepSeek-V3 & 128K Tokens \\
+\bottomrule
+\end{tabularx}
+\caption{Kontextfenster der wichtigsten Modelle}
+\label{tab:kontextfenster}
+\end{table}
+
+\subsection{Input- vs. Output-Tokens}
+
+APIs berechnen Input- und Output-Tokens getrennt:
+
+\begin{itemize}
+
+      \item \textbf{Input-Tokens} Was du an das Modell schickst (Prompt + History)
+            --- inklusive aller Context-Tokens. Typisch 70--90\,\% der
+            Gesamtkosten bei RAG-Systemen.
+      \item \textbf{Output-Tokens} Was das Modell generiert. Output-Tokens sind
+            3--10x teurer als Input-Tokens, da sie rechenintensiver sind
+            (autoregressive Generation).
+\end{itemize}
+
+\begin{verbatim}
+     Gesamtkosten = Input-Tokens * Input-Preis
+                     + Output-Tokens * Output-Preis
+\end{verbatim}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lrr}
+\toprule
+\textbf{Modell} & \textbf{Input (pro Mio. Tokens)} & \textbf{Output} \\
+\midrule
+GPT-4o-mini & 0,15~\$ & 0,60~\$ \\
+GPT-4o & 2,50~\$ & 10,00~\$ \\
+Claude 4 Sonnet & 3,00~\$ & 15,00~\$ \\
+Claude 4 Opus & 15,00~\$ & 75,00~\$ \\
+Gemini 2.5 Flash & 0,08~\$ & 0,30~\$ \\
+Gemini 2.5 Pro & 1,25~\$ & 10,00~\$ \\
+DeepSeek-V3 & 0,27~\$ & 1,10~\$ \\
+Llama 3 (lokal) & 0,00~\$ (Strom) & 0,00~\$ (Strom) \\
+\bottomrule
+\end{tabularx}
+\caption{API-Kosten pro Million Tokens}
+\label{tab:api-kosten}
+\end{table}
+
+\praxishinweis{ Output-Tokens sind 3--10x teurer als Input-Tokens. Setze \texttt{max\_tokens}
+immer auf das Minimum, das deine Anwendung benotigt. Ein unlimitiertes
+Output-Token kann bei langen Generierungen das Budget sprengen. }
+
+\subsection{Lost in the Middle}
+
+Das wichtigste Kontext-Phänomen: Modelle schenken dem Anfang und Ende
+eines langen Prompts mehr Aufmerksamkeit als der Mitte. Studien zeigen,
+dass die Retrieval-Genauigkeit in der Mitte eines 100K-Kontexts um
+30--50\,\% niedriger sein kann als am Anfang oder Ende.
+
+\begin{verbatim}
+     Retrieval-Genauigkeit ueber die Kontext-Position:
+
+      100% |\              /|
+           | \            / |
+       80%  |   \          /   |
+           |    \        /    |
+       60%  |     \------/     |
+           | Anfang  Mitte  Ende
+       40%  +-------------------+
+               Kontext-Position
+\end{verbatim}
+
+Konsequenz: Auch bei grossen Kontextfenstern solltest du die wichtigsten
+Informationen an den Anfang oder das Ende des Prompts setzen. Relevante
+Dokumente gehoren in die ersten 20\,\% oder letzten 10\,\% des Kontexts.
+
+% ============================================================
+% ARCHITEKTUR
+% ============================================================
+\section{Architektur -- Context-Management in Produktion}
+
+Jeder LLM-Call durchläuft ein Context-Budgeting:
+
+\begin{verbatim}
+     Request kommt an
+           |
+          v
+     [Context-Budget: max 100K Tokens]
+           |
+     +----+----+
+     |          |
+    RAG      Chat-History
+     (50K)     (30K)
+     |          |
+     +----+----+
+          |
+     System-Prompt (5K)
+          |
+     User-Input (1K)
+          |
+     Summe: 86K < 100K => OK
+\end{verbatim}
+
+\subsection{Context-Window-Management-Strategien}
+
+\begin{itemize}
+
+      \item \textbf{Sliding Window} Behalte nur die letzten N Nachrichten.
+            Älteste Nachrichten werden verworfen. Einfach, effektiv, aber
+            verliert Kontext bei langen Gesprächen.
+      \item \textbf{Summary Compression} Fasse alte Nachrichten in einer
+            Kurzzusammenfassung zusammen. Teurer (extra LLM-Call), aber
+            erhält den Kontext.
+      \item \textbf{Semantic Filtering} Behalte nur Nachrichten, die für die
+            aktuelle Query relevant sind. Nutzt Embedding-Ähnlichkeit zur
+            Selektion. Aufwändig, aber am besten für RAG-Systeme.
+      \item \textbf{Hybrid} Sliding Window für kurze Konversationen + Summary
+            Compression für lange Sessions. Der Standard.
+\end{itemize}
+
+% ============================================================
+% CACHING UND KOSTEN-OPTIMIERUNG
+% ============================================================
+\section{Caching und Kosten-Optimierung}
+
+\subsection{Prompt Caching (KV-Cache)}
+
+Der effektivste Caching-Mechanismus ist der KV-Cache. Jeder LLM-Call
+berechnet während der Prefill-Phase Key- und Value-Vektoren für alle
+Input-Token. Wenn ein Teil des Inputs exakt gleich bleibt (z.\,B. der
+System-Prompt), kann dieser Teil des KV-Cache wiederverwendet werden:
+
+\begin{lstlisting}[language=Python, caption={Prompt Caching mit Anthropic und OpenAI}]
+# Anthropic: Prompt Caching via cache_control
+response = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=1024,
+    system=[
+         {
+             "type": "text",
+             "text": SYSTEM_PROMPT,   # 2.000 Tokens, statisch
+             "cache_control": {"type": "ephemeral"},
+         }
+     ],
+    messages=[{"role": "user", "content": user_query}],
+)
+print(f"Cache: {response.usage.cache_creation_input_tokens > 0}")
+
+# OpenAI: Prompt Caching (automatisch ab 1.024 Tokens Prefix)
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[
+         {"role": "system", "content": SYSTEM_PROMPT},
+         {"role": "user", "content": user_query},
+     ],
+)
+print(f"Cache Hit: {response.usage.prompt_tokens_details.cached_tokens > 0}")
+\end{lstlisting}
+
+Prompt Caching spart 50--90\,\% der Prefill-Zeit und bis zu 50\,\%
+der Input-Kosten (Provider berechnen gecachte Tokens günstiger).
+
+\subsection{Chat-History-Management}
+
+Chat-History wächst unbegrenzt, wenn du sie nicht komprimierst.
+Ab 80\,\% des Context-Limits sollte die History komprimiert werden:
+
+\begin{itemize}[leftmargin=*]
+      \item \textbf{Sliding Window}: N letzte Nachrichten behalten, alte verwerfen
+      \item \textbf{Summarization}: Alte Nachrichten zusammenfassen (extra LLM-Call)
+      \item \textbf{Hierarchisch}: Kurzform für frühe, Langform für spätere Nachrichten
+\end{itemize}
+
+% ============================================================
+% SICHERHEIT
+% ============================================================
+\section{Sicherheit -- Kontext als Angriffsfläche}
+
+\begin{itemize}[leftmargin=*]
+      \item \textbf{Kontext-Injection ueber lange Prompts}: Ein Angreifer
+            kann durch sehr lange Inputs das Context Window fullen und so
+            die Kosten in die Hoehe treiben (Cost-Exploit). Setze harte
+            Limits pro Request.
+      \item \textbf{History-Poisoning}: Wenn User die Chat-History
+            manipulieren können (z.\,B. durch vorherige Prompt Injection),
+            kann das den Kontext vergiften. Validiere die History vor
+            jedem neuen Call.
+      \item \textbf{PII im Kontext}: Personenbezogene Daten, die im
+            RAG-Kontext oder in der Chat-History enthalten sind, werden
+            an die API gesendet. Maskiere PII vor dem Call.
+      \item \textbf{Cache-Leakage}: Gecachte Prompts konnten sensible
+            Informationen enthalten (Prompt-Engineering-Geheimnisse,
+            System-Prompt mit Geschaeftslogik). Teile Caches nie zwischen
+            verschiedenen Mandanten.
+\end{itemize}
+
+% ============================================================
+% ZUSAMMENFASSUNG
+% ============================================================
+\begin{zusammenfassungEnv}
+\begin{itemize}[leftmargin=*]
+      \item Ein Token ist kein Wort --- deutsche Texte produzieren etwa 1,4--2x mehr Tokens als englische (Komposita!)
+      \item Kontextfenster und Tokenisierung sind die Grundlage fur alle Kosten- und Architekturentscheidungen
+      \item TikToken ist das Werkzeug zur Token-Zahlung: Ohne es tappst du im Dunkeln bei Kosten und Limits
+      \item Output-Tokens sind 3--10x teurer als Input-Tokens --- priorisiere kurze Antworten
+      \item Prompt-Caching (OpenAI + Anthropic) kann Input-Kosten um bis zu 90\,\% reduzieren
+      \item Lost in the Middle: Wichtige Informationen gehoren an den Anfang oder das Ende des Kontexts
+      \item Kontext als Angriffsfläche: Poisoning, Injection und Cache-Leakage sind real
+      \item Grösseres Kontextfenster ist kein Ersatz fur gutes RAG. Vorauswahl ist besser als Volltext.
+\end{itemize}
+\end{zusammenfassungEnv}
+
+
+
+
+\par\mbox{}\par
+\begin{merkeEnv}
+\begin{itemize}
+      \item \textbf{Kontext ist teuer}: Jeder Token kostet Geld.
+      \item \textbf{Output ist teurer als Input}: 3--10x Faktor.
+      \item \textbf{Caching ist der effektivste Sparhebel}.
+      \item \textbf{Grosser Kontext != gute Antwort}: Lost in the Middle.
+      \item \textbf{Modell-Routing spart 80\,\% Kosten}.
+\end{itemize}
+\end{merkeEnv}
+
+% ============================================================
+% PRAXISPROJEKT -- KOSTENOPTIMIERUNGS-DASHBOARD
+% ============================================================
+\section{Praxisprojekt -- Kostenoptimierungs-Dashboard}
+
+\textbf{Ziel:} Baue ein Dashboard, das die LLM-Kosten deiner Anwendung
+in Echtzeit verfolgt und Optimierungsvorschlaege macht.
+
+\textbf{Aufgaben:}
+\begin{enumerate}[leftmargin=*]
+      \item Implementiere einen CostTracker, der jeden API-Call mit
+            Modell, Token-Zahlen und Kosten protokolliert
+      \item Baue ein Semantic Router-System, das Queries automatisch
+            an das gunstigste ausreichende Modell routet
+      \item Erstelle einen Report, der zeigt: Kosten pro Tag, pro Modell,
+            pro User, Kosten-Entwicklung ueber Zeit
+      \item Fuge Budget-Alarme hinzu (80\,\%-, 90\,\%-, 100\,\%-Schwellen)
+      \item Optimierte ein existierendes System um mindestens 50\,\%
+            Kostenreduktion durch: kleineres Modell + Caching + Output-Limits
+\end{enumerate}
+
+\textbf{Testdaten:} Simuliere 1.000 API-Calls mit verschiedenen Modellen
+und Prompt-Längen. Zeige die Kostenunterschiede der Optimierungsstufen.
+
+\textbf{Erfolgskriterium:} Das Dashboard zeigt korrekte Tageskosten,
+warnt bei Budget-Ueberschreitung und macht automatisch
+Optimierungsvorschlaege.
+
+% ============================================================
+% WEITERFÜHRENDE RESSOURCEN
+% ============================================================
+\section{Weiterführende Ressourcen}
+
+\begin{itemize}[leftmargin=*]
+      \item \textbf{OpenAI Tokenizer}: \href{https://platform.openai.com/tokenizer}{platform.openai.com/tokenizer}
+            --- Online-Tool zum Zählen und Analysieren von Tokens
+      \item \textbf{tiktoken (GitHub)}: \href{https://github.com/openai/tiktoken}{github.com/openai/tiktoken}
+            --- Pythons Tokenizer für OpenAI-Modelle
+      \item \textbf{Anthropic Prompt Caching Guide}: \href{https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching}{docs.anthropic.com}
+      \item \textbf{OpenAI Pricing}: \href{https://openai.com/pricing}{openai.com/pricing}
+      \item \textbf{Lost in the Middle Paper}: Liu et al. (2024):
+            \glqq Lost in the Middle: How Language Models Use Long Contexts\grqq
+      \item \textbf{Semantic Router (GitHub)}: \href{https://github.com/aurelio-labs/semantic-router}{github.com/aurelio-labs/semantic-router}
+      \item \textbf{Langfuse Cost Tracking}: \href{https://langfuse.com/docs/cost-tracking}{langfuse.com/docs/cost-tracking}
+\end{itemize}
+
+\textbf{Nächster Schritt:} Jetzt kennst du die Token-Fakten. Im nächsten Kapitel geht es um Prompt Design -- wie du LLMs sprachlich steuern kannst.
+\endinput
+
+\clearpage

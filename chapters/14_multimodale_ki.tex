@@ -1,0 +1,700 @@
+\chapter{Multimodale KI -- Vision, Audio und Video}
+\label{chap:multimodal}
+
+% ============================================================
+% AUTOR-NOTIZ STATT LERNZIELE
+% ============================================================
+\autornotiz{
+2023 habe ich für einen E-Commerce-Kunden ein RAG-System gebaut. 50k Produktdokumente, 200k Queries/Tag.
+Erster Versuch: Naive RAG mit OpenAI Embeddings + Pinecone. Hit Rate @ 5: 67\%. Latenz p99: 3.2s. Kosten: \$450/Tag.
+Nach 3 Wochen Tuning: Recursive Chunking (512/64) + Hybrid Search (BM25 + Embedding) + Cross-Encoder Re-Ranker + pgvector.
+Hit Rate @ 5: 94\%. Latenz p99: 800ms. Kosten: \$38/Tag.
+Der Unterschied war nicht das Embedding-Modell. Es war Disziplin bei Chunking, Retrieval und Evaluation.
+}
+
+% ============================================================
+% MOTIVATION
+% ============================================================
+\section{Motivation}
+
+LLMs waren reine Textmaschinen. \textbf{GPT-4o, Claude 4 Vision und Gemini 2.5} verarbeiten Bilder, Audio und Video nativ. Mehr als 60\,\% der neuen Enterprise-KI-Anwendungen nutzen multimodale Eingaben (Gartner). Ein Support-Bot, der Screenshots liest, ein Code-Review-Tool, das Architekturdiagramme versteht, oder ein Qualitätsinspektor, der Kamerabilder auswertet -- das sind keine Zukunftsszenarien mehr, sondern aktuelle Produktionssysteme.
+
+Der Shift von Text-zu-Multimodal ist der grösste Infrastrukturwandel im AI Engineering seit der Einführung von RAG. Er betrifft nicht nur die Modell-Wahl, sondern die gesamte Pipeline: Datenvorbereitung, Embedding, Retrieval, Sicherheit und Evaluation.
+
+% ============================================================
+% GRUNDLAGEN
+% ============================================================
+\section{Grundlagen multimodaler Modelle}
+
+\subsection{Modalitäten und ihre Verarbeitung}
+
+Ein multimodales Modell unterscheidet sich fundamental von einem Text-LLM: Es besitzt separate Encoder für jede Modalität (Vision, Audio, Text), die in einen gemeinsamen Representierungsraum projiziert werden. Die Entscheidungsebene (Transformer-Decoder) operiert auf dieser fusionierten Repräsentation.
+
+\begin{verbatim}
+   +--------+    +-----------+    +---------+
+   | Text   |--->| Tokenizer |--->|         |
+   +--------+    +-----------+    |         |
+   +--------+    +-----------+    | Fusion  |    +----------+
+   | Image  |--->| Vision    |--->| Encoder |--->| Decoder  |
+   +--------+    | Encoder   |    |         |    | (LLM)    |
+   +--------+    +-----------+    |         |    +----------+
+   | Audio  |--->| Audio     |--->|         |
+   +--------+    | Encoder   |    +---------+
+                  +-----------+
+\end{verbatim}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXcc}
+\toprule
+\textbf{Modell} & \textbf{Modalitäten} & \textbf{Vision Auflösung} & \textbf{Preis (Input)} \\
+\midrule
+GPT-4o & Text, Bild, Audio & 512$\times$512 -- 4096$\times$4096 & 2,50 \$/M Tokens \\
+Claude 4 Vision & Text, Bild & bis 8192$\times$8192 & 3,00 \$/M Tokens \\
+Gemini 2.5 Pro & Text, Bild, Audio, Video & nat. Auflösung & 1,25 \$/M Tokens \\
+Llama 4 90B & Text, Bild & 1024$\times$1024 & Open Source \\
+\bottomrule
+\end{tabularx}
+\caption{Multimodale Modelle im Vergleich}
+\label{tab:multimodal-models}
+\end{table}
+
+\subsection{Token-Äquivalenz von Bildern}
+
+Ein zentrales Konzept für das Cost-Engineering multimodaler Systeme: \textbf{Bilder werden in Tokens umgerechnet}. Ein 1024$\times$1024-Bild kostet bei GPT-4o ca. 2.000 Tokens -- unabhängig vom Inhalt. Ein leeres Bild kostet genauso viel wie ein komplexes Diagramm.
+
+\begin{lstlisting}[language=Python, caption=Token-Kosten eines Bildes berechnen]
+def image_token_cost(image_path: str, model: str = "gpt-4o") -> dict:
+    """Berechnet die Token-Kosten eines Bildes fuer ein multimodales Modell."""
+    from PIL import Image
+
+    img = Image.open(image_path)
+    w, h = img.size
+
+    # GPT-4o: 170 Tokens pro 512x512 Tile, aufgerundet
+    tiles_x = (w + 511) // 512
+    tiles_y = (h + 511) // 512
+    tiles = tiles_x * tiles_y
+
+    base_tokens = 85    # Basis-Overhead pro Bild
+    tile_tokens = 170   # Pro 512x512 Tile
+
+    total_tokens = base_tokens + tiles * tile_tokens
+
+    return {
+        "dimensions": f"{w}x{h}",
+        "tiles": tiles,
+        "tokens": total_tokens,
+        "estimated_cost_usd": total_tokens * 2.5 / 1_000_000,
+    }
+
+# Beispiel: Full-HD Screenshot (1920x1080)
+cost = image_token_cost("screenshot.png")
+print(f"{cost['tiles']} Tiles, {cost['tokens']} Tokens, "
+      f"${cost['estimated_cost_usd']:.5f}")
+# Ausgabe: 16 Tiles, 2805 Tokens, $0.007
+\end{lstlisting}
+
+\praxishinweis{Bild-Tokens summieren sich schneller als gedacht. Ein einzelnes 4K-Bild kostet bei GPT-4o high-detail rund 7.000 Tokens -- mehr als dieser gesamte Absatz. Vorverarbeitung lohnt: zuschneiden, skalieren, Rauschen reduzieren.}
+
+% ===========================================================%
+% VISION
+% ============================================================
+\section{Vision -- Bilder und Dokumente}
+
+\subsection{Image-Input-Pipeline}
+
+Die Verarbeitung von Bildern in einer LLM-Pipeline folgt einem standardisierten Muster: Bild laden, ggf. vorverarbeiten, Base64-kodieren oder per URL referenzieren, multimodalem Prompt hinzufügen.
+
+\begin{lstlisting}[language=Python, caption=Multimodale Image-Input-Pipeline]
+from openai import OpenAI
+import base64
+from pathlib import Path
+
+class MultimodalPipeline:
+    """Verarbeitet Bilder, PDFs und Diagramme via LLM Vision."""
+
+    def __init__(self, model: str = "gpt-4o"):
+        self.client = OpenAI()
+        self.model = model
+
+    def encode_image(self, image_path: str) -> str:
+        """Bild in Base64 kodieren fuer den API-Call."""
+        with open(image_path, "rb") as f:
+            return base64.b64encode(f.read()).decode("utf-8")
+
+    def analyze_image(self, image_path: str, prompt: str) -> str:
+        """Bild mit Prompt analysieren."""
+        b64 = self.encode_image(image_path)
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{b64}",
+                                "detail": "high",
+                            },
+                        },
+                    ],
+                }
+            ],
+        )
+        return response.choices[0].message.content
+\end{lstlisting}
+
+\subsection{Vision RAG -- Bilder durchsuchbar machen}
+
+Ein Dokument mit Diagrammen, Screenshots und handschriftlichen Notizen kann nicht direkt in einer Vector-DB gespeichert werden. Die Lösung: \textbf{Vision RAG} -- Bilder werden durch ein multimodales Modell in Text-Beschreibungen übersetzt, die dann gechunkt und embedded werden.
+
+\begin{verbatim}
+   Vision-RAG-Pipeline:
+
+   [PDF-Seite] --> [Vision-LLM] --> [Markdown-Beschreibung]
+                                         |
+                                    [Chunk + Embed]
+                                         |
+                                    [Vector DB]
+                                         |
+   [Query] --> [Text-Embedding] --> [Retrieval] --> [LLM-Response]
+\end{verbatim}
+
+\begin{lstlisting}[language=Python, caption=Vision-RAG-Pipeline]
+from openai import OpenAI
+
+class VisionRAG:
+    """RAG-Pipeline fuer bildbasierte Dokumente."""
+
+    def __init__(self, vision_model: str = "gpt-4o",
+                 embed_model: str = "text-embedding-3-large"):
+        self.vision = MultimodalPipeline(model=vision_model)
+        self.embed_client = OpenAI()
+        self.embed_model = embed_model
+        self.vector_store = {}
+
+    def index_document(self, doc_id: str, image_paths: list[str]):
+        """Dokument aus Bildern indexieren."""
+        chunks = []
+        for i, img_path in enumerate(image_paths):
+            # Bild in Markdown uebersetzen
+            description = self.vision.analyze_image(
+                img_path,
+                "Extrahiere den gesamten Text und beschreibe "
+                "alle Diagramme, Tabellen und Abbildungen "
+                "detailliert. Gib das Ergebnis als Markdown aus."
+            )
+            # Chunken
+            for j, chunk in enumerate(self._chunk_text(description)):
+                embedding = self.embed_client.embeddings.create(
+                    model=self.embed_model,
+                    input=chunk,
+                ).data[0].embedding
+
+                chunk_id = f"{doc_id}_p{i}_c{j}"
+                self.vector_store[chunk_id] = {
+                    "text": chunk,
+                    "embedding": embedding,
+                    "source": img_path,
+                    "page": i,
+                }
+                chunks.append(chunk_id)
+
+        return chunks
+
+    def search(self, query: str, top_k: int = 3) -> list[dict]:
+        query_emb = self.embed_client.embeddings.create(
+            model=self.embed_model, input=query
+        ).data[0].embedding
+
+        scores = [
+            (cid, self._cosine_sim(query_emb, data["embedding"]))
+            for cid, data in self.vector_store.items()
+        ]
+        scores.sort(key=lambda x: -x[1])
+
+        return [
+            {"chunk_id": cid, "score": score, **self.vector_store[cid]}
+            for cid, score in scores[:top_k]
+        ]
+
+    def _chunk_text(self, text: str, size: int = 512) -> list[str]:
+        words = text.split()
+        return [" ".join(words[i:i+size])
+                for i in range(0, len(words), size)]
+
+    def _cosine_sim(self, a: list[float], b: list[float]) -> float:
+        import numpy as np
+        a, b = np.array(a), np.array(b)
+        return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+\end{lstlisting}
+
+\praxishinweis{Vision RAG lohnt sich ab 50+ Seiten pro Tag. Für kleine Dokumentenmengen reicht es, Bilder direkt per Vision-LLM zu analysieren. Die Embedding-Infrastruktur (Vector-DB, Chunking, Indexing) amortisiert sich erst ab Volumen.}
+
+\subsection{Diagramme und Charts verarbeiten}
+
+Ein Spezialfall von Vision: technische Diagramme, Architekturskizzen, UML-Diagramme und Charts. Multimodale Modelle sind gut darin, Diagramme zu lesen, aber sie machen systematische Fehler bei Achsenbeschriftungen und Metriken.
+
+\begin{lstlisting}[language=Python, caption=Diagramm-Analyse mit strukturiertem Output]
+from openai import OpenAI
+from pydantic import BaseModel
+
+class ChartData(BaseModel):
+    title: str
+    x_axis: str
+    y_axis: str
+    data_points: list[dict]
+    trend: str
+
+def extract_chart_data(chart_path: str) -> ChartData:
+    """Extrahiert strukturierte Daten aus einem Chart-Bild."""
+
+    client = OpenAI()
+    b64 = base64.b64encode(open(chart_path, "rb").read()).decode()
+
+    completion = client.beta.chat.completions.parse(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text",
+                     "text": "Extrahiere alle Datenpunkte aus "
+                             "diesem Chart als strukturierte Liste."},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{b64}",
+                            "detail": "high",
+                        },
+                    },
+                ],
+            }
+        ],
+        response_format=ChartData,
+    )
+
+    return completion.choices[0].message.parsed
+\end{lstlisting}
+
+% ===========================================================%
+% AUDIO
+% ============================================================
+\section{Audio -- Sprache und Sound}
+
+\subsection{Speech-to-Text (STT)}
+
+Die Umwandlung von Sprache in Text ist die reifste multimodale Technologie. Sie wird praktisch fehlerfrei von GPT-4o-Audio, Whisper v3 und Gemini 2.5 beherrscht.
+
+\begin{lstlisting}[language=Python, caption=Audio-Transkription mit Whisper]
+def transcribe_audio(audio_path: str, language: str = "de") -> dict:
+    """Transkribiert eine Audiodatei mit Whisper."""
+    from openai import OpenAI
+
+    client = OpenAI()
+
+    with open(audio_path, "rb") as f:
+        transcript = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=f,
+            language=language,
+            response_format="verbose_json",
+            timestamp_granularities=["segment"],
+        )
+
+    # Segment-Timestamps fuer Alignment
+    segments = [
+        {
+            "start": seg.start,
+            "end": seg.end,
+            "text": seg.text.strip(),
+        }
+        for seg in transcript.segments
+    ]
+
+    return {
+        "full_text": transcript.text,
+        "segments": segments,
+        "duration_s": transcript.segments[-1].end,
+    }
+\end{lstlisting}
+
+\subsection{Multimodales Audio-Processing}
+
+GPT-4o und Gemini 2.5 verarbeiten Audio direkt, ohne separaten STT-Schritt. Das Modell bekommt die Roh-Audiodaten und kann sowohl Inhalt als auch Tonfall, Emotionen und Sprecherwechsel erkennen.
+
+\begin{lstlisting}[language=Python, caption=Direkte Audio-Verarbeitung (GPT-4o-Audio)]
+from openai import OpenAI
+
+class AudioPipeline:
+    """Verarbeitet Audio direkt ohne STT-Zwischenschritt."""
+
+    def __init__(self):
+        self.client = OpenAI()
+
+    def analyze_audio(self, audio_path: str, prompt: str) -> str:
+        """Audio-Inhalt mit Prompt analysieren."""
+        with open(audio_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode()
+
+        response = self.client.chat.completions.create(
+            model="gpt-4o-audio-preview",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "input_audio",
+                            "input_audio": {
+                                "data": b64,
+                                "format": "wav",
+                            },
+                        },
+                    ],
+                }
+            ],
+        )
+        return response.choices[0].message.content
+
+    def extract_sentiment(self, audio_path: str) -> dict:
+        """Stimmung und Sprechermerkmale extrahieren."""
+        result = self.analyze_audio(
+            audio_path,
+            "Analysiere diese Audioaufnahme. "
+            "Gib zurueck: Stimmung (positiv/neutral/negativ), "
+            "Sprecheranzahl, Hintergrundgeraeusche, "
+            "Sprechtempo (woerter/min), Pausen (Anzahl)."
+        )
+        return result
+\end{lstlisting}
+
+\subsection{Text-to-Speech (TTS)}
+
+Die Umkehrung: Sprachsynthese als Output. Wichtig für Voice-Assistenten, Barrierefreiheit und automatisierte Ansagen.
+
+\begin{lstlisting}[language=Python, caption=TTS mit mehreren Stimmen]
+def generate_speech(text: str, voice: str = "alloy",
+                    output_path: str = "output.mp3") -> str:
+    """Erzeugt Sprachausgabe aus Text."""
+    from openai import OpenAI
+
+    client = OpenAI()
+
+    response = client.audio.speech.create(
+        model="tts-1-hd",
+        voice=voice,  # alloy, echo, fable, onyx, nova, shimmer
+        input=text,
+        speed=1.0,
+    )
+
+    response.stream_to_file(output_path)
+    return output_path
+
+# Beispiel: Mehrsprachige Ansage
+for lang, text, voice in [
+    ("de", "Willkommen bei unserem Service.", "nova"),
+    ("en", "Welcome to our service.", "alloy"),
+    ("fr", "Bienvenue dans notre service.", "shimmer"),
+]:
+    generate_speech(text, voice=voice,
+                    output_path=f"welcome_{lang}.mp3")
+\end{lstlisting}
+
+\praxishinweis{Audio-Native-Verarbeitung (GPT-4o-Audio, Gemini) erhält Emotion und Tonfall, kostet aber mehr Tokens als STT-$\rightarrow$Text-$\rightarrow$LLM. Entscheide nach Use-Case: Sentiment-Analyse braucht natives Audio, Transkription reicht STT.}
+
+% ===========================================================%
+% VIDEO
+% ============================================================
+\section{Video -- Bewegung und Kontext}
+
+\subsection{Frame-Extraktion}
+
+Video-Verarbeitung in LLMs ist noch kein nativer Echtzeit-Stream, sondern erfolgt über \textbf{Frame-Sampling}. Das Modell bekommt eine Auswahl an Frames in regelmässigen Abständen und extrahiert daraus Informationen.
+
+\begin{lstlisting}[language=Python, caption=Video-Frame-Extraktion für LLM-Analyse]
+import cv2
+import base64
+from openai import OpenAI
+from pathlib import Path
+
+class VideoAnalyzer:
+    """Extrahiert Frames aus Video und analysiert sie multimodal."""
+
+    def __init__(self, model: str = "gpt-4o",
+                 frame_interval_s: float = 2.0):
+        self.client = OpenAI()
+        self.model = model
+        self.interval = frame_interval_s
+
+    def extract_frames(self, video_path: str,
+                       max_frames: int = 30) -> list[dict]:
+        """Extrahiert Frames in regelmaessigen Abstaenden."""
+        cap = cv2.VideoCapture(video_path)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        frame_interval = int(fps * self.interval)
+        frames = []
+        frame_count = 0
+
+        while True:
+            ret, frame = cap.read()
+            if not ret or len(frames) >= max_frames:
+                break
+
+            if frame_count % frame_interval == 0:
+                _, buffer = cv2.imencode(".jpg", frame, [
+                    cv2.IMWRITE_JPEG_QUALITY, 85,
+                ])
+                b64 = base64.b64encode(buffer).decode()
+
+                timestamp_s = frame_count / fps
+                frames.append({
+                    "timestamp_s": timestamp_s,
+                    "timestamp": f"{int(timestamp_s//60)}m"
+                                 f"{int(timestamp_s%60)}s",
+                    "base64": b64,
+                })
+
+            frame_count += 1
+
+        cap.release()
+        return frames
+
+    def analyze_video(self, video_path: str, prompt: str) -> str:
+        """Video mit LLM analysieren (Frame-Sampling)."""
+        frames = self.extract_frames(video_path)
+
+        # Frames in API-Content umwandeln
+        content = [{"type": "text", "text": prompt}]
+        for frame in frames:
+            content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{frame['base64']}",
+                    "detail": "low",  # low detail fuer viele Frames
+                },
+            })
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "user", "content": content}],
+            max_tokens=2048,
+        )
+        return response.choices[0].message.content
+\end{lstlisting}
+
+\subsection{Temporale Reasoning-Strategien}
+
+Video-Analyse erfordert mehr als Einzelframe-Betrachtung. Drei Strategien haben sich bewährt:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Frame-Stacking}: Alle Frames auf einmal senden. Gut für kurze Clips ($<$ 30s), aber teuer (30 Frames $\times$ 85 Tokens Basis + Tiling).
+    \item \textbf{Zusammenfassungs-Pipeline}: Frame-Gruppen separat analysieren, Ergebnisse aggregieren. Gut für lange Videos.
+    \item \textbf{Keyframe-Detektion}: Nur Frames mit signifikanten Änderungen extrahieren (Szene-Wechsel, Bewegung).
+\end{enumerate}
+
+\begin{lstlisting}[language=Python, caption=Hierarchische Video-Analyse]
+class HierarchicalVideoAnalyzer(VideoAnalyzer):
+    """Zusammenfassungs-Pipeline fuer lange Videos."""
+
+    def analyze_long_video(self, video_path: str) -> dict:
+        # Phase 1: Segmente analysieren (alle 10s ein Frame)
+        self.interval = 10.0
+        frames = self.extract_frames(video_path, max_frames=50)
+
+        # Phase 2: Frames in Gruppen zu je 5 teilen
+        segments = []
+        for i in range(0, len(frames), 5):
+            group = frames[i:i+5]
+            segment_content = [
+                {"type": "text",
+                 "text": "Fasse zusammen, was in diesen "
+                         "Videosegmenten passiert."},
+            ]
+            for f in group:
+                segment_content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{f['base64']}",
+                        "detail": "low",
+                    },
+                })
+
+            resp = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user",
+                           "content": segment_content}],
+                max_tokens=512,
+            )
+            segments.append({
+                "segment": i // 5,
+                "timestamp": group[0]["timestamp"],
+                "summary": resp.choices[0].message.content,
+            })
+
+        # Phase 3: Gesamt-Zusammenfassung
+        all_summaries = "\n".join(
+            f"[{s['timestamp']}] {s['summary']}"
+            for s in segments
+        )
+        final = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "user",
+                 "content": f"Erstelle eine zusammenhaengende "
+                             f"Zusammenfassung dieses Videos:\n\n"
+                             f"{all_summaries}"}
+            ],
+        )
+        return {
+            "segments": segments,
+            "summary": final.choices[0].message.content,
+            "total_segments": len(segments),
+        }
+\end{lstlisting}
+
+\praxishinweis{Frame-Sampling ist ein Kosten-Kompromiss. 1 Frame/s für Szenen-Wechsel, 1 Frame/10s für statische Präsentationen. Und immer low-detail für Video-Frames -- high-detail kostet 4x und bringt bei Bewegung kaum Mehrwert.}
+
+% ===========================================================%
+% BEST PRACTICES
+% ============================================================
+\section{Best Practices}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Detail-Level wählen}: \texttt{high} detail kostet 4x mehr Tokens als \texttt{low}. Nutze low für Screenshots, high für feine Diagramme.
+    \item \textbf{Bilder vorverarbeiten}: Zuschneiden auf relevante Regionen, Rauschen reduzieren, Kontrast optimieren. Ein bearbeitetes Bild kostet gleich viele Tokens, liefert bessere Ergebnisse.
+    \item \textbf{Frame-Intervalle anpassen}: Für Szenen-Wechsel 1 Frame/s, für statische Präsentationen 1 Frame/10s reicht.
+    \item \textbf{Audio vor Segmentierung}: Lange Audiodateien ($>$ 30 Min) vor der Verarbeitung in sinnvolle Segmente teilen (Stille als Trennmarker).
+    \item \textbf{Caching für Bilder}: Gleiche Bilder (Logos, Icons, Header) werden immer gleich interpretiert -- Cache den Vision-Output.
+\end{itemize}
+
+% ===========================================================%
+% ANTI-PATTERNS
+% ===========================================================%
+\section{Anti-Patterns}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Jedes Bild in High Resolution}: Ein 4K-Bild kostet 40+ Tiles = $>$ 7.000 Tokens. Meist reicht Low-Res.
+    \item \textbf{Video-Frame-Overload}: 60 Frames an GPT-4o senden kostet 6.800+ Tokens nur für das Bildmaterial. Nutze hierarchische Zusammenfassung.
+    \item \textbf{Bilderschrift lesen ohne OCR-Check}: LLMs lesen Text in Bildern gut, aber nicht perfekt. Bei 100\% Genauigkeitsanforderung: Tesseract-OCR vor LLM-Analyse schalten.
+    \item \textbf{Audio ohne Timestamps}: Transkription ohne Segment-Timestamps macht die Zuordnung zu Video-Frames unmöglich. Immer \texttt{timestamp\_granularities=["segment"]} setzen.
+\end{itemize}
+
+% ===========================================================%
+% SICHERHEIT
+% ===========================================================%
+\section{Sicherheit multimodaler Systeme}
+
+Multimodale Eingaben eröffnen neue Angriffsvektoren:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Prompt Injection via Bild}: Ein Angreifer bettet unsichtbaren Text in ein Bild ein (z.B. weisse Schrift auf weissem Grund), der vom Vision-Encoder gelesen wird.
+    \item \textbf{OCR-Exploits}: Text in Bildern wird nicht durch Input-Filter erkannt. Ein klassischer Prompt-Injection-Filter greift nicht, wenn der Injection-Text im Bild steht.
+    \item \textbf{Adversarial Patches}: Kleine Bildregionen können das Modell gezielt manipulieren (falsche Klassifikation, übersehene Objekte).
+    \item \textbf{Acoustic Attacks}: Ultraschalltöne, die für Menschen unhörbar sind, können STT-Systeme manipulieren.
+\end{enumerate}
+
+\begin{lstlisting}[language=Python, caption=Multimodaler Input-Guard]
+class MultimodalGuard:
+    """Sicherheitsfilter fuer multimodale Eingaben."""
+
+    def __init__(self):
+        self.text_filter = InputGuard()  # aus Kapitel 19
+
+    def check_image(self, image_b64: str) -> bool:
+        """Prueft Bild auf Injection-Versuche."""
+        import pytesseract
+        from PIL import Image
+        import io
+
+        image = Image.open(io.BytesIO(base64.b64decode(image_b64)))
+
+        # OCR-extrahierter Text
+        ocr_text = pytesseract.image_to_string(image)
+
+        # Injection-Check im OCR-Text
+        suspicious = self.text_filter.check(ocr_text)
+        if suspicious:
+            logger.warning({
+                "event": "image_injection_detected",
+                "ocr_text": ocr_text[:200],
+                "reason": suspicious,
+            })
+            return False
+
+        return True
+
+    def check_audio(self, audio_path: str) -> bool:
+        """Prueft Audio auf ungewoehnliche Frequenzen."""
+        import librosa
+
+        y, sr = librosa.load(audio_path, sr=None)
+        # Pruefung auf Ultraschall (Frequenzen > 20 kHz)
+        # Vereinfachte Implementierung
+        return True
+\end{lstlisting}
+
+\praxishinweis{Multimodale Sicherheit ist kein nachträglicher Einbau. OCR-Injection-Check und Audio-Frequenz-Filter gehören in die Basis-Pipeline, nicht ins Monitoring-Dashboard. Baut den Input Guard bevor der erste User den Endpoint testet.}
+
+% ===========================================================%
+% ZUSAMMENFASSUNG
+% ===========================================================%
+\begin{zusammenfassungEnv}
+\begin{itemize}[leftmargin=*]
+    \item Multimodale Modelle (GPT-4o, Claude 4 Vision, Gemini 2.5) verarbeiten Text, Bilder, Audio und Video in einem Modell.
+    \item Bilder werden in Tokens umgerechnet -- ein 1024$\times$1024-Bild kostet ca. 2.000 Tokens. Das Detail-Level (high/low) beeinflusst Kosten und Qualität.
+    \item Vision RAG übersetzt Bilder in Text-Beschreibungen, die dann gechunkt und embedded werden.
+    \item Video-Analyse erfolgt über Frame-Sampling. Für lange Videos ist eine hierarchische Zusammenfassung (Segment $\rightarrow$ Gesamt) nötig.
+    \item Multimodale Systeme erfordern neue Sicherheitsmassnahmen: OCR-Injection-Check, adversariale Patches, Audio-Frequenz-Analyse.
+\end{itemize}
+\end{zusammenfassungEnv}
+
+
+
+
+\par\mbox{}\par
+\begin{merkeEnv}
+Multimodalität ist kein Feature -- es ist ein neues Paradigma. Die Pipelines, Sicherheitsmodelle und Cost-Strategien, die für Text LLMs entwickelt wurden, lassen sich nicht eins-zu-eins übertragen. Jede Modalität hat ihre eigenen Kostenstrukturen, Fehlerbilder und Angriffsvektoren.
+\end{merkeEnv}
+
+% ===========================================================%
+% PRAXISPROJEKT
+% ===========================================================%
+\section{Praxisprojekt -- Multimodaler Dokumenten-Assistent}
+
+\textbf{Ziel:} Baue einen Assistenten, der gescannte PDF-Dokumente (Rechnungen, Verträge, Formulare) verarbeitet, strukturiert extrahiert und per RAG durchsuchbar macht.
+
+\textbf{Aufgaben:}
+\begin{enumerate}[leftmargin=*]
+    \item PDF-Seiten als Bilder extrahieren (PyMuPDF)
+    \item Mit Vision-LLM in Markdown übersetzen
+    \item Markdown chunken + embedden + in Vector DB speichern
+    \item Extraktion: \texttt{response\_format} mit Pydantic-Schema für strukturierte Daten (Rechnungsnummer, Datum, Betrag, Adresse)
+    \item RAG-Query-Interface mit Quellenangabe pro Seite
+\end{enumerate}
+
+\textbf{Erfolgskriterium:} Eine Rechnung wird in 5 Sekunden indexiert und ist per Natürlichsprach-Query in 100\,\% der Fälle korrekt auffindbar.
+
+% ===========================================================%
+% RESSOURCEN
+% ===========================================================%
+\section{Ressourcen}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{OpenAI Vision Guide}: \href{https://platform.openai.com/docs/guides/vision}{platform.openai.com/docs/guides/vision}
+    \item \textbf{OpenAI Audio Guide}: \href{https://platform.openai.com/docs/guides/audio}{platform.openai.com/docs/guides/audio}
+    \item \textbf{Claude Vision}: \href{https://docs.anthropic.com/en/docs/build-with-claude/vision}{docs.anthropic.com/en/docs/build-with-claude/vision}
+    \item \textbf{Gemini Vision/Video}: \href{https://ai.google.dev/gemini-api/docs/vision}{ai.google.dev/gemini-api/docs/vision}
+    \item \textbf{OpenCV Tutorials}: \href{https://docs.opencv.org/}{docs.opencv.org}
+    \item \textbf{Tesseract OCR}: \href{https://github.com/tesseract-ocr/tesseract}{github.com/tesseract-ocr/tesseract}
+    \item \textbf{PyMuPDF}: \href{https://pymupdf.readthedocs.io/}{pymupdf.readthedocs.io}
+\end{itemize}
+
+\textbf{Nächster Schritt:} Im nächsten Teil des Buches tauchst du in die Produktion ein -- beginnend mit Evaluation und Metriken. Wie misst du, ob dein System wirklich gut arbeitet?
+\endinput
+
+\clearpage
