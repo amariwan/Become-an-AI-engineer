@@ -1,0 +1,1 @@
+Deployment model comparison matrix. Four columns: API (Managed), Self-hosted Open Source, Cloud Inference (Managed), Edge Deployment. Five rows: Setup Effort, Latency, Cost per Query, Control, Data Sovereignty, Scaling. Color-coded cells (green=good, yellow=medium, red=poor). German labels. Technical infographic style.

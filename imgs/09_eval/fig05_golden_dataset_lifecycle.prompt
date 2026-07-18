@@ -1,0 +1,1 @@
+Golden Dataset Lifecycle Infographic: Cycle of 5 stages: 1) Start Minimal (20-50 cases), 2) Expand from Production (add real failures), 3) Version in Git (tags per release), 4) Domain Expert Review (quarterly), 5) CI/CD Integration (run on every push). Circular arrows, icons for each stage, German labels.

@@ -1,0 +1,1 @@
+Vision RAG Pipeline. PDF Page -> Vision LLM (GPT-4o) -> Markdown Description (Text + Diagrams + Tables) -> Chunk + Embed -> Vector DB -> Query -> Text Embedding -> Retrieval -> LLM Response with Citations. Flow diagram with arrows. Side note: "Worth it at 50+ pages/day". Embedding infrastructure amortization. German labels.

@@ -1,0 +1,1 @@
+LLMOps CI/CD Pipeline Stages. Horizontal flow: LINT (Code, Golden Dataset Tests ->, LLM Judge Tests ->, Cost/Latency Checks ->, Canary Deploy ->, Smoke Tests ->, Promote to Prod. Each stage as box with status icons. Fail-fast on any stage. Cost Gate annotation: "Max Token Budget per Test Suite". Canary: 5% Traffic -> Full Rollout. German labels, pipeline diagram style.

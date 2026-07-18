@@ -1,0 +1,1 @@
+Hierarchical Video Analysis Pipeline. Phase 1: Segment Video (1 frame/10s) -> 50 frames. Phase 2: Group by 5 -> 10 groups -> Analyze each group -> Segment Summaries. Phase 3: Aggregate All Summaries -> Final Video Summary. Visual: Video timeline -> Frames -> Groups -> Summaries -> Final. Arrows, German labels.

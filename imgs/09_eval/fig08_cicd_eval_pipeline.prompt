@@ -1,0 +1,1 @@
+CI/CD Pipeline for LLM Evaluation: GitHub Actions workflow visualization. Stages: Checkout -> Install -> Prompt Lint -> Golden Dataset Tests -> LLM Judge Tests -> Cost/Latency Check -> Canary Deploy -> Smoke Tests -> Promote to Prod. Each stage as a box with status icons. Arrows showing flow, fail-fast on any stage. Technical CI/CD diagram style.

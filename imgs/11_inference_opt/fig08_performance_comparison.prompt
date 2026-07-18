@@ -1,0 +1,1 @@
+Performance comparison table visualization. Configuration | Batch | TTFT | TPOT | Throughput. FP16 no batch | 1 | 1200ms | 65ms | 15 Tok/s. AWQ INT4 no batch | 1 | 700ms | 35ms | 28 Tok/s. AWQ INT4 Continuous | 16 | 900ms | 42ms | 180 Tok/s. AWQ INT4 + Spec Decode | 16 | 850ms | 18ms | 320 Tok/s. Highlight: Speculative Decoding + Continuous Batching = 20x throughput vs baseline.

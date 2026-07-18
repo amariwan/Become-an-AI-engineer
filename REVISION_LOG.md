@@ -23,9 +23,6 @@
 | 12 | chapters/12_ki_sicherheit_ethik.tex | fertig | 5 – In Produktion bringen |
 | 22 | chapters/22_verantwortungsvolle_ki_governance.tex | fertig | 5 – In Produktion bringen |
 | 16 | chapters/16_ki_sicherheit.tex | fertig | 5 – In Produktion bringen |
-| 13 | chapters/13_glossar.tex | fertig | 6 – Karriere |
-| 14 | chapters/14_praxisprojekte.tex | fertig | 6 – Karriere |
-| 15 | chapters/15_bewerbungsprozess.tex | fertig | 6 – Karriere |
 
 ## Änderungsprotokoll
 

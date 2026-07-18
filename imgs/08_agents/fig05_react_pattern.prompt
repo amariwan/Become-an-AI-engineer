@@ -1,0 +1,1 @@
+Sequence diagram: ReAct Agent execution flow. User Query -> LLM (Thought) -> Tool Call (Action) -> Tool Result (Observation) -> LLM (Thought) -> Tool Call -> Tool Result -> ... -> Final Answer. Numbered steps 1-6. Speech bubbles for LLM thoughts, box for tool execution, clean UML sequence diagram style.

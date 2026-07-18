@@ -1,0 +1,268 @@
+{
+  "images": [
+    {
+      "chapter": "07_rag_vector_datenbanken",
+      "fig": "fig01_rag_pipeline_overview",
+      "prompt": "Technical diagram: RAG system architecture with two parallel pipelines. LEFT: Offline Indexing Pipeline - Documents (PDF, DB, HTML icons) -> Loader -> Chunker (scissors icon) -> Embedder (vector icon) -> Vector DB (cylinder icon). RIGHT: Online Runtime Pipeline - User Query -> Embedder -> Vector DB (ANN search arrow) -> Re-Ranker (optional, diamond) -> Context Builder -> LLM -> Structured Output. Clean minimalist style, dark blue/teal color scheme, arrows showing data flow, German labels.",
+      "file": "images/07_rag/fig01_rag_pipeline_overview.png",
+      "metadata": {
+        "insert_after_line": 62,
+        "latex_width": "0.9\\textwidth",
+        "caption": "RAG-System: Offline Indexing Pipeline (links) und Online Runtime Pipeline (rechts)",
+        "label": "fig:rag-pipeline-overview"
+      }
+    },
+    {
+      "chapter": "07_rag_vector_datenbanken",
+      "fig": "fig02_chunking_strategies",
+      "prompt": "Technical illustration: Four chunking strategies side by side. 1) Fixed-Size: Rectangle divided into equal blocks, red warning at boundaries. 2) Recursive: Hierarchical splitting - paragraphs -> sentences -> words, green checkmarks. 3) Markdown/Header: Document with heading hierarchy preserved as metadata tags. 4) Code: Python code split at function/class boundaries. Minimalist technical style, blue/green/red color coding for good/bad/neutral.",
+      "file": "images/07_rag/fig02_chunking_strategies.png",
+      "metadata": {
+        "insert_after_line": 309,
+        "latex_width": "0.85\\textwidth",
+        "caption": "Chunking-Strategien im Vergleich: Fixed-Size vs Recursive vs Markdown vs Code-spezifisch",
+        "label": "fig:chunking-strategies"
+      }
+    },
+    {
+      "chapter": "07_rag_vector_datenbanken",
+      "fig": "fig03_hybrid_search",
+      "prompt": "Architecture diagram: Hybrid Search flow. Query splits into two paths: TOP PATH - Vector Search: Query -> Embedding -> HNSW Index (graph visualization) -> Cosine Similarity Scores. BOTTOM PATH - BM25 Search: Query -> Tokenization -> Inverted Index -> BM25 Scores. MERGE: Weighted Combination (0.7 * Vector + 0.3 * BM25) -> Reranked Results. PostgreSQL/pgvector branding, technical diagram style.",
+      "file": "images/07_rag/fig03_hybrid_search.png",
+      "metadata": {
+        "insert_after_line": 467,
+        "latex_width": "0.9\\textwidth",
+        "caption": "Hybrid Search: Vector Similarity (HNSW) + BM25 kombiniert in pgvector",
+        "label": "fig:hybrid-search"
+      }
+    },
+    {
+      "chapter": "07_rag_vector_datenbanken",
+      "fig": "fig04_advanced_rag",
+      "prompt": "Four-panel technical diagram showing advanced RAG techniques: 1) HyDE: User Query -> LLM generates Hypothetical Document -> Embed -> Search. 2) Multi-Query: Query -> LLM generates 3-5 variants -> Parallel Search -> Deduplicate -> Top-K. 3) Cross-Encoder Re-Ranker: Query+Doc pairs -> Joint Attention -> Relevance Scores -> Re-ranked Top-5. 4) CRAG: Retrieval -> Evaluator (LLM Judge) -> Score 1-5 -> Generate/Refuse/Web Search. Clean grid layout, arrows, minimal text.",
+      "file": "images/07_rag/fig04_advanced_rag.png",
+      "metadata": {
+        "insert_after_line": 530,
+        "latex_width": "0.9\\textwidth",
+        "caption": "Fortgeschrittene RAG-Techniken: HyDE, Multi-Query, Cross-Encoder Re-Ranker, CRAG",
+        "label": "fig:advanced-rag"
+      }
+    },
+    {
+      "chapter": "07_rag_vector_datenbanken",
+      "fig": "fig05_evaluation_metrics",
+      "prompt": "Visual explanation of RAG evaluation metrics. Four metric cards: 1) Hit Rate @ K: Binary relevance in top-K (green check/red X). 2) MRR: Rank of first relevant result (1/rank formula). 3) NDCG @ K: Position-weighted relevance (discounted cumulative gain). 4) Faithfulness: Answer claims vs. Retrieved evidence (citation overlap). Technical infographic style, formulas shown, German labels.",
+      "file": "images/07_rag/fig05_evaluation_metrics.png",
+      "metadata": {
+        "insert_after_line": 613,
+        "latex_width": "0.8\\textwidth",
+        "caption": "RAG-Evaluationsmetriken: Hit Rate, MRR, NDCG, Faithfulness",
+        "label": "fig:rag-metrics"
+      }
+    },
+    {
+      "chapter": "07_rag_vector_datenbanken",
+      "fig": "fig06_security_layers",
+      "prompt": "Security architecture diagram: Three defense layers for RAG. LAYER 1 (Input): Document Upload -> Security Scanner (regex patterns) -> Block/Allow -> Indexing. LAYER 2 (Storage): PostgreSQL with Row Level Security (RLS) policy visualization - Tenant A sees only Tenant A data. LAYER 3 (Output): LLM Response -> Output Filter (forbidden patterns) -> Safe Response / Blocked. Shield icons, red/green indicators, technical style.",
+      "file": "images/07_rag/fig06_security_layers.png",
+      "metadata": {
+        "insert_after_line": 826,
+        "latex_width": "0.9\\textwidth",
+        "caption": "RAG-Sicherheit: Drei Verteidigungsebenen - Input Scanning, Tenant Isolation (RLS), Output Filter",
+        "label": "fig:rag-security"
+      }
+    },
+    {
+      "chapter": "07_rag_vector_datenbanken",
+      "fig": "fig07_latency_breakdown",
+      "prompt": "Horizontal stacked bar chart showing RAG query latency breakdown. Segments: Query Embedding (50-200ms, blue), Hybrid Search (30-80ms, teal), Re-Ranking (40-100ms, orange), Context Building (<1ms, gray), LLM Generation (500-1500ms, dark blue - largest segment). Total p50: 700-1200ms, Total p99: 1500-2500ms. Annotations in German, clean data viz style.",
+      "file": "images/07_rag/fig07_latency_breakdown.png",
+      "metadata": {
+        "insert_after_line": 742,
+        "latex_width": "0.8\\textwidth",
+        "caption": "Latenz-Budget einer RAG-Query -- LLM Generation dominiert",
+        "label": "fig:rag-latency"
+      }
+    },
+    {
+      "chapter": "08_ai_agenten",
+      "fig": "fig01_agent_loop",
+      "prompt": "Circular flow diagram: AI Agent Loop with 4 phases. OBSERVE (eye icon) -> PLAN (brain/lightbulb) -> ACT (tool/gear icon) -> REFLECT (checkmark/magnifying glass) -> back to OBSERVE. Center: 'LLM as Reasoning Engine'. Arrows show flow, 'Goal not reached?' decision diamond between Reflect and Observe. Minimalist, dark theme, German labels.",
+      "file": "images/08_agents/fig01_agent_loop.png",
+      "metadata": {
+        "insert_after_line": 252,
+        "latex_width": "0.9\\textwidth",
+        "caption": "Der fundamentale Agent-Loop: Observe -> Plan -> Act -> Reflect",
+        "label": "fig:agent-loop"
+      }
+    },
+    {
+      "chapter": "08_ai_agenten",
+      "fig": "fig02_agent_components",
+      "prompt": "Box architecture diagram: AI Agent container with 6 internal components in 2 rows. ROW 1: LLM (GPT-4o/Claude), Memory (History + Vector), Tool Registry (search, calc, db_query icons). ROW 2: Planner (Strategy), Executor (Tool Run), Safety Guard (HITL, Budget). Clean box-in-box layout, connection lines, technical documentation style.",
+      "file": "images/08_agents/fig02_agent_components.png",
+      "metadata": {
+        "insert_after_line": 288,
+        "latex_width": "0.9\\textwidth",
+        "caption": "Agenten-Komponenten: LLM, Memory, Tool Registry, Planner, Executor, Safety Guard",
+        "label": "fig:agent-components"
+      }
+    },
+    {
+      "chapter": "08_ai_agenten",
+      "fig": "fig03_agentos_architecture",
+      "prompt": "Layered architecture diagram: AgentOS as platform. TOP: Agent Runtime (LLM, Memory, Tool Calls). MIDDLE: Policy Engine (Permissions, Safety Rules), Observability (Logging, Metrics, Alerts). BOTTOM: Workflow Orchestrator, Tool Sandbox (Connections, Secrets, APIs), State Storage (Memory, Cache, Audit Logs). Horizontal layers, vertical integration lines, enterprise software architecture style.",
+      "file": "images/08_agents/fig03_agentos_architecture.png",
+      "metadata": {
+        "insert_after_line": 324,
+        "latex_width": "0.9\\textwidth",
+        "caption": "AgentOS-Architektur: Runtime, Policy Engine, Observability, Orchestrierung, Sandbox, State Storage",
+        "label": "fig:agentos-arch"
+      }
+    },
+    {
+      "chapter": "08_ai_agenten",
+      "fig": "fig04_single_vs_multi",
+      "prompt": "Split comparison diagram. LEFT: Single Agent - One LLM center, 5 tools around it, simple loop arrow. RIGHT: Multi-Agent - Supervisor (crown icon) connecting to 4 Worker Agents (Research, Analysis, Writing, Review) each with own tools. Arrows show delegation and aggregation. Labels: Complexity, Planning, Fault Tolerance, Cost, Latency. Technical comparison infographic.",
+      "file": "images/08_agents/fig04_single_vs_multi.png",
+      "metadata": {
+        "insert_after_line": 399,
+        "latex_width": "0.9\\textwidth",
+        "caption": "Single-Agent vs. Multi-Agent: Architektur, Komplexität, Kosten, Latenz",
+        "label": "fig:single-vs-multi"
+      }
+    },
+    {
+      "chapter": "08_ai_agenten",
+      "fig": "fig05_react_pattern",
+      "prompt": "Sequence diagram: ReAct Agent execution flow. User Query -> LLM (Thought) -> Tool Call (Action) -> Tool Result (Observation) -> LLM (Thought) -> Tool Call -> Tool Result -> ... -> Final Answer. Numbered steps 1-6. Speech bubbles for LLM thoughts, box for tool execution, clean UML sequence diagram style.",
+      "file": "images/08_agents/fig05_react_pattern.png",
+      "metadata": {
+        "insert_after_line": 625,
+        "latex_width": "0.85\\textwidth",
+        "caption": "ReAct Pattern: Thought -> Action -> Observation Loop",
+        "label": "fig:react-pattern"
+      }
+    },
+    {
+      "chapter": "08_ai_agenten",
+      "fig": "fig06_plan_and_solve",
+      "prompt": "Two-phase diagram: PHASE 1 (Planning): Task -> LLM Planner -> Structured Plan [Step 1, Step 2, Step 3...]. PHASE 2 (Execution): For each step -> Execute -> Result -> Accumulate. PHASE 3 (Synthesis): All Results -> LLM Synthesizer -> Final Answer. Dashed line between phases, clear separation.",
+      "file": "images/08_agents/fig06_plan_and_solve.png",
+      "metadata": {
+        "insert_after_line": 657,
+        "latex_width": "0.85\\textwidth",
+        "caption": "Plan-and-Solve: Planungsphase -> Ausfuhrungsphase -> Synthese",
+        "label": "fig:plan-and-solve"
+      }
+    },
+    {
+      "chapter": "08_ai_agenten",
+      "fig": "fig07_multi_agent_patterns",
+      "prompt": "Three-panel diagram showing Multi-Agent patterns: 1) SUPERVISOR-WORKER: User -> Supervisor -> [Worker A, Worker B, Worker C] parallel -> Supervisor aggregates -> Answer. 2) PIPELINE: User -> Agent A (Extract) -> Agent B (Analyze) -> Agent C (Generate) -> Answer. 3) DEBATE: Agent Pro + Agent Con -> Mediator -> Synthesis. Clean layout, distinct colors per pattern.",
+      "file": "images/08_agents/fig07_multi_agent_patterns.png",
+      "metadata": {
+        "insert_after_line": 801,
+        "latex_width": "0.9\\textwidth",
+        "caption": "Multi-Agent-Architekturmuster: Supervisor-Worker, Pipeline, Debate/Reflection",
+        "label": "fig:multi-agent-patterns"
+      }
+    },
+    {
+      "chapter": "08_ai_agenten",
+      "fig": "fig08_langgraph_statemachine",
+      "prompt": "State machine diagram for LangGraph workflow. Nodes: SUPERVISOR (diamond decision), RESEARCHER (rectangle), ANALYST (rectangle), WRITER (rectangle), END (circle). Edges: Supervisor -> Researcher (condition: research), Supervisor -> END (condition: end), Researcher -> Analyst, Analyst -> Writer, Writer -> END. Graph visualization, nodes with icons, directed edges with labels.",
+      "file": "images/08_agents/fig08_langgraph_statemachine.png",
+      "metadata": {
+        "insert_after_line": 720,
+        "latex_width": "0.85\\textwidth",
+        "caption": "LangGraph State Machine: Supervisor -> Researcher -> Analyst -> Writer -> END",
+        "label": "fig:langgraph-statemachine"
+      }
+    },
+    {
+      "chapter": "08_ai_agenten",
+      "fig": "fig09_security_guard",
+      "prompt": "Security flow diagram: Agent Safety Guard pipeline. BEFORE TOOL: Step Counter (max_steps check) -> Tool Blacklist (shell, delete, email blocked) -> Domain Whitelist (internal APIs only) -> Allow/Deny. AFTER TOOL: Result -> Injection Scanner (patterns) -> Size Limiter (10k chars) -> Safe Output. Shield icons, red blocked paths, green allowed paths.",
+      "file": "images/08_agents/fig09_security_guard.png",
+      "metadata": {
+        "insert_after_line": 1051,
+        "latex_width": "0.85\\textwidth",
+        "caption": "Agent-Sicherheits-Guard: Pre-Tool Checks (Steps, Blacklist, Whitelist) + Post-Tool Filtering",
+        "label": "fig:agent-security"
+      }
+    },
+    {
+      "chapter": "08_ai_agenten",
+      "fig": "fig10_hitl_pattern",
+      "prompt": "Human-in-the-Loop workflow: Agent requests approval (action + context) -> Notification sent (Slack/Email/Teams icons) -> Human reviews -> Approve/Reject -> Agent continues/waits. Timeout path (300s) -> Auto-reject. State machine: PENDING -> APPROVED/REJECTED/TIMEOUT. Clean workflow diagram.",
+      "file": "images/08_agents/fig10_hitl_pattern.png",
+      "metadata": {
+        "insert_after_line": 1101,
+        "latex_width": "0.8\\textwidth",
+        "caption": "Human-in-the-Loop: Approval Request -> Notification -> Human Decision -> Continue/Abort",
+        "label": "fig:hitl-pattern"
+      }
+    },
+    {
+      "chapter": "08_ai_agenten",
+      "fig": "fig11_agent_latency",
+      "prompt": "Stacked horizontal bar chart: Agent Step Latency. LLM Planning (300-800ms), Tool Execution (50-500ms), Result Processing (100-300ms), Next Planning (300-800ms). Total per step: ~1-2s. Annotations: 'LLM calls dominate', 'Parallel tool calling saves 30-50%'. German labels, technical style.",
+      "file": "images/08_agents/fig11_agent_latency.png",
+      "metadata": {
+        "insert_after_line": 979,
+        "latex_width": "0.8\\textwidth",
+        "caption": "Latenz und Kosten pro Agent-Schritt (GPT-4o)",
+        "label": "fig:agent-latency"
+      }
+    },
+    {
+      "chapter": "11_inferenz_optimierung",
+      "fig": "fig01_prefill_decode",
+      "prompt": "Two-panel technical diagram. LEFT (Prefill - Parallel): Input tokens [T1][T2][T3]...[TN] all feeding into parallel matrix multiplication -> Single KV-Cache output -> Token N+1. RIGHT (Decode - Sequential): Token N+1 -> KV-Cache -> Token N+2 -> KV-Cache -> Token N+3... Memory bandwidth bottleneck icon on decode side. Compute icon on prefill side. German labels.",
+      "file": "images/11_inference_opt/fig01_prefill_decode.png",
+      "metadata": {
+        "insert_after_line": 53,
+        "latex_width": "0.9\\textwidth",
+        "caption": "LLM-Inference: Prefill-Phase (parallel, compute-bound) vs. Decode-Phase (sequentiell, memory-bound)",
+        "label": "fig:prefill-decode"
+      }
+    },
+    {
+      "chapter": "11_inferenz_optimierung",
+      "fig": "fig02_five_bottlenecks",
+      "prompt": "Five-card infographic: LLM Inference Bottlenecks. 1) VRAM: Model weights + KV-Cache overflow GPU -> Fix: Quantization, Multi-GPU. 2) Memory Bandwidth: Decode is memory-bound -> Fix: PagedAttention, Speculative Decoding. 3) Compute: Prefill needs matmul -> Fix: Tensor Parallelism, Flash Attention. 4) TTFT Latency: First token slow -> Fix: Streaming, small batches. 5) Throughput: Sequential requests -> Fix: Continuous Batching. Icons for each, red problem / green solution.",
+      "file": "images/11_inference_opt/fig02_five_bottlenecks.png",
+      "metadata": {
+        "insert_after_line": 72,
+        "latex_width": "0.85\\textwidth",
+        "caption": "Die funf Engpasse der LLM-Inference mit Gegenmassnahmen",
+        "label": "fig:five-bottlenecks"
+      }
+    },
+    {
+      "chapter": "11_inferenz_optimierung",
+      "fig": "fig03_serving_stack",
+      "prompt": "Layered architecture: Inference Serving Stack. TOP: HTTP Client -> API Gateway -> Load Balancer. MIDDLE: Request Scheduler (Continuous Batching). BOTTOM: GPU Array [GPU 0: Llama][GPU 1: Llama][GPU 2: ...] each with KV-Cache. Arrows showing request flow. Kubernetes-style architecture diagram, clean boxes.",
+      "file": "images/11_inference_opt/fig03_serving_stack.png",
+      "metadata": {
+        "insert_after_line": 111,
+        "latex_width": "0.9\\textwidth",
+        "caption": "Architektur eines Inference-Servers: Client -> Gateway -> Scheduler -> GPU Pool",
+        "label": "fig:serving-stack"
+      }
+    },
+    {
+      "chapter": "11_inferenz_optimierung",
+      "fig": "fig04_pagedattention",
+      "prompt": "Technical illustration: PagedAttention memory management. LEFT (Traditional): Contiguous KV-Cache blocks with fragmentation gaps (red). RIGHT (PagedAttention): Fixed-size pages (green blocks) mapped via page table, no fragmentation, copy-on-write sharing between sequences. Page 1/2/3. Page table visualization. Memory efficiency: 60% less fragmentation.",
+      "file": "images/11_inference_opt/fig04_pagedattention.png",
+      "metadata": {
+        "insert_after_line": 123,
+        "latex_width": "0.85\\textwidth",
+        "caption": "PagedAttention: Seitenbasierte KV-Cache-Verwaltung ohne Fragmentierung",
+        "label": "fig:pagedattention"
+      }
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+AI Forensics Log Analysis Dashboard. Panels: 1) Prompt Hash Frequency (bar chart - detect repeated attacks), 2) Latency Anomaly Detection (line chart with 2x baseline threshold), 3) Model Version Usage (pie chart), 4) Error Rate by Type (stacked bar), 5) Cost per User (top spenders table), 6) Injection Attempts Timeline (event markers). Dark theme, German labels, realistic data.

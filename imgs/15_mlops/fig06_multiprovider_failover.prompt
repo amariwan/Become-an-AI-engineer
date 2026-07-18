@@ -1,0 +1,1 @@
+Multi-Provider Failover Architecture. Router receives Request -> Tries OpenAI (Primary) -> On Failure: Anthropic (Fallback 1) -> On Failure: Local vLLM (Fallback 2) -> All Failed: Cached Response + Error. Each provider box shows model, latency, cost. Circuit breaker icons. State machine: Healthy -> Degraded -> Failed -> Recovery. German labels.

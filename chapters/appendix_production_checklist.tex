@@ -13,9 +13,9 @@ Diese Checkliste fasst die wichtigsten Punkte aus dem gesamten Buch zusammen. Si
 Code-Beispiele in diesem Buch sind wie folgt gekennzeichnet:
 
 \begin{itemize}[leftmargin=*]
-     \item \textbf{[Production-Ready]}: Produktionsreifer Code mit Error-Handling, Logging und Safety-Checks.
-     \item \textbf{[Vereinfacht für didaktische Zwecke]}: Minimalisierte Beispiele zum Verständnis --- nicht direkt in Produktion übernehmen.
-     \item \textbf{[Pseudocode/Architektur-Skizze]}: Konzeptionelle Darstellung --- muss noch implementiert werden.
+     \item \textbf{[Production-Ready]}\hspace{0pt}: Produktionsreifer Code mit Error-Handling, Logging und Safety-Checks.
+     \item \textbf{[Vereinfacht für didaktische Zwecke]}\hspace{0pt}: Minimalisierte Beispiele zum Verständnis --- nicht direkt in Produktion übernehmen.
+     \item \textbf{[Pseudocode/Architektur-Skizze]}\hspace{0pt}: Konzeptionelle Darstellung --- muss noch implementiert werden.
 \end{itemize}
 
 % ============================================================
@@ -24,12 +24,12 @@ Code-Beispiele in diesem Buch sind wie folgt gekennzeichnet:
 \section{Design-Checkliste}
 
 \begin{itemize}[leftmargin=*]
-     \item \textbf{Modellwahl}: Welches Modell für welchen Use-Case? Kosten vs. Qualität abgewogen.
-     \item \textbf{Architektur}: RAG vs. Fine-Tuning vs. Prompt-Engineering --- die richtige Technik für den Use-Case.
-     \item \textbf{Deployment}: Self-hosted vs. Cloud-Inference vs. Managed-API --- auf Datenhoheit, Scale und Latenz geprüft.
-     \item \textbf{Multi-Provider}: Fallback-Routen für API-Ausfälle definiert.
-     \item \textbf{Token-Budget}: Input- und Output-Limits festgelegt.
-     \item \textbf{Monitoring}: Metriken (Qualität, Kosten, Latenz) definiert und Alarme konfiguriert.
+     \item \textbf{Modellwahl}\hspace{0pt}: Welches Modell für welchen Use-Case? Kosten vs. Qualität abgewogen.
+     \item \textbf{Architektur}\hspace{0pt}: RAG vs. Fine-Tuning vs. Prompt-Engineering --- die richtige Technik für den Use-Case.
+     \item \textbf{Deployment}\hspace{0pt}: Self-hosted vs. Cloud-Inference vs. Managed-API --- auf Datenhoheit, Scale und Latenz geprüft.
+     \item \textbf{Multi-Provider}\hspace{0pt}: Fallback-Routen für API-Ausfälle definiert.
+     \item \textbf{Token-Budget}\hspace{0pt}: Input- und Output-Limits festgelegt.
+     \item \textbf{Monitoring}\hspace{0pt}: Metriken (Qualität, Kosten, Latenz) definiert und Alarme konfiguriert.
 \end{itemize}
 
 % ============================================================
@@ -38,12 +38,12 @@ Code-Beispiele in diesem Buch sind wie folgt gekennzeichnet:
 \section{Development-Checkliste}
 
 \begin{itemize}[leftmargin=*]
-     \item \textbf{API-Keys}: Nicht im Code! Secrets-Manager oder Umgebungsvariablen.
-     \item \textbf{Input-Guard}: PII-Maskierung, Injection-Detection, Length-Checks.
-     \item \textbf{Output-Guard}: PII-Re-Check, Safety-Validierung, Schema-Validierung.
-     \item \textbf{Error-Handling}: Retry mit exponentiellem Backoff, Fallback-Modelle, Circuit-Breaker.
-     \item \textbf{Streaming}: Für UI-Streaming konfiguriert.
-     \item \textbf{JSON-Modus}: Structured-Outputs mit Pydantic-Schema für deterministische Outputs.
+     \item \textbf{API-Keys}\hspace{0pt}: Nicht im Code! Secrets-Manager oder Umgebungsvariablen.
+     \item \textbf{Input-Guard}\hspace{0pt}: PII-Maskierung, Injection-Detection, Length-Checks.
+     \item \textbf{Output-Guard}\hspace{0pt}: PII-Re-Check, Safety-Validierung, Schema-Validierung.
+     \item \textbf{Error-Handling}\hspace{0pt}: Retry mit exponentiellem Backoff, Fallback-Modelle, Circuit-Breaker.
+     \item \textbf{Streaming}\hspace{0pt}: Für UI-Streaming konfiguriert.
+     \item \textbf{JSON-Modus}\hspace{0pt}: Structured-Outputs mit Pydantic-Schema für deterministische Outputs.
 \end{itemize}
 
 % ============================================================
@@ -52,13 +52,13 @@ Code-Beispiele in diesem Buch sind wie folgt gekennzeichnet:
 \section{Security-Checkliste}
 
 \begin{itemize}[leftmargin=*]
-     \item \textbf{Input-Fragmentierung}: System-Prompt und User-Input strikt trennen.
-     \item \textbf{PII-Maskierung}: Vor dem LLM-Call maskieren, nicht nachher.
-     \item \textbf{Prompt Injection}: Input-Guard mit Pattern-Matching und LLM-Judge.
-     \item \textbf{Supply-Chain}: Dependencies gescannt, Model-Files auf Sicherheit geprüft.
-     \item \textbf{Audit-Log}: Jeder Schritt wird protokolliert.
-     \item \textbf{Rate-Limiting}: Pro User, pro API-Key, pro Modell.
-     \item \textbf{Network-Isolation}: Kein direkter Zugriff aus dem Internet.
+     \item \textbf{Input-Fragmentierung}\hspace{0pt}: System-Prompt und User-Input strikt trennen.
+     \item \textbf{PII-Maskierung}\hspace{0pt}: Vor dem LLM-Call maskieren, nicht nachher.
+     \item \textbf{Prompt Injection}\hspace{0pt}: Input-Guard mit Pattern-Matching und LLM-Judge.
+     \item \textbf{Supply-Chain}\hspace{0pt}: Dependencies gescannt, Model-Files auf Sicherheit geprüft.
+     \item \textbf{Audit-Log}\hspace{0pt}: Jeder Schritt wird protokolliert.
+     \item \textbf{Rate-Limiting}\hspace{0pt}: Pro User, pro API-Key, pro Modell.
+     \item \textbf{Network-Isolation}\hspace{0pt}: Kein direkter Zugriff aus dem Internet.
 \end{itemize}
 
 % ============================================================
@@ -67,12 +67,12 @@ Code-Beispiele in diesem Buch sind wie folgt gekennzeichnet:
 \section{Production-Checkliste}
 
 \begin{itemize}[leftmargin=*]
-     \item \textbf{Deployment}: Docker-Container, Health-Endpoints, Liveness/Readiness-Probes.
-     \item \textbf{Scaling}: Auto-Scaling konfiguriert, Load-Balancing aktiv.
-     \item \textbf{Monitoring}: Metriken-Endpoint, Grafana-Dashboard, Alerting.
-     \item \textbf{Cost-Control}: Budget-Limits, Alarme bei 80\%/90\%/100\%.
-     \item \textbf{Backup}: Daten-Backup, Rollback-Strategie, Incident-Runbooks.
-     \item \textbf{Testing}: Golden Datasets für Regression-Tests, CI/CD-Pipeline.
+     \item \textbf{Deployment}\hspace{0pt}: Docker-Container, Health-Endpoints, Liveness/Readiness-Probes.
+     \item \textbf{Scaling}\hspace{0pt}: Auto-Scaling konfiguriert, Load-Balancing aktiv.
+     \item \textbf{Monitoring}\hspace{0pt}: Metriken-Endpoint, Grafana-Dashboard, Alerting.
+     \item \textbf{Cost-Control}\hspace{0pt}: Budget-Limits, Alarme bei 80\%/90\%/100\%.
+     \item \textbf{Backup}\hspace{0pt}: Daten-Backup, Rollback-Strategie, Incident-Runbooks.
+     \item \textbf{Testing}\hspace{0pt}: Golden Datasets für Regression-Tests, CI/CD-Pipeline.
 \end{itemize}
 
 % ============================================================
@@ -81,12 +81,12 @@ Code-Beispiele in diesem Buch sind wie folgt gekennzeichnet:
 \section{Evaluation-Checkliste}
 
 \begin{itemize}[leftmargin=*]
-     \item \textbf{Golden Dataset}: 50--100 Testfälle, wachsend aus Produktions-Fehlern.
-     \item \textbf{LLM-as-a-Judge}: Multi-Judge-Ansatz (2+ Modelle) gegen Bias.
-     \item \textbf{Metriken}: Accuracy, Precision, Recall, Halluzinationsrate, P95-Latenz, Kosten/Query.
-     \item \textbf{A/B-Tests}: Neue Prompts gegen baseline vergleichen.
-     \item \textbf{Human Evaluation}: Stichproben von Domänen-Experten.
-     \item \textbf{Drift-Detection}: Antworten über Zeit überwachen.
+     \item \textbf{Golden Dataset}\hspace{0pt}: 50--100 Testfälle, wachsend aus Produktions-Fehlern.
+     \item \textbf{LLM-as-a-Judge}\hspace{0pt}: Multi-Judge-Ansatz (2+ Modelle) gegen Bias.
+     \item \textbf{Metriken}\hspace{0pt}: Accuracy, Precision, Recall, Halluzinationsrate, P95-Latenz, Kosten/Query.
+     \item \textbf{A/B-Tests}\hspace{0pt}: Neue Prompts gegen baseline vergleichen.
+     \item \textbf{Human Evaluation}\hspace{0pt}: Stichproben von Domänen-Experten.
+     \item \textbf{Drift-Detection}\hspace{0pt}: Antworten über Zeit überwachen.
 \end{itemize}
 
 % ============================================================
@@ -95,12 +95,12 @@ Code-Beispiele in diesem Buch sind wie folgt gekennzeichnet:
 \section{Governance-Checkliste}
 
 \begin{itemize}[leftmargin=*]
-     \item \textbf{Model Owner}: Verantwortlicher für Modellwahl und Betriebsparameter benannt.
-     \item \textbf{Data Steward}: Verantwortung für Datenqualität und Datenschutz geklärt.
-     \item \textbf{Ethik-Reviewer}: Fairness und Transparenz überprüft.
-     \item \textbf{Incident-Runbook}: Für drei Incident-Szenarien erstellt.
-     \item \textbf{Bias-Audit}: Subgruppen-Tests und Counterfactual-Analysen durchgeführt.
-     \item \textbf{DSGVO-Konformität}: PII-Maskierung, EU-Hosting, Transparenz.
+     \item \textbf{Model Owner}\hspace{0pt}: Verantwortlicher für Modellwahl und Betriebsparameter benannt.
+     \item \textbf{Data Steward}\hspace{0pt}: Verantwortung für Datenqualität und Datenschutz geklärt.
+     \item \textbf{Ethik-Reviewer}\hspace{0pt}: Fairness und Transparenz überprüft.
+     \item \textbf{Incident-Runbook}\hspace{0pt}: Für drei Incident-Szenarien erstellt.
+     \item \textbf{Bias-Audit}\hspace{0pt}: Subgruppen-Tests und Counterfactual-Analysen durchgeführt.
+     \item \textbf{DSGVO-Konformität}\hspace{0pt}: PII-Maskierung, EU-Hosting, Transparenz.
 \end{itemize}
 
 % ============================================================
@@ -109,12 +109,12 @@ Code-Beispiele in diesem Buch sind wie folgt gekennzeichnet:
 \section{Kosten-Checkliste}
 
 \begin{itemize}[leftmargin=*]
-     \item \textbf{Model-Routing}: Einfache Queries zu günstigeren Modellen routen.
-     \item \textbf{Caching}: Prompt-Caching (KV-Cache) für wiederholte System-Prompts aktivieren.
-     \item \textbf{Output-Limits}: \texttt{max\_tokens} auf das Minimum setzen.
-     \item \textbf{Temperature}: Production auf 0.0--0.2, nur kreative Tasks höher.
-     \item \textbf{Batch-API}: Asynchrone Verarbeitung über Batch-API (50\% Rabatt).
-     \item \textbf{Cost-Tracking}: Jeden API-Call mit Token-Zahlen und Kosten protokollieren.
+     \item \textbf{Model-Routing}\hspace{0pt}: Einfache Queries zu günstigeren Modellen routen.
+     \item \textbf{Caching}\hspace{0pt}: Prompt-Caching (KV-Cache) für wiederholte System-Prompts aktivieren.
+     \item \textbf{Output-Limits}\hspace{0pt}: \texttt{max\_tokens} auf das Minimum setzen.
+     \item \textbf{Temperature}\hspace{0pt}: Production auf 0.0--0.2, nur kreative Tasks höher.
+     \item \textbf{Batch-API}\hspace{0pt}: Asynchrone Verarbeitung über Batch-API (50\% Rabatt).
+     \item \textbf{Cost-Tracking}\hspace{0pt}: Jeden API-Call mit Token-Zahlen und Kosten protokollieren.
 \end{itemize}
 
 % ============================================================
@@ -123,11 +123,11 @@ Code-Beispiele in diesem Buch sind wie folgt gekennzeichnet:
 \section{Metriken-Framework}
 
 \begin{itemize}[leftmargin=*]
-     \item \textbf{Customer Support Chatbot}: Priorität 1 = Accuracy, Priorität 2 = P95-Latenz < 2s, Priorität 3 = Kosten/Query.
-     \item \textbf{Code-Generation}: Priorität 1 = Functional-Correctness, Priorität 2 = Speed, Priorität 3 = Format-Compliance.
-     \item \textbf{Summarization}: Priorität 1 = Faithfulness, Priorität 2 = Coverage, Priorität 3 = Latenz.
-     \item \textbf{RAG-System}: Priorität 1 = Hit-Rate, Priorität 2 = Faithfulness, Priorität 3 = MRR.
-     \item \textbf{Agent-System}: Priorität 1 = Success-Rate, Priorität 2 = Step-Efficiency, Priorität 3 = Cost/Task.
+     \item \textbf{Customer Support Chatbot}\hspace{0pt}: Priorität 1 = Accuracy, Priorität 2 = P95-Latenz < 2s, Priorität 3 = Kosten/Query.
+     \item \textbf{Code-Generation}\hspace{0pt}: Priorität 1 = Functional-Correctness, Priorität 2 = Speed, Priorität 3 = Format-Compliance.
+     \item \textbf{Summarization}\hspace{0pt}: Priorität 1 = Faithfulness, Priorität 2 = Coverage, Priorität 3 = Latenz.
+     \item \textbf{RAG-System}\hspace{0pt}: Priorität 1 = Hit-Rate, Priorität 2 = Faithfulness, Priorität 3 = MRR.
+     \item \textbf{Agent-System}\hspace{0pt}: Priorität 1 = Success-Rate, Priorität 2 = Step-Efficiency, Priorität 3 = Cost/Task.
 \end{itemize}
 
 % ============================================================
@@ -136,16 +136,16 @@ Code-Beispiele in diesem Buch sind wie folgt gekennzeichnet:
 \section{Anti-Pattern-Checkliste}
 
 \begin{itemize}[leftmargin=*]
-     \item \textbf{API-Key im Code}: Niemals! --- Secrets-Manager verwenden.
-     \item \textbf{User-Input im System-Prompt}: Immer fragmentieren.
-     \item \textbf{Kein Output-Guard}: Immer PII-Re-Check und Safety-Validierung.
-     \item \textbf{Unlimitierte Output-Tokens}: Immer \texttt{max\_tokens} setzen.
-     \item \textbf{Single-Provider-Abhängigkeit}: Immer Fallback-Provider einplanen.
-     \item \textbf{Kein Monitoring}: Immer Metriken-Endpoint und Alerting.
-     \item \textbf{Kein Golden Dataset}: Immer 50--100 Testfälle für Regression-Tests.
-     \item \textbf{Full Fine-Tuning ohne Not}: Immer LoRA/QLoRA bevorzugen.
-     \item \textbf{Synthetic Data allein}: Immer 20\% manuell geprüfte Beispiele.
-     \item \textbf{RAG ohne Evaluation}: Immer Hit-Rate und Faithfulness messen.
+     \item \textbf{API-Key im Code}\hspace{0pt}: Niemals! --- Secrets-Manager verwenden.
+     \item \textbf{User-Input im System-Prompt}\hspace{0pt}: Immer fragmentieren.
+     \item \textbf{Kein Output-Guard}\hspace{0pt}: Immer PII-Re-Check und Safety-Validierung.
+     \item \textbf{Unlimitierte Output-Tokens}\hspace{0pt}: Immer \texttt{max\_tokens} setzen.
+     \item \textbf{Single-Provider-Abhängigkeit}\hspace{0pt}: Immer Fallback-Provider einplanen.
+     \item \textbf{Kein Monitoring}\hspace{0pt}: Immer Metriken-Endpoint und Alerting.
+     \item \textbf{Kein Golden Dataset}\hspace{0pt}: Immer 50--100 Testfälle für Regression-Tests.
+     \item \textbf{Full Fine-Tuning ohne Not}\hspace{0pt}: Immer LoRA/QLoRA bevorzugen.
+     \item \textbf{Synthetic Data allein}\hspace{0pt}: Immer 20\% manuell geprüfte Beispiele.
+     \item \textbf{RAG ohne Evaluation}\hspace{0pt}: Immer Hit-Rate und Faithfulness messen.
 \end{itemize}
 
 % ============================================================
@@ -154,13 +154,13 @@ Code-Beispiele in diesem Buch sind wie folgt gekennzeichnet:
 \section{Tool-Empfehlungen}
 
 \begin{itemize}[leftmargin=*]
-     \item \textbf{LLM-API}: OpenAI (General Purpose), Anthropic (Safety), Google (Multimodal).
-     \item \textbf{Framework}: LangChain (General Purpose), LlamaIndex (RAG), LiteLLM (Multi-Provider).
-     \item \textbf{Vector DB}: pgvector (PostgreSQL), ChromaDB (Einsteiger), Pinecone (Scale).
-     \item \textbf{Observability}: Langfuse (Open Source), LangSmith (LangChain), Weights \& Biases (Training).
-     \item \textbf{Evaluation}: DeepEval, Promptfoo, OpenAI Evals, RAGAS.
-     \item \textbf{Security}: Garak (Vulnerability Scanner), PyRIT (Red Teaming), Promptfoo (Security Testing).
-     \item \textbf{Deployment}: Docker (Container), Kubernetes (Scale), FastAPI (API Framework).
+     \item \textbf{LLM-API}\hspace{0pt}: OpenAI (General Purpose), Anthropic (Safety), Google (Multimodal).
+     \item \textbf{Framework}\hspace{0pt}: LangChain (General Purpose), LlamaIndex (RAG), LiteLLM (Multi-Provider).
+     \item \textbf{Vector DB}\hspace{0pt}: pgvector (PostgreSQL), ChromaDB (Einsteiger), Pinecone (Scale).
+     \item \textbf{Observability}\hspace{0pt}: Langfuse (Open Source), LangSmith (LangChain), Weights \& Biases (Training).
+     \item \textbf{Evaluation}\hspace{0pt}: DeepEval, Promptfoo, OpenAI Evals, RAGAS.
+     \item \textbf{Security}\hspace{0pt}: Garak (Vulnerability Scanner), PyRIT (Red Teaming), Promptfoo (Security Testing).
+     \item \textbf{Deployment}\hspace{0pt}: Docker (Container), Kubernetes (Scale), FastAPI (API Framework).
 \end{itemize}
 
 % ============================================================
@@ -171,12 +171,12 @@ Code-Beispiele in diesem Buch sind wie folgt gekennzeichnet:
 Diese Checkliste deckt die wichtigsten Punkte aus dem gesamten Buch ab. Sie ist kein Allheilmittel --- aber sie ist ein guter Start.
 
 \begin{itemize}[leftmargin=*]
-     \item \textbf{Design}: Architektur-Entscheidungen sorgfältig treffen.
-     \item \textbf{Development}: Input-Guard, Output-Guard, Error-Handling.
-     \item \textbf{Security}: Defense-in-Depth, PII-Maskierung, Audit-Log.
-     \item \textbf{Production}: Monitoring, Cost-Control, Backup.
-     \item \textbf{Evaluation}: Golden Dataset, LLM-as-a-Judge, A/B-Tests.
-     \item \textbf{Governance}: Model Owner, Bias-Audit, DSGVO-Konformität.
+     \item \textbf{Design}\hspace{0pt}: Architektur-Entscheidungen sorgfältig treffen.
+     \item \textbf{Development}\hspace{0pt}: Input-Guard, Output-Guard, Error-Handling.
+     \item \textbf{Security}\hspace{0pt}: Defense-in-Depth, PII-Maskierung, Audit-Log.
+     \item \textbf{Production}\hspace{0pt}: Monitoring, Cost-Control, Backup.
+     \item \textbf{Evaluation}\hspace{0pt}: Golden Dataset, LLM-as-a-Judge, A/B-Tests.
+     \item \textbf{Governance}\hspace{0pt}: Model Owner, Bias-Audit, DSGVO-Konformität.
 \end{itemize}
 
 \par

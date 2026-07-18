@@ -1,0 +1,1 @@
+Technical diagram: LLM Inference Two Phases. PREFILL (parallel): Token 1, Token 2, Token 3... Token N -> all feed into KV-Cache computation -> Output Token N+1. DECODE (sequential): Token N+1 -> KV-Cache -> Token N+2 -> KV-Cache -> Token N+3... Labels: 'Prefill: Parallel, Compute-bound' and 'Decode: Sequential, Memory-bound'. GPU icons, memory bandwidth arrows.

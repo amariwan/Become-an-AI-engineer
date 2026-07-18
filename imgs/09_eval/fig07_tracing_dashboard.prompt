@@ -1,0 +1,1 @@
+Tracing Dashboard Mockup: Grafana/Langfuse style dashboard. Panels: Request Latency P50/P95/P99 (line chart), Cost per Query (bar chart), Error Rate (gauge), Token Usage (stacked area), Cache Hit Rate (gauge), Quality Score trend (line). German labels, dark theme, realistic metrics values.

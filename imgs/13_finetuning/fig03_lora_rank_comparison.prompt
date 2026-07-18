@@ -1,0 +1,1 @@
+LoRA Rank Configuration Comparison. Horizontal bar chart: Rank 4 (2.1M params, 8MB VRAM, Simple Format), Rank 8 (4.2M, 16MB, Light Style), Rank 16 (8.4M, 32MB, Standard - RECOMMENDED), Rank 32 (16.8M, 64MB, Complex Domain), Rank 64 (33.6M, 128MB, Multi-Task). Color gradient green to orange. Annotations: "Start with r=16", "Only increase for new capabilities". German labels.

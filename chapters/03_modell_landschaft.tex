@@ -65,11 +65,11 @@ RAG gibt dem LLM Zugriff auf eine Wissensbasis -- Unternehmensdokumente, Richtli
                     [LLM (Prompt + Doku)] --> [Antwort mit Fakten]
 \end{verbatim}
 
-RAG ist das Fundament für faktentreue Antworten. Kapitel~\ref{chap:rag_vector_dbs} behandelt RAG-Systeme ausführlich.
+RAG ist das Fundament für faktentreue Antworten. Kapitel~\ref{chap:rag_vector_datenbanken} behandelt RAG-Systeme ausführlich.
 
 \subsection{Layer 3: Agents als Arbeiter}
 
-Ein Agent (Kapitel~\ref{chap:ai_agents}) hört nicht bei Textgenerierung auf. Er führt Aktionen aus: Tickets lesen, E-Mails senden, Berichte erstellen, CRMs aktualisieren, Code deployen, Workflows steuern. Agents verwandeln Intelligenz in Ausführung.
+Ein Agent (Kapitel~\ref{chap:ai_agenten}) hört nicht bei Textgenerierung auf. Er führt Aktionen aus: Tickets lesen, E-Mails senden, Berichte erstellen, CRMs aktualisieren, Code deployen, Workflows steuern. Agents verwandeln Intelligenz in Ausführung.
 
 Der entscheidende Unterschied zu einem reinen RAG-System: Agents haben einen Loop (Observe -- Plan -- Act -- Reflect) und können sich über mehrere Schritte erstrecken.
 
@@ -111,7 +111,7 @@ Die eigentliche Revolution ist nicht der bessere Chatbot -- es ist die Kopplung 
 
 Jede zusätzliche Schicht erhöht die Leistungsfähigkeit, aber auch die Komplexität, Latenz und Fehleranfälligkeit. Die Kunst liegt darin, nur die Schichten zu aktivieren, die für den konkreten Anwendungsfall notwendig sind.
 
-Die folgenden Abschnitte dieses Kapitels helfen dir, die richtige \textbf{erste Schicht} -- das LLM -- für deinen Stack zu wählen. Die übrigen Schichten werden in den Kapiteln~\ref{chap:rag_vector_dbs},~\ref{chap:ai_agents} und im MCP-Exkurs vertieft.
+Die folgenden Abschnitte dieses Kapitels helfen dir, die richtige \textbf{erste Schicht} -- das LLM -- für deinen Stack zu wählen. Die übrigen Schichten werden in den Kapiteln~\ref{chap:rag_vector_datenbanken},~\ref{chap:ai_agenten} und im MCP-Exkurs vertieft.
 
 % ============================================================
 % GRUNDLAGEN -- MODELL-KLASSIFIKATION VERSTEHEN
@@ -656,7 +656,7 @@ async function routeRequest(
 \begin{itemize}[leftmargin=*]
     \item \textbf{Abstrahiere den Model-Client}: Von Tag 1 an eine gemeinsame Schnittstelle für alle Provider. Der Wechsel kostet dann einen Konfigurations-Eintrag, kein Refactoring.
     \item \textbf{Führe ein Modell-Review durch}: Alle 3 Monate die aktuelle Modell-Landschaft prüfen. Preise ändern sich, neue Modelle kommen, alte verschwinden.
-    \item \textbf{Nutze generische Modell-Namen nicht}: \texttt{gpt-4o} kann sich hinter den Kulissen ändern. Nutze datierte Versionen wie \texttt{gpt-4o-2026-03-15}.
+    \item \textbf{Nutze generische Modell-Namen nicht}: \texttt{gpt-4o} kann sich hinter den Kulissen ändern. Nutze datierte Versionen wie \texttt{gpt-4o-202X-XX-XX}.
     \item \textbf{Teste auf deinen Daten}: Ein Benchmark-Score ist kein Ersatz für einen Test mit deinen tatsächlichen Prompts und Erwartungen. Baue ein Golden Dataset.
     \item \textbf{Plane den Exit}: Jeder Provider muss austauschbar sein. Dokumentiere, welche Provider-spezifischen Features du nutzt (Tool-Use, Streaming, Batch-API).
 \end{itemize}
@@ -826,11 +826,11 @@ Jede Anfrage verbraucht durchschnittlich 500 Input-Tokens und 200 Output-Tokens.
 \end{itemize}
 
 \autornotiz{
-Nächstes Kapitel: OpenAI Platform im Detail.
-Da lernst du: Chat Completions API, Structured Outputs, Streaming, Function Calling, Fine-Tuning, Batch API. Und warum Structured Outputs der Standard für jeden Production-Call sein sollten -- nicht optional.
+Nächstes Kapitel: Token-Management und Kosten -- die härteste Engineering-Disziplin.
+Da lernst du: Tokenisierung (BPE vs. SentencePiece). Deutsch = 1.4-2x Tokens. Context Window Budgeting. Lost in the Middle. Input vs. Output Pricing. Prompt Caching (KV-Cache). Semantic Cache als größter Hebel. Model Routing (gpt-4o-mini Default, teuer nur bei Bedarf).
 }
 
-\textbf{Nächster Schritt:} Mit diesem Überblick über die Modell-Landschaft geht es weiter zur OpenAI API -- dein Einstieg in die Praxis.
+\textbf{Nächster Schritt:} Mit der Modell-Landschaft im Blick geht es weiter zu Token-Management -- das Fundament aller Kostenkontrolle und Context-Engineering.
 \endinput
 
 \clearpage

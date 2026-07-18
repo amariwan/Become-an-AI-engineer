@@ -497,7 +497,7 @@ response = client.chat.completions.create(
     \item \textbf{Prompt-Caching aktivieren}: Setze \texttt{cache\_control} auf System-Prompts und langen Kontexten. Spart 50--90\% der Input-Kosten.
     \item \textbf{Retry mit Exponential Backoff}: Rate Limits und temporäre Fehler (429, 500) sind normal. Implementiere Retry-Logik.
     \item \textbf{Streaming als Default}: Für alle User-facing APIs. Reduziert die Time-to-First-Token auf nahezu 0.
-    \item \textbf{Model-Version pinning}: Nutze datierte Versionen (\texttt{gpt-4o-2026-03-15}) statt generischer (\texttt{gpt-4o}).
+    \item \textbf{Model-Version pinning}: Nutze datierte Versionen (\texttt{gpt-4o-202X-XX-XX}) statt generischer (\texttt{gpt-4o}).
     \item \textbf{Separate API-Keys pro Umgebung}: Entwicklung, Staging und Produktion haben eigene Keys mit unterschiedlichen Limits.
 \end{itemize}
 

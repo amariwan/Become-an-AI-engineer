@@ -2,10 +2,10 @@
 % Become an AI Engineer — Lehrbuch-Template
 % Basierend auf roadmap.sh AI Engineer Roadmap
 % ============================================================
-\RequirePackage{pdfmanagement-testphase}
-\DocumentMetadata{pdfversion=2.0}
-\AddToDocumentProperties[document]{pdfstandard-UA}{{1}{}}
-\AddToDocumentProperties[document]{lang}{de-DE}
+%\RequirePackage{pdfmanagement-testphase}
+%\DocumentMetadata{pdfversion=2.0}
+%\AddToDocumentProperties[document]{pdfstandard-UA}{{1}{}}
+%\AddToDocumentProperties[document]{lang}{de-DE}
 \documentclass[
   12pt,
   twoside,
@@ -29,9 +29,10 @@
 \usepackage{tabularx, booktabs, longtable, caption, float, enumitem}
 \usepackage[most]{tcolorbox}
 \usepackage[framemethod=tikz]{mdframed}
+\usepackage{amssymb}
 \usepackage{scrlayer-scrpage}
-\usepackage[luamode]{tagpdf}
-\tagpdfsetup{activate-all, tagunmarked=true, uncompress, tabsorder=structure, paratag=P}
+% \usepackage[luamode]{tagpdf}
+% \tagpdfsetup{activate-all, tagunmarked=true, uncompress, tabsorder=structure, paratag=P}
 \usepackage[unicode=true, hidelinks, bookmarksnumbered=true]{hyperref}
 \usepackage{bookmark} % Empfohlen für saubere PDF-Outlines in modernen TeX-Systemen
 \usepackage{imakeidx}
@@ -185,100 +186,15 @@
   before skip=10pt, after skip=10pt
 }
 
-% ---------- Inline command versions (mdframed, for \command{...}) ----------
-% Using "InlineCmd" suffix to avoid conflict with environment names
-\newenvironment{realitycheckInlineCmd}{\begin{mdframed}[
-  backgroundcolor=white,
-  linecolor=bookblue,
-  linewidth=0.8pt,
-  roundcorner=1.5pt,
-  innerleftmargin=10pt, innerrightmargin=10pt,
-  innertopmargin=6pt, innerbottommargin=6pt,
-  frametitlefont=\bfseries,
-  frametitle=Echtzeit,
-  skipabove=0pt, skipbelow=0pt,
-]}{\end{mdframed}}
-
-\newenvironment{praxishinweisInlineCmd}{\begin{mdframed}[
-  backgroundcolor=warnbg,
-  linecolor=warnborder,
-  linewidth=0.8pt,
-  roundcorner=1pt,
-  innerleftmargin=10pt, innerrightmargin=10pt,
-  innertopmargin=6pt, innerbottommargin=6pt,
-  frametitlefont=\bfseries,
-  frametitle=Praxis-Hinweis,
-  skipabove=0pt, skipbelow=0pt,
-]}{\end{mdframed}}
-
-\newenvironment{merkeInlineCmd}{\begin{mdframed}[
-  backgroundcolor=white,
-  linecolor=accent,
-  linewidth=1pt,
-  roundcorner=1pt,
-  innerleftmargin=10pt, innerrightmargin=10pt,
-  innertopmargin=6pt, innerbottommargin=6pt,
-  frametitlefont=\bfseries,
-  frametitle=Merke,
-  skipabove=0pt, skipbelow=0pt,
-]}{\end{mdframed}}
-
-\newenvironment{warnungInlineCmd}{\begin{mdframed}[
-  backgroundcolor=warnbg,
-  linecolor=warnborder,
-  linewidth=0.8pt,
-  roundcorner=1.5pt,
-  innerleftmargin=10pt, innerrightmargin=10pt,
-  innertopmargin=6pt, innerbottommargin=6pt,
-  frametitlefont=\bfseries,
-  frametitle=Achtung,
-  skipabove=0pt, skipbelow=0pt,
-]}{\end{mdframed}}
-
-\newenvironment{autornotizInlineCmd}{\begin{mdframed}[
-  backgroundcolor=warnbg,
-  linecolor=warnborder,
-  linewidth=0.8pt,
-  roundcorner=1.5pt,
-  innerleftmargin=10pt, innerrightmargin=10pt,
-  innertopmargin=6pt, innerbottommargin=6pt,
-  frametitlefont=\bfseries,
-  frametitle=Anmerkung des Autors,
-  skipabove=0pt, skipbelow=0pt,
-]}{\end{mdframed}}
-
-\newenvironment{vertiefungInlineCmd}{\begin{mdframed}[
-  backgroundcolor=booklight,
-  linecolor=accent,
-  linewidth=0.8pt,
-  roundcorner=1.5pt,
-  innerleftmargin=10pt, innerrightmargin=10pt,
-  innertopmargin=6pt, innerbottommargin=6pt,
-  frametitlefont=\bfseries,
-  frametitle=Vertiefung,
-  skipabove=0pt, skipbelow=0pt,
-]}{\end{mdframed}}
-
-\newenvironment{lernzieleInlineCmd}{\begin{mdframed}[
-  backgroundcolor=accentlight,
-  linecolor=accent,
-  linewidth=0.8pt,
-  roundcorner=2pt,
-  innerleftmargin=10pt, innerrightmargin=10pt,
-  innertopmargin=6pt, innerbottommargin=6pt,
-  frametitlefont=\bfseries,
-  frametitle=Lernziele,
-  skipabove=0pt, skipbelow=0pt,
-]}{\end{mdframed}}
-
-% Command aliases for inline use (matching chapter usage)
-\newcommand{\realitycheck}[1]{\begin{realitycheckInlineCmd}#1\end{realitycheckInlineCmd}}
-\newcommand{\praxishinweis}[1]{\begin{praxishinweisInlineCmd}#1\end{praxishinweisInlineCmd}}
-\newcommand{\merke}[1]{\begin{merkeInlineCmd}#1\end{merkeInlineCmd}}
-\newcommand{\warnung}[1]{\begin{warnungInlineCmd}#1\end{warnungInlineCmd}}
-\newcommand{\vertiefung}[1]{\begin{vertiefungInlineCmd}#1\end{vertiefungInlineCmd}}
-\newcommand{\autornotiz}[1]{\begin{autornotizInlineCmd}#1\end{autornotizInlineCmd}}
-\newcommand{\lernzieleInline}[1]{\begin{lernzieleInlineCmd}#1\end{lernzieleInlineCmd}}
+% ---------- Inline command versions (using tcolorbox environments, no label issues) ----------
+% These use the tcolorbox environments defined above (with Env suffix)
+\newcommand{\realitycheck}[1]{\begin{realitycheckEnv}#1\end{realitycheckEnv}}
+\newcommand{\praxishinweis}[1]{\begin{praxishinweisEnv}#1\end{praxishinweisEnv}}
+\newcommand{\merke}[1]{\begin{merkeEnv}#1\end{merkeEnv}}
+\newcommand{\warnung}[1]{\begin{warnungEnv}#1\end{warnungEnv}}
+\newcommand{\autornotiz}[1]{\begin{AUTORnotizEnv}#1\end{AUTORnotizEnv}}
+\newcommand{\vertiefung}[1]{\begin{vertiefungEnv}#1\end{vertiefungEnv}}
+\newcommand{\lernzieleInline}[1]{\begin{lernzieleEnv}#1\end{lernzieleEnv}}
 \newcommand{\zusammenfassung}[1]{\begin{zusammenfassungEnv}#1\end{zusammenfassungEnv}}
 \newcommand{\skipbox}[1]{\begin{zusammenfassungEnv}#1\end{zusammenfassungEnv}}
 \newcommand{\skipdeep}[1]{\begin{zusammenfassungEnv}#1\end{zusammenfassungEnv}}
@@ -343,9 +259,9 @@
 % ---------- Cover Vorderseite ----------
 \AddToShipoutPicture*{%
   \AtPageLowerLeft{%
-    \tagstructbegin{tag=Artifact}%
+    % \tagstructbegin{tag=Artifact}%
     \includegraphics[width=\paperwidth,height=\paperheight]{imgs/front.png}%
-    \tagstructend%
+    % \tagstructend%
   }%
 }
 \thispagestyle{empty}
@@ -381,11 +297,12 @@ Dieses Buch nimmt dich mit auf den Weg zum AI Engineer --- einer der gefragteste
 \textbf{Aufbau:}
 
 \begin{itemize}
-      \item \textbf{Grundlagen verstehen} (Kapitel 1--4) --- Die AI Engineer Rolle, das Modell-Ökosystem und die harten Fakten (Kontextlängen, Tokenisierung, Preise)
-      \item \textbf{Technik und Werkzeuge} (Kapitel 5--7) --- OpenAI API, Token-Management und Prompt Design als praktische Handwerkszeuge
-      \item \textbf{LLMs in der Praxis} (Kapitel 8--11) --- RAG-Systeme mit Vector DBs, AI Agenten, Evaluation und multimodale KI für Vision, Audio und Video
-      \item \textbf{Production Layer} (Kapitel 12--14) --- Inference Optimierung, Feinabstimmung vs.\ Abgleich (Fine-Tuning und RAG), Caching, Routing und Guardrails gegen Halluzinationen und Prompt Injection
-      \item \textbf{In Produktion bringen} (Kapitel 15--21) --- Deployment auf Cloud-Plattformen und Containern, MLOps und Modell-Lebenszyklus, KI-Sicherheit, Governance sowie ein Glossar und Praxisprojekte zum Nachschlagen und Üben
+      \item \textbf{Grundlagen verstehen} (Kapitel 1--3) --- Die AI Engineer Rolle, Foundation Models als Commodities, der Modell-Markt und Multi-Provider-Routing
+      \item \textbf{Mit dem LLM sprechen} (Kapitel 4--6) --- Token-Management als Kostenbremse, Prompt Engineering als Hauptschnittstelle, Evaluation als Qualitäts-Sicherung
+      \item \textbf{Dem LLM Kontext und Hände geben} (Kapitel 7--9) --- RAG-Architekturen mit Vector DBs, AI Agenten mit Tool-Use, Multimodale KI für Vision, Audio, Video
+      \item \textbf{Production Layer} (Kapitel 10--12) --- Caching/Routing/Guardrails als zweite Optimierungsstufe, Inference-Optimierung für Self-Hosting, Fine-Tuning vs. RAG-Entscheidung
+      \item \textbf{In Produktion bringen} (Kapitel 13--15) --- Deployment-Architekturen, MLOps/Observability, Security/Governance
+      \item \textbf{Anhang} --- Production Checklist und Glossar
 \end{itemize}
 
 Guten Start --- lass uns anfangen!
@@ -407,12 +324,9 @@ Guten Start --- lass uns anfangen!
 \input{chapters/03_modell_landschaft}
 
 % ============================================================
-% PHASE 2: MIT DEM LLM SPRECHEN
+% TEIL 2: MIT DEM LLM SPRECHEN
 % ============================================================
 \part{Mit dem LLM sprechen}
-
-\chapter{Die OpenAI API}
-\input{chapters/04_openai_api}
 
 \chapter{Token-Management und Kosten}
 \input{chapters/05_token_verwaltung}
@@ -420,8 +334,11 @@ Guten Start --- lass uns anfangen!
 \chapter{Prompt Design}
 \input{chapters/06_prompt_design}
 
+\chapter{Evaluation und Metriken}
+\input{chapters/09_evaluation_metriken}
+
 % ============================================================
-% PHASE 3: DEM LLM KONTEXT UND HÄNDE GEBEN
+% TEIL 3: DEM LLM KONTEXT UND HÄNDE GEBEN
 % ============================================================
 \part{Dem LLM Kontext und Hände geben}
 
@@ -435,28 +352,25 @@ Guten Start --- lass uns anfangen!
 \input{chapters/14_multimodale_ki}
 
 % ============================================================
-% PHASE 4: MESSEN UND OPTIMIEREN
+% TEIL 4: PRODUCTION LAYER
 % ============================================================
-\part{Messen und Optimieren}
-
-\chapter{Evaluation und Metriken}
-\input{chapters/09_evaluation_metriken}
-
-\chapter{Inference Optimization and Serving}
-\input{chapters/11_inferenz_optimierung}
+\part{Production Layer}
 
 \chapter{Caching, Routing und Guardrails}
 \input{chapters/12_caching_routing_guardrails}
+
+\chapter{Inference-Optimierung und Serving}
+\input{chapters/11_inferenz_optimierung}
 
 \chapter{Model Customization --- Fine-Tuning und Adaptation}
 \input{chapters/13_modellanpassung}
 
 % ============================================================
-% PHASE 5: IN DIE WELT BRINGEN
+% TEIL 5: IN PRODUKTION BRINGEN
 % ============================================================
-\part{In die Welt bringen}
+\part{In Produktion bringen}
 
-\chapter{Deployment und Architekturentscheidungen}
+\chapter{Deployment-Architekturen und Betriebsmuster}
 \input{chapters/10_deployment_architektur}
 
 \chapter{MLOps und Observability}
@@ -486,7 +400,7 @@ Guten Start --- lass uns anfangen!
 
 \begin{thebibliography}{99}
 
-\bibitem{roadmap2026} roadmap.sh (2026): \textit{AI Engineer Roadmap}. \href{https://roadmap.sh/ai-engineer}{https://roadmap.sh/ai-engineer}
+\bibitem{roadmap2026} roadmap.sh (2026): \textit{AI Engineer Roadmap}. \url{https://roadmap.sh/ai-engineer}
 
 \bibitem{vaswani2017} Vaswani, A. et al. (2017): \textit{Attention Is All You Need}. NeurIPS.
 
@@ -494,17 +408,17 @@ Guten Start --- lass uns anfangen!
 
 \bibitem{touvron2023} Touvron, H. et al. (2023): \textit{LLaMA: Open and Efficient Foundation Language Models}. arXiv.
 
-\bibitem{anthropic_safety} Anthropic (2025): \textit{Core Views on AI Safety}. \href{https://www.anthropic.com/news/core-views-on-ai-safety}{https://www.anthropic.com/news/core-views-on-ai-safety}
+\bibitem{anthropic_safety} Anthropic (2025): \textit{Core Views on AI Safety}. \url{https://www.anthropic.com/news/core-views-on-ai-safety}
 
-\bibitem{langfuse_docs} Langfuse (2026): \textit{Langfuse Documentation --- Open Source LLM Observability}. \href{https://langfuse.com/docs}{https://langfuse.com/docs}
+\bibitem{langfuse_docs} Langfuse (2026): \textit{Langfuse Documentation --- Open Source LLM Observability}. \url{https://langfuse.com/docs}
 
-\bibitem{openai_finetuning} OpenAI (2025): \textit{Fine-tuning Documentation}. \href{https://platform.openai.com/docs/guides/fine-tuning}{https://platform.openai.com/docs/guides/fine-tuning}
+\bibitem{openai_finetuning} OpenAI (2025): \textit{Fine-tuning Documentation}. \url{https://platform.openai.com/docs/guides/fine-tuning}
 
-\bibitem{claude_tools} Anthropic (2025): \textit{Function Calling and Tool Use}. \href{https://docs.anthropic.com/en/docs/build-with-claude/tool-use/function-calling}{https://docs.anthropic.com/en/docs/build-with-claude/tool-use/function-calling}
+\bibitem{claude_tools} Anthropic (2025): \textit{Function Calling and Tool Use}. \url{https://docs.anthropic.com/en/docs/build-with-claude/tool-use/function-calling}
 
-\bibitem{owasp_llm} OWASP GenAI Security Project (2025): \textit{OWASP Top 10 for Large Language Model Applications}. \href{https://genai.owasp.org}{https://genai.owasp.org}
+\bibitem{owasp_llm} OWASP GenAI Security Project (2025): \textit{OWASP Top 10 for Large Language Model Applications}. \url{https://genai.owasp.org}
 
-\bibitem{mitre_atlas} MITRE (2026): \textit{MITRE ATLAS — Tactics and Techniques for AI Systems}. \href{https://github.com/mitre/atlas}{https://github.com/mitre/atlas}
+\bibitem{mitre_atlas} MITRE (2026): \textit{MITRE ATLAS -- Tactics and Techniques for AI Systems}. \url{https://github.com/mitre/atlas}
 
 \end{thebibliography}
 
@@ -514,9 +428,9 @@ Guten Start --- lass uns anfangen!
 \null\newpage
 \AddToShipoutPicture*{%
   \AtPageLowerLeft{%
-    \tagstructbegin{tag=Artifact}%
+    % \tagstructbegin{tag=Artifact}%
     \includegraphics[width=\paperwidth,height=\paperheight]{imgs/back.png}%
-    \tagstructend%
+    % \tagstructend%
   }%
 }
 \thispagestyle{empty}

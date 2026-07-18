@@ -1,0 +1,1 @@
+Technical illustration: PagedAttention memory management. LEFT (Traditional): Contiguous KV-Cache blocks with fragmentation gaps (red). RIGHT (PagedAttention): Fixed-size pages (green blocks) mapped via page table, no fragmentation, copy-on-write sharing between sequences. Page 1/2/3. Page table visualization. Memory efficiency: 60% less fragmentation.

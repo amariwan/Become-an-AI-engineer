@@ -1,0 +1,1 @@
+Three-panel diagram showing Multi-Agent patterns: 1) SUPERVISOR-WORKER: User -> Supervisor -> [Worker A, Worker B, Worker C] parallel -> Supervisor aggregates -> Answer. 2) PIPELINE: User -> Agent A (Extract) -> Agent B (Analyze) -> Agent C (Generate) -> Answer. 3) DEBATE: Agent Pro + Agent Con -> Mediator -> Synthesis. Clean layout, distinct colors per pattern.

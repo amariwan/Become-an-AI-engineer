@@ -1,0 +1,1 @@
+Multi-Region Multi-Provider Failover Flow. Primary: OpenAI (us-east) -> Fallback 1: Anthropic (eu-west) -> Fallback 2: Local vLLM (on-prem). Health checks per provider. Router selects first healthy. Circuit breaker per provider. Latency annotations: OpenAI 200ms, Anthropic 300ms, Local 500ms. German labels, flow diagram style.

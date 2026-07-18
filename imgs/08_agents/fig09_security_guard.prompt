@@ -1,0 +1,1 @@
+Security flow diagram: Agent Safety Guard pipeline. BEFORE TOOL: Step Counter (max_steps check) -> Tool Blacklist (shell, delete, email blocked) -> Domain Whitelist (internal APIs only) -> Allow/Deny. AFTER TOOL: Result -> Injection Scanner (patterns) -> Size Limiter (10k chars) -> Safe Output. Shield icons, red blocked paths, green allowed paths.

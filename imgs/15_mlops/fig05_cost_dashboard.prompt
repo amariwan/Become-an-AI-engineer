@@ -1,0 +1,1 @@
+Cost Tracking Dashboard Mockup. Four panels: 1) Daily Cost Trend (line, budget line at 80%/100%), 2) Cost per Query Distribution (histogram, mean/median), 3) Model Cost Breakdown (pie: GPT-4o 60%, GPT-4o-mini 30%, Claude 10%), 4) Budget Utilization Gauge (current 67%, warning 80%, critical 100%). Dark Grafana theme, German labels, realistic data.

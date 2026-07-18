@@ -1,0 +1,1 @@
+Evaluation Pipeline Architecture Diagram: Three layers - CI/CD Pipeline (top): Lint/Check Prompts -> Golden Dataset -> LLM-as-a-Judge -> Cost/Latency Check. Production Monitoring (bottom): Tracing (every Call) -> Metrics (P95, Costs) -> Alerting (Drift) -> Dashboard (Grafana, Langfuse). Arrows connecting CI/CD to Production. Clean technical architecture style, German labels.

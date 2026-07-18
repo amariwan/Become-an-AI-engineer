@@ -1,0 +1,1 @@
+Quantization formats comparison table visualization. FP16/BF16 (16-bit, 140GB VRAM for 70B, Reference quality) -> INT8 (8-bit, 70GB, Minimal loss) -> INT4 GPTQ/AWQ (4-bit, 35GB, Slight loss) -> NF4 QLoRA (4-bit, 35GB, Slight loss, normal dist optimal) -> FP4 (4-bit, 35GB, Moderate loss). Color gradient from green to yellow to red.

@@ -1,0 +1,1 @@
+Evaluation Stages Comparison Table Visual: Four cards for Offline Evaluation, Online Evaluation, Human Evaluation, LLM-as-a-Judge. Each card: Title, Description, Pros, Cons, Use Case icons. Offline: Golden Dataset, pre-deployment. Online: Production metrics, A/B tests. Human: Expert review, gold standard. LLM Judge: Scalable, multi-model. Color-coded cards, German labels.

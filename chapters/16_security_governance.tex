@@ -5,11 +5,9 @@
 % AUTOR-NOTIZ STATT LERNZIELE
 % ============================================================
 \autornotiz{
-2023 habe ich für einen E-Commerce-Kunden ein RAG-System gebaut. 50k Produktdokumente, 200k Queries/Tag.
-Erster Versuch: Naive RAG mit OpenAI Embeddings + Pinecone. Hit Rate @ 5: 67\%. Latenz p99: 3.2s. Kosten: \$450/Tag.
-Nach 3 Wochen Tuning: Recursive Chunking (512/64) + Hybrid Search (BM25 + Embedding) + Cross-Encoder Re-Ranker + pgvector.
-Hit Rate @ 5: 94\%. Latenz p99: 800ms. Kosten: \$38/Tag.
-Der Unterschied war nicht das Embedding-Modell. Es war Disziplin bei Chunking, Retrieval und Evaluation.
+2024: Ein Agent mit File-System-Zugriff löschte Produktionsdaten. User-Prompt: "Räum mal auf im Upload-Ordner". Agent interpretierte "aufräumen" als "rm -rf /data/uploads". Kein max\_steps, kein HITL, keine Tool-Whitelist. \$15k Recovery-Kosten, 4h Downtime.
+Fix: SafetyGuard (max\_steps=10, Tool-Whitelist, HITL für delete/write), Output-Guard scannt auf shell commands, Circuit Breaker bei Anomalie.
+Lektion: Agenten sind mächtiger als Prompts -- und gefährlicher. Jedes Tool braucht Whitelist, Budget, Human-Gate.
 }
 
 % ============================================================
@@ -550,7 +548,7 @@ for call in calls:
      \item Klassifiziere eine RAG-Anwendung nach EU AI Act (Risikoklasse, Anhänge, Konformitätsbewertung) und erstelle eine Compliance-Checkliste.
 \end{itemize}
 
-\textbf{Nächster Schritt:} Jetzt bist du bereit. Im Anhang findest du die Production Checklist -- dein Cheat-Sheet für den produktiven Einsatz.
+\textbf{Nächster Schritt:} Security gehärtet -- jetzt die Production Checklist: Design, Development, Security, Production, Evaluation, Governance, Kosten -- alles auf einem Blatt. Dein Pre-Flight-Check für jeden Deploy.
 \endinput
 
 \clearpage

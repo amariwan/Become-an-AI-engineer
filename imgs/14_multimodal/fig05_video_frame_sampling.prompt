@@ -1,0 +1,1 @@
+Video Frame Sampling Strategies. Three panels: 1) Uniform Sampling: Timeline with frames every 2s (30 frames). 2) Keyframe Detection: Scene change detection, only frames with significant diff (10 frames). 3) Hierarchical: 1 frame/10s for segments -> summarize each -> final summary. Cost comparison: 30 frames x 85 tokens = 2550 tokens vs 10 frames = 850 tokens. German labels.

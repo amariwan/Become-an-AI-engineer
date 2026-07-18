@@ -5,11 +5,10 @@
 % AUTOR-NOTIZ STATT LERNZIELE
 % ============================================================
 \autornotiz{
-2023 habe ich für einen E-Commerce-Kunden ein RAG-System gebaut. 50k Produktdokumente, 200k Queries/Tag.
-Erster Versuch: Naive RAG mit OpenAI Embeddings + Pinecone. Hit Rate @ 5: 67\%. Latenz p99: 3.2s. Kosten: \$450/Tag.
-Nach 3 Wochen Tuning: Recursive Chunking (512/64) + Hybrid Search (BM25 + Embedding) + Cross-Encoder Re-Ranker + pgvector.
-Hit Rate @ 5: 94\%. Latenz p99: 800ms. Kosten: \$38/Tag.
-Der Unterschied war nicht das Embedding-Modell. Es war Disziplin bei Chunking, Retrieval und Evaluation.
+2024: Production Incident bei einem Support-Bot. Prompt-Update deployed, Golden Set grün. Aber in Produktion: Halluzinationsrate 8\% -> 23\% innerhalb 2h.
+Ursache: Provider hatte stillschweigend gpt-4o-mini auf neue Version gehoben (2024-07-18). Unser Eval läuft gegen festes Modell, nicht gegen "latest".
+Fix: Model Pinning (gpt-4o-mini-2024-07-18) + Canary Deploy (5\% Traffic) + Auto-Rollback bei Drift > 5\%.
+Lektion: Ohne Model Pinning + Canary + Drift Alert fliegst du blind. "Latest" ist kein Deployment-Strategy.
 }
 
 % ============================================================
@@ -407,7 +406,7 @@ LLM-Deployment ist nicht wie klassisches Web-Deployment. External Dependencies, 
     \item \textbf{Evidently AI}: \href{https://www.evidentlyai.com}{evidentlyai.com} -- ML-Monitoring und Drift-Erkennung
 \end{itemize}
 
-\textbf{Nächster Schritt:} Im nächsten Kapitel geht es um Security, Governance und Responsible AI -- die Absicherung deines Systems.
+\textbf{Nächster Schritt:} Observability läuft -- jetzt Security: Input/Output Guards, PII-Masking, Injection Defense, Agent Tool-Whitelist, HITL für kritische Aktionen, Incident Runbooks. SupportPilot's Safety-Layer.
 \endinput
 
 \clearpage

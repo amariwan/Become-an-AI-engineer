@@ -1,0 +1,1 @@
+Two-phase diagram: PHASE 1 (Planning): Task -> LLM Planner -> Structured Plan [Step 1, Step 2, Step 3...]. PHASE 2 (Execution): For each step -> Execute -> Result -> Accumulate. PHASE 3 (Synthesis): All Results -> LLM Synthesizer -> Final Answer. Dashed line between phases, clear separation.

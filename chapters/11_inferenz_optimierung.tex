@@ -1,15 +1,16 @@
-\chapter{Inference Optimization and Serving}
-\label{chap:inference}
+\chapter{Inference-Optimierung und Serving}
+\label{chap:inference_optimierung}
 
 % ============================================================
-% AUTOR-NOTIZ STATT LERNZIELE
+% AUTOR-NOTIZ: Self-Hosting Story (NEU)
 % ============================================================
 \autornotiz{
-2023 habe ich für einen E-Commerce-Kunden ein RAG-System gebaut. 50k Produktdokumente, 200k Queries/Tag.
-Erster Versuch: Naive RAG mit OpenAI Embeddings + Pinecone. Hit Rate @ 5: 67\%. Latenz p99: 3.2s. Kosten: \$450/Tag.
-Nach 3 Wochen Tuning: Recursive Chunking (512/64) + Hybrid Search (BM25 + Embedding) + Cross-Encoder Re-Ranker + pgvector.
-Hit Rate @ 5: 94\%. Latenz p99: 800ms. Kosten: \$38/Tag.
-Der Unterschied war nicht das Embedding-Modell. Es war Disziplin bei Chunking, Retrieval und Evaluation.
+2024: SupportPilot musste PII-Tickets (Kundendaten, Kreditkarten) verarbeiten. Cloud-APIs (OpenAI, Anthropic) schieden aus Compliance-Gründen aus.
+Lösung: Llama 3.1 70B auf 4x A100 (vLLM, AWQ-INT4).
+Erster Versuch: FP16, Batch=1. TTFT 1.2s, TPOT 65ms, Durchsatz 15 Tok/s. GPU-Auslastung 50\%.
+Nach Optimierung: AWQ-INT4, Continuous Batching (Batch=32), Speculative Decoding (Draft: Llama-3.2-1B), Prefix Caching.
+TTFT 850ms, TPOT 18ms, Durchsatz 320 Tok/s. GPU-Auslastung 95\%. Kosten: Strom statt \$3k/Monat API.
+Der Unterschied war nicht das Modell. Es war Inference-Engineering.
 }
 
 % ============================================================
@@ -68,7 +69,7 @@ Durchsatz & Viele Requests \textit{nacheinander} abgearbeitet & Continuous Batch
 \bottomrule
 \end{tabularx}
 \caption{Die fünf Engpässe der LLM-Inference}
-\label{tab:inference-engpässe}
+\protect\label{tab:inference-engpaesse}
 \end{table}
 
 \subsection{Schlüsselmetriken}
@@ -392,7 +393,7 @@ Der Engpass der LLM-Inference ist nicht Rechenleistung, sondern Speicherbandbrei
     \item Leistungsanalyse: \href{https://huggingface.co/spaces/optimum/text-generation-inference-benchmarks}{Hugging Face TGI Benchmarks}
 \end{itemize}
 
-\textbf{Nächster Schritt:} Im nächsten Kapitel erfährst du, wie du Caching, intelligentes Routing und Guardrails einbaust -- die zweite Schicht der Optimierung.
+\textbf{Nächster Schritt:} Inference optimiert, Self-Hosting läuft -- jetzt die Entscheidung: Fine-Tuning oder RAG? LoRA/QLoRA, Forgetting-Check, Multi-LoRA-Serving. Wann lohnt sich Gewichts-Anpassung vs. Kontext-Anreicherung.
 \endinput
 
 \clearpage

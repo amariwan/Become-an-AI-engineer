@@ -1,0 +1,1 @@
+Split comparison diagram. LEFT: Single Agent - One LLM center, 5 tools around it, simple loop arrow. RIGHT: Multi-Agent - Supervisor (crown icon) connecting to 4 Worker Agents (Research, Analysis, Writing, Review) each with own tools. Arrows show delegation and aggregation. Labels: Complexity, Planning, Fault Tolerance, Cost, Latency. Technical comparison infographic.

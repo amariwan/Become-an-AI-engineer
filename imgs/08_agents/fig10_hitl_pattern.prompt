@@ -1,0 +1,1 @@
+Human-in-the-Loop workflow: Agent requests approval (action + context) -> Notification sent (Slack/Email/Teams icons) -> Human reviews -> Approve/Reject -> Agent continues/waits. Timeout path (300s) -> Auto-reject. State machine: PENDING -> APPROVED/REJECTED/TIMEOUT. Clean workflow diagram.

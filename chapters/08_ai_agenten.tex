@@ -1,5 +1,5 @@
 \chapter{AI Agents -- Konzepte, Frameworks und Orchestrierung}
-\label{chap:ai_agents}
+\label{chap:ai_agenten}
 
 % ============================================================
 % AUTOR-NOTIZ STATT LERNZIELE
@@ -210,7 +210,7 @@ Autonomie sollte nicht von null auf hundert gehen, sondern in Stufen wachsen:
 \bottomrule
 \end{tabularx}
 \caption{Stufen der graduierten Autonomie für AI Loops}
-\label{tab:autonomie-stufen}
+\label{tab:autonomiestufen}
 \end{table}
 
 \subsection{Die Verschiebung der Rolle des Entwicklers}
@@ -396,7 +396,7 @@ Use Case & Klar definierte Aufgaben & Komplexe, multi-disziplinäre Aufgaben \\
 \midrule
 \end{tabularx}
 \caption{Single-Agent vs. Multi-Agent}
-\label{tab:agent-types}
+\label{tab:agenttypes}
 \end{table}
 
 % ===========================================================%
@@ -768,7 +768,7 @@ Ein Research-Agent analysiert Quartalsberichte:
 % MULTI-AGENT
 % ===========================================================%
 \section{Multi-Agent Orchestrierung}
-\label{sec:multi-agent}
+\label{sec:multiagent}
 
 Ein einzelner Agent stösst an Grenzen: eine Perspektive, ein Tool-Set, eine Fehlertoleranz. \textbf{Multi-Agent-Systeme} lösen das durch Spezialisierung und Koordination.
 
@@ -892,7 +892,7 @@ Lernkurve & Niedrig & Mittel & Steil \\
 \bottomrule
 \end{tabularx}
 \caption{Multi-Agent-Frameworks im Vergleich}
-\label{tab:multi-agent-frameworks}
+\label{tab:multiframeworks}
 \end{table}
 
 \subsection{Fehlermodi in Multi-Agent-Systemen}
@@ -975,7 +975,7 @@ Nächster Schritt planen & 300--800ms & Input-Tokens (History) \\
 \midrule
 \end{tabularx}
 \caption{Latenz und Kosten pro Agent-Schritt (GPT-4o)}
-\label{tab:agent-latency}
+\label{tab:agentlatency}
 \end{table}
 
 \subsection{Optimierung}
@@ -989,91 +989,31 @@ Nächster Schritt planen & 300--800ms & Input-Tokens (History) \\
 \end{itemize}
 
 % ===========================================================%
-% SICHERHEIT
+% SICHERHEIT (VORWÄRTSVERWEIS)
 % ===========================================================%
-\section{Sicherheit}
+\section{Sicherheit -- Vorwärtsverweis auf Kap. 16}
 
 \praxishinweis{Agenten sind mächtiger als einfache LLM-Calls -- und damit gefährlicher. Ein Agent ohne max\_steps, Token-Budget und Tool-Whitelist kann Tausende API-Calls auslösen (Denial-of-Wallet). Jedes Tool-Ergebnis ist ein potenzielles Injection-Vehikel. HITL für kritische Aktionen ist keine Option, sondern Pflicht.}
 
-\subsection{Agent-spezifische Risiken}
+Die vollständige Agent-Security-Strategie (SafetyGuard mit max\_steps/Token-Budget/Tool-Whitelist, HITL-Gates für kritische Aktionen, Tool-Result-Injection-Scanning, Tool-Whitelists mit Domain-Restrictions, Cost-Budget-Guards) findest du in \textbf{Kapitel 16 (Security)}.
 
-Agenten sind mächtiger als einfache LLM-Calls -- und damit gefährlicher:
+Hier nur das Minimum für Agent-Produktion:
+\begin{enumerate}
+    \item \textbf{SafetyGuard}: max\_steps, Token-Budget, Tool-Whitelist (Default Deny), HITL-Gates für kritische Actions
+    \item \textbf{Tool-Result-Scanning}: Jedes Tool-Ergebnis auf Injection-Patterns scannen vor Weitergabe an LLM
+    \item \textbf{Domain-Restrictions}: HTTP-Tools nur auf allowlisted Domains
+    \item \textbf{Cost-Guard}: Per-Run Cost Budget mit Circuit-Breaker
+    \item \textbf{Audit-Log}: Jeder Step (Thought, Action, Observation, Result) für Forensik
+\end{enumerate}
 
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Unbegrenzte Tool-Ausführung}: Ein Agent kann Tausende API-Calls in einer Minute auslösen (Kosten-Explosion, Denial-of-Wallet)
-    \item \textbf{Prompt Injection via Tools}: Ein Tool-Ergebnis kann schädliche Anweisungen enthalten ("Ignore all instructions...")
-    \item \textbf{Data Exfiltration}: Der Agent könnte Daten aus internen Systemen extrahieren und via Tools nach außen senden
-    \item \textbf{Command Execution}: Ein Agent mit Shell-/Code-Execution-Tool kann schädliche Befehle ausführen
-\end{itemize}
-
-\subsection{Gegenmaßnahmen}
-
-\begin{lstlisting}[language=Python, caption=Agent-Sicherheits-Guard]
-class SafetyGuard:
-    def __init__(self, max_steps: int = 20,
-                 max_tokens_per_step: int = 4000,
-                 max_cost_per_run: float = 1.0):
-        self.max_steps = max_steps
-        self.max_tokens = max_tokens_per_step
-        self.max_cost = max_cost_per_run
-        self.step_count = 0
-        self.total_cost = 0.0
-
-    def check_before_tool(self, tool_name: str, args: dict) -> bool:
-        self.step_count += 1
-        if self.step_count > self.max_steps:
-            raise RuntimeError("Max steps exceeded")
-
-        # Blacklist gefaehrlicher Tools
-        if tool_name in {"execute_shell", "delete_file", "send_email"}:
-            return False  # Human-in-the-Loop erforderlich
-
-        # Whitelist erlaubter Domains
-        if tool_name == "http_request":
-            url = args.get("url", "")
-            if not url.startswith("https://api.company-intern.com"):
-                return False
-
-        return True
-
-    def check_after_tool(self, result: str) -> str:
-        # Tool-Ergebnis auf schädliche Anweisungen scannen
-        injection_patterns = [
-            "ignore previous", "ignore all", "system prompt",
-        ]
-        for pattern in injection_patterns:
-            if pattern.lower() in result.lower():
-                return "[Safety: Output blocked - injection detected]"
-
-        # Groesse begrenzen
-        max_chars = 10000
-        return result[:max_chars]
-\end{lstlisting}
-
-\subsection{Human-in-the-Loop (HITL)}
-
-Für kritische Aktionen muss ein Mensch bestätigen:
-
-\begin{lstlisting}[language=Python, caption=Human-in-the-Loop Pattern]
-class HITLManager:
-    def __init__(self):
-        self.pending_approvals = {}
-
-    def request_approval(self, action: str, context: dict) -> str:
-        approval_id = str(uuid.uuid4())
-        self.pending_approvals[approval_id] = {
-            "action": action,
-            "context": context,
-            "status": "pending",
-        }
-        # Benachrichtigung an Slack / Teams / E-Mail
-        notify_human({
-            "type": "agent_approval",
-            "approval_id": approval_id,
-            "action": action,
-            "context": context,
-        })
-        return approval_id
+\begin{lstlisting}[language=Python]
+    notify_human({
+        "type": "agent_approval",
+        "approval_id": approval_id,
+        "action": action,
+        "context": context,
+    })
+    return approval_id
 
     def approve(self, approval_id: str) -> bool:
         if approval_id in self.pending_approvals:
@@ -1171,11 +1111,11 @@ Baue ein Multi-Agent-System für den Kundensupport.
 \end{itemize}
 
 \autornotiz{
-Nächstes Kapitel: Evaluation und Testing von LLM-Applikationen.
-Da lernst du: Golden Sets, LLM-as-a-Judge, Tracing, Cost/Latency/Quality Metriken in Produktion messen. Und wie du Evaluation in CI/CD integrierst.
+Nächstes Kapitel: Multimodale KI -- Vision, Audio und Video.
+Da lernst du: Token-Äquivalenz von Bildern (2000 Tokens für 1024x1024). Vision RAG für Dokumente. Frame-Sampling für Video. OCR-Check vor LLM-Analyse. Multimodale Injection via Bild. Und warum Detail-Level (high/low) Kosten und Qualität steuert.
 }
 
-\textbf{Nächster Schritt:} Mit RAG-Wissen ausgestattet geht es weiter zu AI Agents -- der nächsten Evolutionsstufe der LLM-Integration.
+\textbf{Nächster Schritt:} Mit Agenten-Architektur etabliert geht es weiter zu multimodalen Modellen -- wie du LLMs Augen und Ohren gibst.
 \endinput
 
 \clearpage

@@ -1,0 +1,1 @@
+Two-panel technical diagram. LEFT (Prefill - Parallel): Input tokens [T1][T2][T3]...[TN] all feeding into parallel matrix multiplication -> Single KV-Cache output -> Token N+1. RIGHT (Decode - Sequential): Token N+1 -> KV-Cache -> Token N+2 -> KV-Cache -> Token N+3... Memory bandwidth bottleneck icon on decode side. Compute icon on prefill side. German labels.

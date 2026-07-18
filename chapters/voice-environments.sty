@@ -1,0 +1,101 @@
+% ============================================================
+% Chip Huyen Style Environments für Become an AI Engineer
+% ============================================================
+% Usage: \usepackage{chapters/voice-environments} in main.tex preamble
+% Dann im Kapitel: \autornotiz{...}, \realitycheck{...}, \skipbox{...}
+% ============================================================
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{voice-environments}[2025/07/15 Chip Huyen voice environments]
+
+\RequirePackage{tcolorbox}
+\RequirePackage{etoolbox}
+
+% ---------- Farben ----------
+\definecolor{chipbg}{RGB}{250,250,247}
+\definecolor{chipborder}{RGB}{180,170,150}
+\definecolor{chipaccent}{RGB}{120,80,60}
+\definecolor{realitybg}{RGB}{255,245,240}
+\definecolor{realityborder}{RGB}{200,120,80}
+\definecolor{skipbg}{RGB}{240,245,250}
+\definecolor{skipborder}{RGB}{100,140,180}
+
+% ---------- Autor-Notiz: Persönliche Erfahrung, Anekdote, "Was ich gewusst hätte" ----------
+\newenvironment{AUTORnotiz}[1][\relax]{
+  \begin{tcolorbox}[
+    enhanced,
+    breakable,
+    colback=chipbg,
+    colframe=chipborder,
+    coltitle=chipaccent,
+    fonttitle=\bfseries\small,
+    title={\textbullet\ \ifx#1\relax Pers\"onliche Notiz\else #1\fi},
+    left=3mm, right=3mm, top=2mm, bottom=2mm,
+    boxrule=0.5pt,
+    borderline west={3pt}{0pt}{chipaccent},
+    before skip=8pt plus 2pt minus 2pt,
+    after skip=8pt plus 2pt minus 2pt,
+  ]
+  \small\itshape
+}{
+  \end{tcolorbox}
+}
+
+% ---------- Reality Check: Anti-Hype, "Was in Produktion wirklich passiert" ----------
+\newenvironment{realitycheck}[1][\relax]{
+  \begin{tcolorbox}[
+    enhanced,
+    breakable,
+    colback=realitybg,
+    colframe=realityborder,
+    coltitle=realityborder,
+    fonttitle=\bfseries\small,
+    title={!\ \ifx#1\relax Reality Check\else #1\fi},
+    left=3mm, right=3mm, top=2mm, bottom=2mm,
+    boxrule=0.5pt,
+    borderline west={3pt}{0pt}{realityborder},
+    before skip=8pt plus 2pt minus 2pt,
+    after skip=8pt plus 2pt minus 2pt,
+  ]
+  \small
+}{
+  \end{tcolorbox}
+}
+
+% ---------- Skip Box: TL;DR für Deep Dives, "Optional lesen" ----------
+\newenvironment{skipbox}[1][\relax]{
+  \begin{tcolorbox}[
+    enhanced,
+    breakable,
+    colback=skipbg,
+    colframe=skipborder,
+    coltitle=skipborder,
+    fonttitle=\bfseries\small,
+    title={>\ \ifx#1\relax Kurzfassung (optional)\else #1\fi},
+    left=3mm, right=3mm, top=2mm, bottom=2mm,
+    boxrule=0.5pt,
+    borderline west={3pt}{0pt}{skipborder},
+    before skip=6pt plus 2pt minus 2pt,
+    after skip=6pt plus 2pt minus 2pt,
+  ]
+  \small
+}{
+  \end{tcolorbox}
+}
+
+% ---------- Inline-Makros für schnelle Nutzung ----------
+\newcommand{\chipnote}[1]{\begin{AUTORnotiz}#1\end{AUTORnotiz}}
+\newcommand{\reality}[1]{\begin{realitycheck}#1\end{realitycheck}}
+\newcommand{\skipdeep}[1]{\begin{skipbox}#1\end{skipbox}}
+
+% ---------- Beispiel-Nutzung (auskommentiert) ----------
+% \chipnote{Als ich 2023 zum ersten Mal RAG in Produktion brachte, 
+%   unterschätzte ich Chunking. 3 Iterationen später: 
+%   512 Token Chunks mit 50 Token Overlap war der Sweet Spot.}
+%
+% \reality{Agent-Frameworks sehen in Demos toll aus. 
+%   In Produktion: mehr Abstraktionsschmerzen als Nutzen. 
+%   Baue Function Calling + Validierung + Retry selbst.}
+%
+% \skipdeep{In-Context Learning = Pattern Matching + Format Following + Attention Bias. 
+%   Details unten, aber für Produktion nicht nötig.}

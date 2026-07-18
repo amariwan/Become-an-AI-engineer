@@ -1,0 +1,1 @@
+Bar chart: Quality loss by task type from quantization. General Chat (-2%), Summarization (-3%), Extraction (-2%), Code Generation (-5% to -15%), Mathematics (-8% to -20%), Multi-step Reasoning (-10% to -25%). Code/Math/Reasoning bars in red/orange, others in green. German labels, data viz style.

@@ -20,6 +20,8 @@ _build/
 *.pdfsync
 *.synctex.gz
 *.run.xml
+.codex
+GEMINI*
 
 # Temporary files
 *~

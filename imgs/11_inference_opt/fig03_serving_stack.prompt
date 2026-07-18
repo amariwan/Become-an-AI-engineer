@@ -1,0 +1,1 @@
+Layered architecture: Inference Serving Stack. TOP: HTTP Client -> API Gateway -> Load Balancer. MIDDLE: Request Scheduler (Continuous Batching). BOTTOM: GPU Array [GPU 0: Llama][GPU 1: Llama][GPU 2: ...] each with KV-Cache. Arrows showing request flow. Kubernetes-style architecture diagram, clean boxes.

@@ -1,0 +1,1 @@
+LoRA Architecture Diagram. Original Layer: Weight Matrix W (4096x4096, frozen). LoRA Adapter: Matrix A (4096x16) + Matrix B (16x4096) = Delta W. Forward Pass: y = Wx + BAx. Parameter count: Full FT 16.8M vs LoRA 131K (128x reduction). Visual: Large frozen weight box, two small adapter boxes, plus sign, output. German labels, technical diagram style.

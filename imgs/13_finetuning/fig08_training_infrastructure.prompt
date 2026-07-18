@@ -1,0 +1,1 @@
+Training Infrastructure Comparison Table. Four rows: 8B LoRA (1x A100 80GB, Batch 32, $2-3/hr), 8B QLoRA (1x A10 24GB, Batch 8, $0.50-1/hr), 70B QLoRA (1x A100 80GB, Batch 8, $2-3/hr), 70B Full FT (8x H100, Batch 32, $40-60/hr). Columns: Setup, GPU, Batch/Step, Cost/Hour. Color coding by cost. German labels.

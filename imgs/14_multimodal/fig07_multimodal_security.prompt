@@ -1,0 +1,1 @@
+Multimodal Security Guard Architecture. Input Image -> OCR (Tesseract) -> Extract Text -> Injection Check (patterns) -> Block/Allow. Input Audio -> Librosa -> Frequency Analysis -> Ultrasound Detection (>20kHz) -> Block/Allow. Clean inputs -> LLM. Shield icons for blocked paths, green check for allowed. Three-layer defense. German labels.

@@ -1,0 +1,1 @@
+Multi-Judge System Flow Diagram: Input Query + Answer -> Three Parallel Judges (GPT-4o, Claude 3.5 Sonnet, Gemini 2.5 Pro) -> Each outputs Score 1-10 -> Majority Vote Aggregator -> Final Score + Agreement % + All Scores array. Arrow flow, German labels, technical style.

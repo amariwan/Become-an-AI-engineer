@@ -93,10 +93,10 @@ Domänenanpassung & Stark & Mittel \\
 
 \begin{itemize}
 
-    \item \textbf{Token} Kleinste Verarbeitungseinheit. Wort, Teilwort, Zeichen. Tokenisierung ist modell- und sprachspezifisch. \realitycheck{Deutsch $\approx$ 1.8x mehr Tokens als Englisch für gleichen Text. Budgetiere das ein.}
+    \item \textbf{Token} Kleinste Verarbeitungseinheit. Wort, Teilwort, Zeichen. Tokenisierung ist modell- und sprachspezifisch.
     \item \textbf{Scaling Law} Beobachteter Zusammenhang zwischen Modellgröße, Datenmenge und Trainingszeit. Größere Modelle benötigen exponentiell mehr Daten, liefern aber überproportional bessere Ergebnisse -- bis zu einem Optimum.
     \item \textbf{Emergent Ability} Fähigkeit, die erst ab bestimmter Modellgröße auftritt und nicht explizit antrainiert wurde. Beispiele: Chain-of-Thought Reasoning, In-Context Learning, Tool Use. Nicht vorhersagbar -- sie erscheinen sprunghaft.
-    \item \textbf{Knowledge Cutoff} Datum, bis zu dem die Trainingsdaten eines Modells aktuell sind. Modell mit Cutoff 2024 hat keinerlei Wissen über Ereignisse danach.
+    \item \textbf{Knowledge Cutoff} Datum, bis zu dem die Trainingsdaten eines Modells aktuell sind. Modell mit aktuellem Cutoff hat keinerlei Wissen über Ereignisse danach.
     \item \textbf{Halluzination} Erzeugung faktisch inkorrekter Inhalte. Kein LLM kann zwischen \glqq gelerntem Wissen\grqq{} und \glqq Erfundenem\grqq{} unterscheiden.
 \end{itemize}
 
@@ -642,7 +642,7 @@ def generate_product_description_local(
     \item \textbf{Starte mit einem kleinen Modell}: GPT-4o-mini oder Llama 4 (8B) reichen für 80\% der Aufgaben. Nutze teure Modelle nur, wenn das kleine Modell versagt.
     \item \textbf{Teste mehrere Modelle systematisch}: Ein Modell, das auf deinem Use-Case gut aussieht, kann in der Praxis durch ein anderes übertroffen werden. Baue einen Modell-Vergleichs-Benchmark.
     \item \textbf{Dokumentiere Knowledge Cutoffs}: Jedes Modell hat ein Ablaufdatum. Vermerke das Cutoff-Datum im System-Prompt oder in der Metadatenbank.
-    \item \textbf{Versioniere dein Modell}: Nutze explizite Modell-Strings (gpt-4o-2026-01-15), nicht generische (gpt-4o). API-Provider ändern das zugrundeliegende Modell hinter generischen Namen.
+    \item \textbf{Versioniere dein Modell}: Nutze explizite Modell-Strings (z.B. \texttt{gpt-4o-202X-XX-XX}), nicht generische (\texttt{gpt-4o}). API-Provider ändern das zugrundeliegende Modell hinter generischen Namen.
     \item \textbf{Plane Fallbacks}: Wenn OpenAI ausfällt, muss Anthropic einspringen können. Baue Multi-Provider-Unterstützung von Tag 1 ein.
 \end{itemize}
 
@@ -876,9 +876,9 @@ feedbacks = [
 \end{itemize}
 
 \autornotiz{
-Nächstes Kapitel: Prompt Engineering -- die Schnittstelle, die zählt.
-Da lernst du: Few-Shot (3-5 Edge-Cases) schlägt Zero-Shot immer. Temperature 0.0 in Prod. Prompt Injection Defense. Jinja2 Registry. Golden Sets. Und warum Self-Consistency (5x Cost) nur für Medical/Fraud/Legal lohnt.
+Nächstes Kapitel: Modell-Landschaft -- der Marktüberblick.
+Da lernst du: Die vier Schichten des AI-Stacks (LLM, RAG, Agents, MCP). Closed Source (OpenAI, Anthropic, Google) vs. Open Source (Llama, Mistral, Qwen, DeepSeek). Multi-Provider-Routing als Standard. Entscheidungsmatrix für Modellwahl. Und warum Abstraction Layer von Tag 1 Pflicht ist.
 }
 
-\textbf{Nächster Schritt:} Mit diesem Rollen-Verständnis geht es weiter zu vorgefertigten Modellen — was LLMs wirklich können und wo die Grenzen liegen.
-\clearpage
+\textbf{Nächster Schritt:} Mit diesem Verständnis der Foundation Models geht es weiter zur Modell-Landschaft -- der Überblick über Anbieter, Modelle und Routing-Strategien.
+\endinput

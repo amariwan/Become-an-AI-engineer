@@ -1,0 +1,1 @@
+Fine-Tuning Dataset Quality Criteria Checklist. Six criteria as cards: Min Size (100+ per task, 500+ reliable), Diversity (real variance, not 100x same pattern), Correctness (every answer fact-checked), Help/Eval Split (80% instruction, 20% CoT), Balancing (no category dominates), Deduplication (Levenshtein >0.9 removed). Green check/red X icons. German labels.

@@ -5,35 +5,44 @@
 % AUTOR-NOTIZ STATT LERNZIELE
 % ============================================================
 \autornotiz{
-2023 habe ich für einen E-Commerce-Kunden ein Evaluations-Dashboard gebaut. 50k Queries/Tag.
-Ohne Golden Set: Jeder Prompt-Change war Blindflug. "Fühlt sich besser an" = keine Metrik.
-Mit Golden Set (100 Cases) + Multi-Judge (3 Modelle) + CI-Gate:
-- Regression bei Prompt-Change in 2 Min erkannt, nicht in 2 Wochen durch User-Beschwerden.
-- Kosten/Query um 34\% gesenkt durch Token-Budget-Check in CI.
-- Halluzinationsrate von 8\% auf 1.2\% gedrückt durch Faithfulness-Metrik + Auto-Retry.
+2024: SupportPilot ging ohne Evaluation live. Prompt-v1 "fühlte sich gut an" --- aber wir wussten nicht, ob er besser oder schlechter war als ein Münzwurf.
+Erst Golden Set (80 Cases, stratifiziert aus echten User-Queries) + Multi-Judge (GPT-4o, Claude 3.5 Sonnet, Gemini 1.5 Pro) + CI-Gate (Pass Rate $\geq$ 85\%, Faithfulness $\geq$ 0.8, Cost $\leq$ €0.02) machte das System steuerbar.
+Ergebnis nach 3 Monaten:
+- Pass Rate: 72\% $\to$ 94\% (Golden Set, n=80, Agreement $\geq$ 66\%)
+- Halluzinationsrate: 8\% $\to$ 1.2\% (Faithfulness 0.61 $\to$ 0.92, Auto-Retry bei $<$ 0.7)
+- Cost/Query: €0.018 $\to$ €0.012 (-34\%, Token-Budget-Check in CI, n=80 Baseline vs. n=80 nach Optimierung)
+- Regressions-Erkennung: 2 Min (CI) statt 2 Wochen (User-Beschwerden)
+- Model Drift erkannt: gpt-4o-mini Still-Update (2024-07-18) $\to$ Faithfulness -8\% über 14 Tage $\to$ Pinning gpt-4o-mini-2024-07-18 + Canary 5\%
 Ohne systematische Evaluation ist jeder Prompt-Change Raten. Du weisst nicht, ob das System besser oder schlechter geworden ist. Du weisst nicht, welche Kosten die Änderung verursacht. Und du weisst nicht, ob die Qualität in Produktion nachlässt.
 }
 
 % ============================================================
-% MOTIVATION
+% 1. WHY THIS MATTERS
 % ============================================================
-\section{Motivation}
+\section{Warum Evaluation die einzige Engineering-Disziplin ist, die probabilistische Systeme beherrschbar macht}
 
-In der klassischen Softwareentwicklung ist Testing Standard: Unit-Tests, Integrationstests, E2E-Tests. Jeder Commit durchläuft eine Pipeline, die Regressionen erkennt. LLMs sind probabilistische Systeme -- sie liefern bei identischem Input nicht garantiert denselben Output. Ein Prompt-Update, das einen Fall verbessert, kann zehn andere verschlechtern.
+In der klassischen Softwareentwicklung ist Testing Standard: Unit-Tests, Integrationstests, E2E-Tests. Jeder Commit durchläuft eine Pipeline, die Regressionen erkennt. LLMs sind probabilistische Systeme — sie liefern bei identischem Input nicht garantiert denselben Output. Ein Prompt-Update, das einen Fall verbessert, kann zehn andere verschlechtern.
 
 Ohne systematische Evaluation ist jede Prompt-Änderung Raten. Du weisst nicht, ob das System besser oder schlechter geworden ist. Du weisst nicht, welche Kosten die Änderung verursacht. Und du weisst nicht, ob die Qualität in Produktion nachlässt.
 
-LLMOps -- die Übertragung von DevOps-Prinzipien auf LLM-Workflows -- schliesst diese Lücke: reproduzierbare Tests, kontinuierliches Monitoring und datengetriebene Entscheidungen über Prompt-Änderungen.
+Chip Huyen formuliert es präzise: \textbf{Evaluation first} — nicht nachgeschoben, sondern \textbf{vor} RAG, Agents, Fine-Tuning. Evaluation ist die einzige Engineering-Disziplin, die probabilistische Systeme deterministisch beherrschbar macht.
+
+\par
+\vspace{0.5cm}
+\begin{realitycheckEnv}
+Wer "Prompt Engineering = gute Fragen stellen" denkt, baut Systeme, die in Produktion brechen. Prompt Engineering ist: \textbf{Struktur erzwingen, Validierung bauen, Distributionen einengen}. Das ist Engineering. Der Rest ist Hoffen.
+\end{realitycheckEnv}
+
+LLMOps — die Übertragung von DevOps-Prinzipien auf LLM-Workflows — schliesst diese Lücke: reproduzierbare Tests, kontinuierliches Monitoring und datengetriebene Entscheidungen über Prompt-Änderungen.
 
 % ============================================================
-% GRUNDLAGEN
+% 2. MENTAL MODEL
 % ============================================================
-\section{Grundlagen -- Evaluationsdimensionen}
+\section{Mental Model — Drei Dimensionen, ein Trade-off-Dreieck}
 
-Jede LLM-Evaluation misst drei Dimensionen:
+Jede LLM-Evaluation misst drei Dimensionen, die in einem harten Trade-off stehen:
 
 \begin{itemize}
-
     \item \textbf{Qualität} Wie gut ist die Antwort? Richtig, vollständig, sicher, höflich? Gemessen durch Golden Datasets, LLM-Judges oder menschliches Feedback.
     \item \textbf{Kosten} Was kostet ein einzelner Request? Token-Verbrauch (Input + Output), Modell-Wahl, Cache-Trefferrate. Gemessen in Cent pro Query.
     \item \textbf{Latenz} Wie schnell antwortet das System? Time-to-First-Token (TTFT), Total Response Time, P95/P99. Gemessen in Millisekunden.
@@ -41,106 +50,167 @@ Jede LLM-Evaluation misst drei Dimensionen:
 
 Diese drei Dimensionen stehen im Trade-off: Ein grösseres Modell liefert oft bessere Qualität, kostet aber mehr und ist langsamer. Evaluation hilft dir, den optimalen Punkt für deinen Anwendungsfall zu finden.
 
-\praxishinweis{Ohne Golden Dataset ist jede Prompt-Änderung geraten. Ein Dataset mit 50--100 Testfällen reicht für den Start -- aber es muss wachsen. Sammle jeden Produktions-Fehler als neuen Testfall. Die Kombination aus Offline-Evaluation (vor Deployment) und Online-Monitoring (in Produktion) ist Pflicht -- keine der beiden Ebenen ersetzt die andere.}
-
-\subsection{Evaluationsstufen}
-
-\begin{table}[H]
-\centering
-\begin{tabularx}{\linewidth}{lX}
-\toprule
-\textbf{Stufe} & \textbf{Beschreibung} \\
-\midrule
-Offline-Evaluation & Test gegen Golden Dataset vor dem Deployment. Misst Accuracy, Precision, Recall. \\
-Online-Evaluation & Metriken aus der Produktion: User-Feedback, A/B-Tests, Costs per Query. \\
-Human Evaluation & Domänenexperten bewerten Stichproben. Goldstandard, aber teuer und langsam. \\
-LLM-as-a-Judge & Ein zweites Modell bewertet die Ausgabe. Skaliert gut, aber hat eigene Biases. \\
-\bottomrule
-\end{tabularx}
-\caption{Evaluationsstufen für LLM-Systeme}
-\end{table}
+\par
+\vspace{0.5cm}
+\begin{merkeEnv}
+\begin{itemize}
+    \item LLM $\neq$ deterministische Funktion $\to$ Testing $\neq$ klassisches Unit-Testing
+    \item \textbf{Offline} (Golden Set vor Deploy) + \textbf{Online} (Tracing + Drift + A/B in Prod) — keine ersetzt die andere
+    \item \textbf{Proxy vs. Business Metrik}: Faithfulness korreliert nicht automatisch mit Customer Satisfaction
+    \item Evaluation ist \textbf{kontinuierlicher Prozess}, kein einmaliges Artefakt
+\end{itemize}
+\end{merkeEnv}
 
 % ============================================================
-% ARCHITEKTUR
+% 3. ARCHITECTURE
 % ============================================================
 \section{Architektur einer Evaluations-Pipeline}
 
-Eine vollständige Evaluations-Pipeline besteht aus mehreren Schichten:
+Eine vollständige Evaluations-Pipeline besteht aus zwei gekoppelten Ebenen:
 
 \begin{verbatim}
-+------------------------------------------------------------------+
-|                         CI/CD Pipeline                           |
-|  +------------+  +----------+  +-----------+  +---------------+  |
-|  | Lint/Check |->| Golden   |->| LLM-as-   |->| Kosten/Latenz |  |
-|  | Prompts    |  | Dataset  |  | a-Judge   |  | Check         |  |
-|  +------------+  +----------+  +-----------+  +---------------+  |
-+------------------------------------------------------------------+
-                            |
-+------------------------------------------------------------------+
-|                    Produktions-Monitoring                         |
-|  +----------+  +----------+  +-----------+  +---------------+     |
-|  | Tracing  |->| Metriken |->| Alerting  |->| Dashboard     |    |
-|  | (jeder   |  | (P95,    |  | (bei       |  | (Grafana,     |    |
-|  |  Call)   |  |  Costs)  |  |  Drift)    |  |  Langfuse)    |    |
-|  +----------+  +----------+  +-----------+  +---------------+     |
-+------------------------------------------------------------------+
++-------------------------------------------------------------+
+|                    CI/CD Pipeline                           |
+|  Lint $\to$ Golden Dataset $\to$ Multi-Judge $\to$ Cost/Latency Gate   |
++-------------------------+-----------------------------------+
+                          |
++-------------------------v-----------------------------------+
+|                  Production Monitoring                       |
+|  Tracing (Langfuse) $\to$ Metrics (P95, Cost, Faithfulness)    |
+|       $\to$ Alerting (Drift, Cost Spike, Quality Drop)          |
+|       $\to$ Dashboard (Grafana/Langfuse) $\to$ A/B Test Framework   |
++-------------------------------------------------------------+
 \end{verbatim}
 
 Die Trennung in Offline-Evaluation (vor dem Deployment) und Online-Monitoring (in der Produktion) ist zentral. Keine der beiden Ebenen ersetzt die andere.
 
 \subsection{Komponenten einer Evaluations-Pipeline}
 
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Golden Dataset}: Versionierte Sammlung von Testfällen mit erwarteten Ergebnissen
-    \item \textbf{Evaluations-Runner}: Führt Tests aus, sammelt Ergebnisse, erzeugt Reports
-    \item \textbf{LLM-Judge}: Optionales Bewertungsmodell für qualitative Metriken
-    \item \textbf{Tracing-Layer}: Protokolliert jeden LLM-Aufruf mit Metadaten
-    \item \textbf{Dashboard}: Visualisiert Metriken über Zeit, erkennt Drift
+\begin{enumerate}
+    \item \textbf{Golden Dataset}: Versionierte Sammlung von Testfällen mit erwarteten Ergebnissen (Git-getaggt, wachsend)
+    \item \textbf{Evaluation Runner}: Führt Tests parallel aus, cached Ergebnisse, budget-gated (Max \$5/Run)
+    \item \textbf{LLM Judge}: Multi-Judge (3 Modelle, verschiedene Familien, Majority Vote + Agreement-Score)
+    \item \textbf{Tracing Layer}: Protokolliert jeden LLM-Aufruf mit Prompt-Hash, Tokens, Latency, Cost, Validation-Status
+    \item \textbf{Dashboard + Alerting}: Quality < 0.7, Cost/Query > €0.02, P95 > 2s, Drift (KS/PSI) p < 0.01
 \end{enumerate}
 
-% ============================================================
-% THEORIE
-% ============================================================
-\section{Theorie -- Evaluationsmetriken und ihre Fallstricke}
+\praxishinweis{Ohne Golden Dataset ist jede Prompt-Änderung geraten. Ein Dataset mit 50–100 Testfällen reicht für den Start — aber es muss wachsen. Sammle jeden Produktions-Fehler als neuen Testfall. Die Kombination aus Offline-Evaluation (vor Deployment) und Online-Monitoring (in Produktion) ist Pflicht — keine der beiden Ebenen ersetzt die andere.}
 
-\subsection{Automatische Metriken}
+% ============================================================
+% 4. CORE CONCEPTS
+% ============================================================
+\section{Core Concepts — Golden Dataset, LLM Judge, Metriken, Drift, Human Protocol}
 
-Neben LLM-Judges gibt es klassische NLP-Metriken, die ohne zweites Modell auskommen:
+\subsection{Golden Dataset — Das Fundament}
+
+Ein Golden Dataset ist eine versionierte Sammlung von Testfällen mit erwarteten Ergebnissen. Struktur:
 
 \begin{itemize}
-
-    \item \textbf{BLEU (Bilingual Evaluation Understudy)} Misst die N-Gramm-Überlappung zwischen generiertem und Referenztext. Ursprünglich für Maschinenübersetzung entwickelt. Schwäche: Bestraft paraphrasierte, aber korrekte Antworten.
-    \item \textbf{ROUGE (Recall-Oriented Understudy for Gisting Evaluation)} Misst Recall der N-Gramm-Überlappung. Verbreitet für Zusammenfassungen. Schwäche: Erfasst keine semantische Äquivalenz.
-    \item \textbf{METEOR} Berücksichtigt Synonyme und Wortstellung. Besser als BLEU für einzelne Sätze.
-    \item \textbf{BLEURT} Ein lernbares Metrik-Modell, das menschliche Bewertungen approximiert. Robuster als BLEU, aber rechenintensiver.
-    \item \textbf{SEMANTIC SIMILARITY} Embedding-basierte Ähnlichkeit zwischen generierter und Referenz-Antwort. Erfasst Paraphrasen, aber kein Faktencheck.
+    \item \textbf{Input}: User-Query (String)
+    \item \textbf{Expected Output}: Entweder Keywords (contains), JSON Schema (structured), oder Reference Answer (semantic similarity)
+    \item \textbf{Should Not Contain}: Negative Constraints (z.B. "keine Halluzination", "keine PII")
+    \item \textbf{Metadata}: Query-Type (Status, Rechnung, Kündigung, Technisch, OOD), Difficulty, Expected Cost Budget
 \end{itemize}
 
-\subsection{Das LLM-Judge-Problem}
+\paragraph{Operationalisierung:}
+\begin{itemize}
+    \item Start: 50–100 Cases, stratifiziert nach Query-Type
+    \item Wachstum: Jeder Produktions-Fehler $\to$ neuer Testfall + CI Fail bis Fix
+    \item Versionierung: \texttt{golden\_v1.json} $\to$ \texttt{golden\_v2.json} + Git Tag \texttt{eval/golden-v2}
+    \item Synthetische Generierung nur als \textbf{Seed}, 20\% manuell geprüft
+    \item Train/Test Split strikt getrennt (80/20), Versionierung pro Split
+\end{itemize}
+
+\begin{lstlisting}[language=Python, caption={Golden Dataset Schema — [Production Ready]}]
+from typing import TypedDict, Literal, Optional
+from pydantic import BaseModel, Field
+
+class ExpectedOutput(TypedDict):
+    type: Literal["contains", "json_schema", "semantic_similarity"]
+    keywords: Optional[list[str]]
+    schema: Optional[dict]
+    reference_answer: Optional[str]
+    min_similarity: Optional[float]
+
+class GoldenCase(BaseModel):
+    id: str
+    input: str
+    query_type: Literal["status", "billing", "cancellation", "technical", "ood"]
+    difficulty: Literal["easy", "medium", "hard"]
+    expected: ExpectedOutput
+    should_not_contain: list[str] = Field(default_factory=list)
+    cost_budget_eur: float = 0.02
+    latency_budget_ms: int = 2000
+
+# Example
+GoldenCase(
+    id="status_001",
+    input="Wo bleibt meine Bestellung #12345?",
+    query_type="status",
+    difficulty="easy",
+    expected={
+        "type": "json_schema",
+        "schema": {
+            "order_id": str,
+            "status": Literal["shipped", "processing", "delivered", "cancelled"],
+            "tracking_url": Optional[str],
+            "estimated_delivery": Optional[str]
+        }
+    },
+    should_not_contain=["weiss nicht", "keine information", "probier später"],
+    cost_budget_eur=0.015,
+    latency_budget_ms=1500
+)
+\end{lstlisting}
+
+\subsection{LLM-as-a-Judge — Bias Taxonomy \& Mitigation}
 
 LLM-as-a-Judge hat einen fundamentalen Bias: \textbf{Das evaluierende Modell bevorzugt oft eigene Output-Charakteristiken}. Ein GPT-4o-Judge bevorzugt lange, ausführliche Antworten. Ein Claude-Judge bevorzugt vorsichtige, abwägende Antworten. Ein Gemini-Judge bewertet strukturierte Aufzählungen höher.
 
-Die Lösung ist nicht trivial:
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Multi-Judge}: Drei verschiedene Modelle bewerten unabhängig, Majority Vote als Ergebnis
-    \item \textbf{Rubric-based}: Statt freier Bewertung wird gegen eine definierte Bewertungsmatrix (Rubric) getestet
-    \item \textbf{Calibration}: Menschliche Bewertungen als Ground Truth, LLM-Judge gegen diese kalibrieren
-    \item \textbf{Position-Bias}: Die Reihenfolge der zu bewertenden Antworten beeinflusst das Ergebnis. Immer beide Reihenfolgen testen
-\end{itemize}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXX}
+\toprule
+\textbf{Bias} & \textbf{Manifestation} & \textbf{Mitigation} \\
+\midrule
+Verbosity & GPT-4o bevorzugt lange Antworten & Rubric: "Kürze = Bonus", Length-Normalisierung \\
+Self-Preference & Modell bewertet eigenen Stil höher & \textbf{Multi-Judge}: 3 verschiedene Modell-Familien \\
+Position Bias & Erste Antwort in Pairwise gewinnt & \textbf{Position Swapping}: beide Reihenfolgen testen \\
+Style Bias & Claude = vorsichtig, Gemini = strukturiert & Rubric-basiert statt freier Skala \\
+Calibration Drift & Judge wird im Laufe der Zeit "nachsichtiger" & Monatliche Human-Calibration (Krippendorff $\alpha \geq 0.8$) \\
+\bottomrule
+\end{tabularx}
+\caption{LLM Judge Bias Taxonomy und Mitigation}
+\end{table}
 
-\begin{lstlisting}[language=Python, caption=Multi-Judge-System mit Majority-Vote]
+\paragraph{Multi-Judge Implementation:} 3 Modelle (verschiedene Familien: OpenAI, Anthropic, Google) $\to$ Majority Vote + Agreement-Score (Konsens $\geq 66\%$ = valide).
+
+\begin{lstlisting}[language=Python, caption={Multi-Judge mit Majority Vote + Agreement — [Production Ready]}]
 from collections import Counter
+from dataclasses import dataclass
+from typing import Optional
 
-JUDGE_MODELS = ["gpt-4o", "claude-3.5-sonnet", "gemini-2.5-pro"]
+JUDGE_MODELS = [
+    "gpt-4o-2024-08-06",      # OpenAI family
+    "claude-3-5-sonnet-20241022",  # Anthropic family  
+    "gemini-1.5-pro-002"      # Google family
+]
 
-def multi_judge(query: str, answer: str, rubric: str) -> dict:
+@dataclass
+class JudgeResult:
+    score: Optional[float]
+    confidence: float
+    agreement: float
+    individual_scores: list[int]
+
+def multi_judge(query: str, answer: str, rubric: str) -> JudgeResult:
     """Drei unabhängige Modelle bewerten, Majority-Vote als Ergebnis."""
     scores = []
 
     for model in JUDGE_MODELS:
         judge_prompt = (
-            f"Bewerte die Antwort auf einer Skala 1-10.\n"
-            f"Rubric: {rubric}\n"
+            f"Bewerte die Antwort auf Skala 1-10.\n"
+            f"Rubrik: {rubric}\n"
             f"Frage: {query}\n"
             f"Antwort: {answer}\n"
             f"Gib NUR eine Zahl zurück."
@@ -152,743 +222,416 @@ def multi_judge(query: str, answer: str, rubric: str) -> dict:
             continue
 
     if not scores:
-        return {"score": None, "confidence": 0.0}
+        return JudgeResult(score=None, confidence=0.0, agreement=0.0, individual_scores=[])
 
-    # Majority-Vote oder Median bei Streuung
     score_counts = Counter(scores)
     majority_score = score_counts.most_common(1)[0][0]
+    agreement = max(score_counts.values()) / len(scores)
 
-    return {
-        "score": majority_score,
-        "all_scores": scores,
-        "agreement": max(score_counts.values()) / len(scores),
-    }
+    return JudgeResult(
+        score=majority_score,
+        confidence=agreement,
+        agreement=agreement,
+        individual_scores=scores
+    )
 
+# Usage
 result = multi_judge(
     query="Was ist der Unterschied zwischen RAG und Fine-Tuning?",
-    answer="RAG ergänzt den Prompt mit relevanten Dokumenten, "
-           "Fine-Tuning passt die Modellgewichte an.",
+    answer="RAG ergänzt den Prompt mit relevanten Dokumenten, Fine-Tuning passt die Modellgewichte an.",
     rubric="Faktenrichtigkeit, Vollständigkeit, Klarheit"
 )
-print(f"Score: {result['score']}/10 | "
-      f"Agreement: {result['agreement']:.0%}")
-print(f"Einzelbewertungen: {result['all_scores']}")
+print(f"Score: {result.score}/10 | Agreement: {result.agreement:.0%}")
+print(f"Einzelbewertungen: {result.individual_scores}")
 \end{lstlisting}
 
-% ============================================================
-% PRAXIS -- Existing content preserved and extended
-% ============================================================
-\section{Golden Datasets -- der Standard für Prompt-Tests}
+\praxishinweis{Multi-Judge ist Pflicht im CI-Gate. Single-Judge nur f\"ur Exploration. Agreement < 66\% = "uneinheitlich" $\to$ Human Review triggern. Monatliche Kalibrierung gegen Human Ground Truth (Krippendorff $\alpha \geq 0.8$) verhindert Calibration Drift.}
 
-Ein Golden Dataset ist eine Sammlung von Input-Output-Paaren mit bekannten, korrekten Antworten. Du kannst damit jeden Prompt-Versuch objektiv bewerten:
+\subsection{RAG-spezifische Metriken (Forward-Ref: Kap. 7)}
 
-\begin{lstlisting}[language=Python, caption=Golden Dataset erstellen und evaluieren]
-# 1. Golden Dataset definieren (manuell oder halbautomatisch)
-GOLDEN_DATASET = [
-    {
-        "input": "Was ist eure Rueckgabepolitik?",
-        "expected_output_type": "contains",
-        "expected_keywords": ["30 Tage", "Kostenlos"],
-        "should_not_contain": ["keine", "nicht moeglich"],
-    },
-    {
-        "input": "Wie kann ich mein Abo kuendigen?",
-        "expected_output_type": "json_schema",
-        "expected_schema": {"cancellation_url": str, "deadline_days": int},
-    },
-    # 100+ mehr Beispiele fuer robuste Evaluation
-]
-
-# 2. Evaluations-Funktion schreiben
-from typing import TypedDict
-
-class EvalResult(TypedDict):
-    input: str
-    actual_output: str
-    passed: bool
-    score: float
-    failures: list[str]
-
-def evaluate_prompt(dataset: list[dict], prompt_fn) -> list[EvalResult]:
-    """Evaluat den Prompt gegen das gesamte Golden Dataset."""
-    results = []
-
-    for example in dataset:
-        actual_output = prompt_fn(example["input"])
-
-        # Typ-basierte Validierung
-        if example["expected_output_type"] == "contains":
-            passed = all(
-                kw in actual_output.lower()
-                for kw in example["expected_keywords"]
-            ) and not any(
-                bad in actual_output.lower()
-                for bad in example.get("should_not_contain", [])
-            )
-            score = sum(1 for kw in example["expected_keywords"] if kw in actual_output.lower()) / len(example["expected_keywords"])
-        elif example["expected_output_type"] == "json_schema":
-            try:
-                parsed = json.loads(actual_output)
-                passed = all(k in parsed for k in example["expected_schema"])
-                score = sum(1 for k in example["expected_schema"] if k in parsed) / len(example["expected_schema"])
-            except (json.JSONDecodeError, KeyError):
-                passed, score = False, 0.0
-        else:
-            passed, score = False, 0.0
-
-        results.append({
-            "input": example["input"],
-            "actual_output": actual_output[:200],
-            "passed": passed,
-            "score": score,
-        })
-
-    return results
-
-# 3. Ausfuehren und Ergebnisse analysieren
-results = evaluate_prompt(GOLDEN_DATASET, lambda x: call_llm(f"{SYSTEM_PROMPT}\n\n{x}"))
-pass_rate = sum(1 for r in results if r["passed"]) / len(results) * 100
-avg_score = sum(r["score"] for r in results) / len(results)
-
-print(f"Pass Rate: {pass_rate:.1f}%")
-print(f"Durchschnittliche Score: {avg_score:.2f}/1.0")
-
-# Zeige die schwaechsten Beispiele zum Nachbessern
-failed = [r for r in results if not r["passed"]]
-for f in failed[:5]:
-    print(f"\nFAILED: {f['input'][:40]}...")
-    print(f"  Output: {f['actual_output'][:80]}...")
-\end{lstlisting}
-
-\subsection{Golden Dataset pflegen}
-
-Ein Golden Dataset ist kein einmaliges Artefakt. Es muss wachsen:
-
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Start minimal}: 20--50 Beispiele reichen für den ersten Durchlauf
-    \item \textbf{Aus Produktion erweitern}: Jeder reale User-Input, der zu Fehlern führt, wird als Testfall hinzugefügt
-    \item \textbf{Versionieren}: Das Dataset gehört ins Git-Repository, versioniert mit Tags
-    \item \textbf{Review durch Domänenexperten}: Fachliche Korrektheit der Tests muss regelmässig geprüft werden
-\end{itemize}
-
-% ============================================================
-% LLM-as-a-Judge
-% ============================================================
-\section{LLM-as-a-Judge -- automatische Bewertung durch ein Modell}
-
-Für qualitative Bewertungen (wo kein korrekter Output existiert) nutzt man ein zweites Modell als Richter:
-
-\begin{lstlisting}[language=Python, caption=LLM-as-a-Judge: Ein Modell bewertet die Antwort eines anderen]
-def llm_judge(query: str, answer: str, criteria: str) -> dict:
-    """Ein starkes Model (GPT-4o) bewertet die Antwort eines anderen Models."""
-
-    prompt = f"""Du bist ein Experte fuer Qualitaetsbewertung.
-Bewerte die folgende Antwort auf einer Skala von 1-10.
-
-Kriterien: {criteria}
-
-Frage: {query}
-Antwort: {answer}
-
-Gib DEINUR eine Zahl zwischen 1 und 10 zurueck, keine Erklaerungen."""
-
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.0,
-    )
-
-    score = int(response.choices[0].message.content.strip())
-    return {"score": max(1, min(10, score))}
-
-# Anwendung: Bewertung der RAG-Qualitaet
-for example in GOLDEN_DATASET:
-    rag_answer = my_rag_chain.invoke(example["input"])
-    judge_result = llm_judge(
-        query=example["input"],
-        answer=rag_answer,
-        criteria="Faktenrichtigkeit, Vollstaendigkeit, Hoeflichkeit, Klarheit"
-    )
-    print(f"Score: {judge_result['score']}/10 fuer '{example['input'][:40]}...")
-\end{lstlisting}
-
-\praxishinweis{LLM-as-a-Judge hat systematische Biases. Ein GPT-4o-Judge bevorzugt lange, ausführliche Antworten; Claude bevorzugt vorsichtige; Gemini bevorzugt Aufzählungen. Gegenmaßnahmen: Multi-Judge (3 Modelle, Majority Vote), Rubric-basierte Bewertung statt freier Skala, Position-Swapping bei Pairwise-Vergleichen.}
-
-\subsection{Judge-Typen im Vergleich}
+Für RAG-Systeme (Kap. 7) brauchst du Metriken, die Retrieval und Generation getrennt messen:
 
 \begin{table}[H]
 \centering
-\begin{tabularx}{\linewidth}{lXX}
+\begin{tabularx}{\linewidth}{lX}
 \toprule
-\textbf{Typ} & \textbf{Vorteil} & \textbf{Nachteil} \\
+\textbf{Metrik} & \textbf{Was sie misst} \\
 \midrule
-Pairwise Comparison & Zwei Antworten vergleichen, Rang ermitteln & Skaliert quadratisch mit Anzahl Varianten \\
-Pointwise Scoring & Absolute Bewertung 1--10 & Schwer zu kalibrieren \\
-Rubric-based & Bewertung gegen definierte Kriterien & Aufwändig zu erstellen \\
-Reference-based & Vergleich mit Goldstandard & Benötigt Referenz-Antworten \\
+Hit Rate @ K & Ist das \textbf{relevante} Chunk in Top-K? (Binary: ja/nein pro Query) \\
+MRR @ K & Wie weit oben ist das \textbf{erste} relevante Chunk? \\
+Faithfulness & Wie viel der LLM-Antwort ist durch retrievede Chunks \textbf{belegbar}? (RAGAS-Style) \\
+Answer Relevance & Beantwortet die Antwort die \textbf{eigentliche} Query? \\
+Context Precision & Signal/Rauschen im übergebenen Kontext \\
 \bottomrule
 \end{tabularx}
-\caption{Vergleich verschiedener LLM-Judge-Ansätze}
+\caption{RAG-Metriken — das Minimum für Produktion}
 \end{table}
 
-\subsection{Multi-Perspektivische Evaluation -- Der LLM Council}
+\paragraph{Faithfulness Implementation (RAGAS-Style):}
 
-Ein einzelner LLM-Judge hat blinde Flecken: Er bevorzugt seinen eigenen Stil, erkennt eigene Fehler nicht und denkt linear. Eine leistungsfähigere Alternative ist der \textbf{LLM Council} -- mehrere unabhängige Modelle analysieren dasselbe Problem aus unterschiedlichen Perspektiven.
+\begin{lstlisting}[language=Python, caption={Faithfulness Metric — [Production Ready]}]
+from sentence_transformers import CrossEncoder
+import numpy as np
 
-\subsubsection{Die Council-Architektur}
+class FaithfulnessEvaluator:
+    """Misst: Wie viel der Answer-Tokens wird durch Retrieved Chunks belegt?"""
+    
+    def __init__(self, judge_model: str = "gpt-4o-2024-08-06"):
+        self.judge_model = judge_model
+        self.nli_model = CrossEncoder("cross-encoder/nli-deberta-v3-base")
+    
+    def score(self, question: str, answer: str, contexts: list[str]) -> float:
+        """0.0 = keine Belegung, 1.0 = vollständig belegt."""
+        # 1. Answer in Claims zerlegen (einfache Heuristik: Sätze)
+        claims = [s.strip() for s in answer.split(".") if s.strip()]
+        if not claims:
+            return 1.0
+        
+        # 2. Jeden Claim gegen Contexts prüfen (NLI: Entailment/Contradiction/Neutral)
+        supported = 0
+        for claim in claims:
+            max_entailment = 0.0
+            for ctx in contexts:
+                pairs = [(claim, ctx)]
+                scores = self.nli_model.predict(pairs)
+                entailment_prob = scores[0][0]  # Entailment class prob
+                max_entailment = max(max_entailment, entailment_prob)
+            
+            if max_entailment > 0.5:  # Threshold tuneable
+                supported += 1
+        
+        return supported / len(claims)
 
-\begin{verbatim}
-                      +-----------------------+
-                      |      Eingabe           |
-                      +----------+------------+
-                                 |
-             +--------------------+--------------------+
-             |                    |                    |
-        [Advisor A]         [Advisor B]          [Advisor C]
-        "Hinterfrage       "Erstes Prinzip"     "Chancen"
-         Annahmen"
-             |                    |                    |
-             +--------------------+--------------------+
-                                 |
-                       +---------+----------+
-                       |   Peer Review        |
-                       |  (anonymisiert)     |
-                       |  A bewertet B,      |
-                       |  B bewertet C,      |
-                       |  C bewertet A       |
-                       +---------+----------+
-                                 |
-                       +---------v----------+
-                       |   Chairman           |
-                       | Synthese + Urteil   |
-                       +--------------------+
-\end{verbatim}
+# Usage
+evaluator = FaithfulnessEvaluator()
+faithfulness = evaluator.score(
+    question="Was ist die Rückgabepolitik?",
+    answer="Sie haben 14 Tage Rückgaberecht, kostenloser Versand.",
+    contexts=["Rückgaberecht: 14 Tage ab Erhalt. Kostenloser Rückversand."]
+)
+print(f"Faithfulness: {faithfulness:.2f}")  # Erwartet: ~1.0
+\end{lstlisting}
 
-Der Council besteht aus fünf Rollen, die jeweils eigene Perspektiven einbringen:
+\subsection{Drift Detection — Algorithmen}
+
+Drift ist der stille Killer in Produktion. Drei komplementäre Detektoren:
+
+\paragraph{1. KS-Test (Embedding Distribution Shift):}
+Vergleicht die Embedding-Verteilung des aktuellen 7-Tage-Fensters gegen das Referenz-Fenster (Golden-Set-Embeddings). p < 0.01 $\to$ Alert.
+
+\begin{lstlisting}[language=Python, caption={KS-Test auf Embedding Drift — [Production Ready]}]
+from scipy import stats
+import numpy as np
+
+def detect_embedding_drift(current_embeddings: np.ndarray, 
+                           reference_embeddings: np.ndarray,
+                           alpha: float = 0.01) -> tuple[bool, float]:
+    """
+    KS-Test auf jeder Dimension + Bonferroni-Korrektur.
+    Returns: (drift_detected, min_p_value)
+    """
+    n_dims = current_embeddings.shape[1]
+    p_values = []
+    
+    for dim in range(n_dims):
+        stat, p = stats.ks_2samp(
+            current_embeddings[:, dim], 
+            reference_embeddings[:, dim]
+        )
+        p_values.append(p)
+    
+    # Bonferroni: alpha / n_dims
+    corrected_alpha = alpha / n_dims
+    drift = any(p < corrected_alpha for p in p_values)
+    return drift, min(p_values)
+
+# Production: Wöchentlich auf letzten 7 Tage vs. Golden Set Reference
+# Alert bei drift=True $\to$ Model Pinning Review triggern
+\end{lstlisting}
+
+\paragraph{2. PSI (Population Stability Index) — Kosten/Latency/Token-Länge:}
+Misst Verteilungs-Shift bei skalaren Metriken. PSI > 0.2 = signifikanter Shift.
+
+\begin{lstlisting}[language=Python, caption={PSI für Kosten/Latency Drift — [Production Ready]}]
+def psi(expected: np.ndarray, actual: np.ndarray, buckets: int = 10) -> float:
+    """Population Stability Index. > 0.2 = signifikanter Shift."""
+    # Quantile-basierte Buckets auf Expected
+    breakpoints = np.percentile(expected, np.linspace(0, 100, buckets + 1))
+    breakpoints[0] = -np.inf
+    breakpoints[-1] = np.inf
+    
+    exp_perc = np.histogram(expected, bins=breakpoints)[0] / len(expected)
+    act_perc = np.histogram(actual, bins=breakpoints)[0] / len(actual)
+    
+    # Vermeide Division durch Null
+    exp_perc = np.where(exp_perc == 0, 0.0001, exp_perc)
+    act_perc = np.where(act_perc == 0, 0.0001, act_perc)
+    
+    return np.sum((act_perc - exp_perc) * np.log(act_perc / exp_perc))
+
+# Monitoring: Wöchentlich PSI(Cost/Query) vs. Baseline (Golden Set Runs)
+# Alert bei PSI > 0.2
+\end{lstlisting}
+
+\paragraph{3. Quality Drift (Faithfulness/Relevance Trend):}
+Lineare Regression über 7-Tage-Fenster. Steigung < -5\% $\to$ Alert.
+
+\begin{lstlisting}[language=Python, caption={Quality Drift Detection — [Production Ready]}]
+from scipy import stats
+
+def detect_quality_drift(daily_scores: list[float], 
+                         window_days: int = 7,
+                         threshold_slope: float = -0.05) -> tuple[bool, float]:
+    """
+    daily_scores: Liste täglicher Faithfulness/Relevance Scores (neueste zuletzt)
+    Returns: (drift_detected, slope_per_day)
+    """
+    if len(daily_scores) < window_days:
+        return False, 0.0
+    
+    recent = daily_scores[-window_days:]
+    x = np.arange(len(recent))
+    slope, intercept, r_value, p_value, std_err = stats.linregress(x, recent)
+    
+    drift = slope < threshold_slope and p_value < 0.05
+    return drift, slope
+
+# Alert: drift=True + slope < -0.05/Tag $\to$ Model Pinning Review + Canary
+\end{lstlisting}
+
+\subsection{Human Evaluation Protocol}
+
+LLM-Judges ersetzen keine domänenspezifische menschliche Bewertung. Protokoll:
 
 \begin{itemize}
-
-    \item \textbf{Devil's Advocate} Greift Annahmen an, sucht Schwachstellen. Testet die Robustheit der Lösung.
-    \item \textbf{First Principles} Baut die Antwort von Grundprinzipien aus neu auf. Vermeidet gruppen- oder modelltypische Denkmuster.
-    \item \textbf{Optimist} Sucht nach Chancen, Upsides und unerwarteten Vorteilen. Balanciert zu kritische Analysen aus.
-    \item \textbf{Executor} Bleibt fokussiert auf Umsetzung, Machbarkeit und konkrete nächste Schritte. Verhindert Theorie-Overload.
-    \item \textbf{Outsider} Kommt ohne Domänenwissen. Prüft, ob die Antwort auch für Laien verständlich und plausibel ist.
+    \item \textbf{Annotation Guidelines}: 3-seitiges PDF mit Good/Bad/Edge-Beispielen
+    \item \textbf{Krippendorff's $\alpha$}: Inter-Annotator-Agreement Ziel $\geq 0.8$
+    \item \textbf{Sample Size}: Min 50 Cases/Woche, stratifiziert nach Query-Type
+    \item \textbf{Blind}: Annotatoren sehen nicht, welcher Prompt/Model dahintersteckt
+    \item \textbf{Frequenz}: Wöchentlich 50 Cases (nicht monatlich 200)
 \end{itemize}
 
-\subsubsection{Anonymisierte Peer-Review}
+\begin{lstlisting}[language=Python, caption={Krippendorff Alpha Berechnung — [Didaktisch vereinfacht]}]
+import krippendorff
 
-Eine entscheidende Verbesserung gegenüber einfachen Multi-Judge-Systemen: Die Advisors bewerten sich gegenseitig \textit{anonym}. Ihre Antworten werden mit A, B, C, D, E (statt Modell- oder Funktionsname) gekennzeichnet, sodass niemand weiss, wessen Arbeit bewertet wird.
+# data: [annotator1_scores, annotator2_scores, annotator3_scores]
+# Jede Liste: Scores für dieselben 50 Cases (1-10)
+alpha = krippendorff.alpha(reliability_data=data, level_of_measurement="interval")
+print(f"Krippendorff \alpha: {alpha:.3f}")  # Ziel: \geq 0.80
 
-\begin{lstlisting}[language=Python, caption=LLM Council mit anonymisierter Peer-Review]
-class LLMCouncil:
-    """Multi-Perspektiven-Evaluation mit Peer-Review."""
-
-    ADVISOR_ROLES = {
-        "devils_advocate": (
-            "Du hinterfragst Annahmen und suchst Schwachstellen. "
-            "Gib 2-3 konkrete Kritikpunkte."
-        ),
-        "first_principles": (
-            "Baue die Antwort von Grundprinzipien aus neu auf. "
-            "Ignoriere bestehende Annahmen."
-        ),
-        "optimist": (
-            "Du suchst Chancen und positive Aspekte. "
-            "Wo liegen die groessten Potenziale?"
-        ),
-        "executor": (
-            "Du bleibst bei der Umsetzung. "
-            "Was sind die konkreten naechsten Schritte?"
-        ),
-        "outsider": (
-            "Du hast kein Fachwissen in diesem Bereich. "
-            "Ist die Analyse verstaendlich und plausibel?"
-        ),
-    }
-
-    def evaluate(self, question: str) -> dict:
-        # Phase 1: Jeder Advisor antwortet unabhaengig
-        responses = {}
-        for role, instruction in self.ADVISOR_ROLES.items():
-            prompt = f"{instruction}\n\nFrage: {question}"
-            responses[role] = call_llm("claude-sonnet-4", prompt)
-
-        # Phase 2: Anonymisierte Peer-Review
-        labels = list("ABCDE")
-        anonymous = dict(zip(labels, responses.values()))
-        reviews = {}
-
-        for i, (role, label) in enumerate(zip(responses, labels)):
-            peers = [l for j, l in enumerate(labels) if j != i]
-            review_prompt = (
-                f"Bewerte die folgenden fuenf Positionen anonym.\n"
-                f"Deine eigene Position ist {label}.\n"
-                f"Streiche die Position zusammen, "
-                f"die die schwaechste Argumentation hat:\n"
-            )
-            for p_label in peers:
-                review_prompt += (
-                    f"\n--- Position {p_label} ---\n"
-                    f"{anonymous[p_label][:500]}\n"
-                )
-
-            review_result = call_llm("gpt-4o", review_prompt,
-                                      temperature=0.2)
-            reviews[role] = review_result
-
-        # Phase 3: Chairman synthetisiert
-        chairman_prompt = (
-            f"Du bist der Chairman eines AI Councils.\n\n"
-            f"Frage: {question}\n\n"
-            f"Analysen und Bewertungen:\n"
-        )
-        for role in responses:
-            chairman_prompt += (
-                f"\n--- {role} ---\n"
-                f"Analyse: {responses[role][:300]}\n"
-                f"Peer-Review: {reviews[role][:200]}\n"
-            )
-        chairman_prompt += (
-            f"\nGib dein Urteil: "
-            f"(1) Wo waren sich alle einig?\n"
-            f"(2) Wo gab es Widersprueche?\n"
-            f"(3) Was wurde uebersehen?\n"
-            f"(4) Eine klare Handlungsempfehlung."
-        )
-
-        verdict = call_llm("claude-opus-4", chairman_prompt,
-                            temperature=0.0)
-
-        return {
-            "question": question,
-            "responses": responses,
-            "reviews": reviews,
-            "verdict": verdict,
-        }
+# \alpha < 0.67 = unzuverlässig, 0.67-0.80 = tentativ, \geq 0.80 = verlässlich
+# Bei niedrigem \alpha: Guidelines schärfen, Annotatoren schulen, Cases klären
 \end{lstlisting}
 
-\subsubsection{Wann lohnt sich ein LLM Council?}
+% ============================================================
+% 5. PRODUCTION EXAMPLE — SUPPORTPILOT EVALUATION JOURNEY
+% ============================================================
+\section{Production Example — SupportPilot Evaluation Journey}
 
-Der LLM Council ist kein Werkzeug für den täglichen Gebrauch -- er ist vergleichsweise teuer (5--7 LLM-Calls pro Durchlauf). Er lohnt sich bei:
+\textbf{Ausgangslage}: Prompt-v1 deployed, "fühlt sich gut an", aber keine Metriken.
 
-\begin{itemize}[leftmargin=*]
-    \item Architekturentscheidungen mit hohem Risiko (0\$ bis Millionen-Folgekosten)
-    \item Produkt-Pivots oder Pricing-Entscheidungen
-    \item Sicherheits- oder Compliance-Bewertungen
-    \item Strategischen Analysen, bei denen blinde Flecken gefährlich wären
+\paragraph{Schritt 1 — Golden Set Aufbau (Woche 1):}
+\begin{itemize}
+    \item 80 reale User-Queries aus Logs gesampelt (stratifiziert: 30\% Status, 25\% Rechnung, 20\% Kündigung, 15\% Technisch, 10\% OOD)
+    \item Manuelle Annotation: Expected Keywords + JSON Schema + "Should Not Contain"
+    \item Baseline: Prompt-v1 $\to$ Pass Rate 72\%, Avg Faithfulness 0.61, Cost/Query €0.018, P95 1.8s
 \end{itemize}
 
-Für Routine-Evaluationen reicht ein einfacher Multi-Judge mit Majority-Vote. Der Council ist das Schwergewicht für die wirklich kritischen Entscheidungen.
+\paragraph{Schritt 2 — CI-Gate etabliert (Woche 2):}
+\begin{itemize}
+    \item GitHub Action: \texttt{pytest eval/golden.py --threshold 0.85}
+    \item Multi-Judge (GPT-4o, Claude 3.5 Sonnet, Gemini 1.5 Pro) $\to$ Majority Vote
+    \item Budget Gate: Max \$5/Run, Cache 80\% Savings
+\end{itemize}
+
+\paragraph{Schritt 3 — Regression gefangen (Woche 3):}
+\begin{itemize}
+    \item Prompt-v2 (neue Few-Shot Examples) $\to$ CI: Pass Rate 78\% (grün), aber Faithfulness 0.58 (rot)
+    \item Auto-Rollback verhindert Deploy
+    \item Root Cause: Neues Example halluzinierte "30 Tage Rückgabe" statt "14 Tage"
+\end{itemize}
+
+\paragraph{Schritt 4 — Production Drift erkannt (Monat 2):}
+\begin{itemize}
+    \item Langfuse Alert: Faithfulness Trend -8\% über 14 Tage
+    \item Ursache: Provider hob gpt-4o-mini stillschweigend auf neue Version (2024-07-18)
+    \item Fix: Model Pinning \texttt{gpt-4o-mini-2024-07-18} + Canary 5\% Traffic
+\end{itemize}
+
+\paragraph{Ergebnis nach 3 Monaten:}
+\begin{itemize}
+    \item Pass Rate: 72\% $\to$ 94\% (Golden Set, n=80, Agreement $\geq 66\%$)
+    \item Halluzinationsrate: 8\% $\to$ 1.2\% (Faithfulness 0.61 $\to$ 0.92, Auto-Retry bei < 0.7)
+    \item Cost/Query: €0.018 $\to$ €0.012 (-34\%, Token-Budget-Check in CI, n=80 Baseline vs. n=80 nach Optimierung)
+    \item Regressions-Erkennung: 2 Min (CI) statt 2 Wochen (User-Beschwerden)
+    \item Model Drift erkannt: gpt-4o-mini Still-Update (2024-07-18) $\to$ Faithfulness -8\% über 14 Tage $\to$ Pinning + Canary 5\%
+\end{itemize}
+
+\paragraph{Messrahmen für obige Zahlen:}
+\begin{itemize}
+    \item \textbf{Baseline}: Prompt-v1, n=80 Golden Cases, 3 Judge-Modelle, Agreement $\geq 66\%$
+    \item \textbf{Evaluation Method}: Offline Golden Set + Online 10\% Sample Human Review
+    \item \textbf{Dataset}: SupportPilot Production Queries Jan–Mar 2024, stratified
+    \item \textbf{n}: 80 (Golden) + 200/Woche (Online Sample)
+    \item \textbf{Metric}: Pass Rate (Binary), Faithfulness (0-1), Cost/Query (EUR), P95 Latency (ms)
+    \item \textbf{What Changed}: Golden Set + CI Gate + Multi-Judge + Model Pinning + Drift Alerts
+    \item \textbf{Limitations}: Kein A/B Test (Traffic zu niedrig), Human Review nur 10\%, Judge-Kalibrierung monatlich
+\end{itemize}
 
 % ============================================================
-% TRACING
+% 6. TRADE-OFFS
 % ============================================================
-\section{Tracing und Observability mit Langfuse/LangSmith}
-
-Prompts testen ist eine Sache -- aber in der Produktion brauchst du \textbf{kontinuierliche Beobachtung}. Hier kommen Tracing-Tools ins Spiel:
-
-\begin{lstlisting}[language=Python, caption=Langfuse Tracing -- jeden LLM-Aufruf protokollieren]
-# pip install langfuse
-from langfuse import Langfuse
-import openai
-
-langfuse = Langfuse()
-
-def traced_query(user_message: str) -> str:
-    """Ein geloggter LLM-Aufruf mit Langfuse Tracing."""
-
-    trace = langfuse.trace(name="support-ticket-response")
-
-    generation = trace.generation(
-        name="chat-completion",
-        model="gpt-4o",
-        input=[{"role": "user", "content": user_message}],
-        metadata={"user_id": 12345},
-    )
-
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": user_message}],
-    )
-
-    generation.update(
-        output=response.choices[0].message.content,
-        usage={
-            "prompt_tokens": response.usage.prompt_tokens,
-            "completion_tokens": response.usage.completion_tokens,
-            "total_cost": calculate_cost(response),
-        },
-    )
-
-    return response.choices[0].message.content
-\end{lstlisting}
-
-\subsection{Tracing-Tools im Vergleich}
+\section{Trade-offs}
 
 \begin{table}[H]
 \centering
 \begin{tabularx}{\linewidth}{lXXX}
 \toprule
-\textbf{Tool} & \textbf{Hosting} & \textbf{Preis} & \textbf{Besonderheit} \\
+\textbf{Entscheidung} & \textbf{Option A} & \textbf{Option B} & \textbf{Empfehlung} \\
 \midrule
-Langfuse & Open Source / Cloud & Frei (Self-hosted) & Vollständig Open Source \\
-LangSmith & Cloud (LangChain) & Pay-per-use & Tiefe LangChain-Integration \\
-Weights \& Biases & Cloud & Pay-per-use & Starke Experiment-Tracking \\
-Arize AI & Cloud & Pay-per-use & ML-Monitoring-Fokus \\
-Datadog LLM Observability & Cloud & Pay-per-use & Bestehende Datadog-Integration \\
+Judge-Count & Single (billig) & Multi-Judge 3x (teuer) & \textbf{Multi-Judge} für CI-Gate; Single für Exploration \\
+Metric Type & Proxy (Faithfulness) & Business (CSAT) & \textbf{Beide}: Proxy im CI, Business im Monthly Review \\
+Dataset Size & 50 (schnell) & 500+ (robust) & \textbf{Start 50}, wöchentlich +5 aus Prod-Fehlern \\
+Human Eval & Wöchentlich 50 & Monatlich 200 & \textbf{Wöchentlich 50} stratifiziert; $\alpha \geq 0.8$ prüfen \\
+Drift Sensitivity & KS-Test (sensitiv) & PSI (robust) & \textbf{KS für Embeddings}, PSI für Kosten/Latency \\
+A/B Test & Full Randomisierung & Canary (5\%) & \textbf{Canary für Prompt-Changes}, Full A/B für Model Swaps \\
 \bottomrule
 \end{tabularx}
-\caption{Tracing-Tools für LLM-Anwendungen im Vergleich}
+\caption{Trade-offs in der Evaluation — Entscheidungen mit Begründung}
 \end{table}
 
 % ============================================================
-% BEST PRACTICES
+% 7. FAILURE MODES
 % ============================================================
-\section{Best Practices für LLM-Evaluation}
-
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Golden Dataset versionieren}: Das Dataset gehört ins Repository, mit Tags für Releases. Jeder Prompt-Change läuft gegen die gesamte Suite.
-    \item \textbf{Metriken vor dem Deployment checken}: Kein Prompt-Update ohne Bestehen der Golden-Dataset-Tests. Automatisiere das in der CI/CD-Pipeline.
-    \item \textbf{Produktionsdaten sammeln}: Jeder reale User-Input, der zu Fehlern führt, wird als Testfall hinzugefügt. So wächst das Dataset organisch.
-    \item \textbf{Multi-Judge verwenden}: Ein einzelner LLM-Judge hat Bias. Drei Modelle im Majority-Vote sind robuster.
-    \item \textbf{Kosten tracken}: Jeder Prompt-Change beeinflusst die Token-Anzahl. Metriken: Cost per Query, Cost per Session, Cost per User.
-    \item \textbf{Regression-Tests automatisieren}: Führe die Evaluations-Suite bei jedem Commit aus. Verwende diff-tools, um Änderungen in den Scores sichtbar zu machen.
-    \item \textbf{SLAs definieren}: Definiere Schwellwerte für Qualität (Score >= 7/10), Kosten (<= 0.01 EUR/Query) und Latenz (<= 2s P95).
-\end{enumerate}
-
-% ============================================================
-% ANTI-PATTERNS
-% ============================================================
-\section{Anti-Patterns -- was du vermeiden solltest}
-
-\begin{itemize}
-
-    \item \textbf{Evaluation ohne Golden Dataset} Ein LLM-Judge allein ohne feste Testfälle ist keine reproduzierbare Evaluation. Du misst nur die Meinung des Judges, nicht die tatsächliche Qualität.
-    \item \textbf{LLM-Judge mit demselben Modell} GPT-4o beurteilt GPT-4o-Antworten. Das ist kein Test -- das ist Selbstbestätigung. Der Judge bevorzugt systematisch Outputs, die dem eigenen Stil ähneln.
-    \item \textbf{Nur Accuracy messen} Ein System kann 100\% Accuracy haben und trotzdem unbrauchbar sein: zu langsam, zu teuer, unsicher. Miss immer Qualität, Kosten und Latenz.
-    \item \textbf{Einmaliges Dataset} Das Dataset vom ersten Tag wird nach drei Monaten nicht mehr relevant sein. User-Fragen ändern sich, das Produkt ändert sich, die Modelle ändern sich. Pflege das Dataset kontinuierlich.
-    \item \textbf{Menschliche Evaluation ignorieren} LLM-Judges sind gut, aber ersetzen keine domänenspezifische menschliche Bewertung. Insbesondere bei medizinischen, rechtlichen oder finanziellen Inhalten.
-    \item \textbf{Evaluation in der Produktion vergessen} Offline-Evaluation zeigt, ob ein Prompt gut ist. Aber erst die Online-Metrik zeigt, ob das System im echten Einsatz funktioniert.
-\end{itemize}
-
-% ============================================================
-% PERFORMANCE
-% ============================================================
-\section{Performance und Skalierung von Evaluations-Pipelines}
-
-\subsection{Parallelisierung}
-
-Ein Golden Dataset mit 500 Einträgen kann bei sequentieller Ausführung Minuten dauern. Parallelisierung ist der einfachste Hebel:
-
-\begin{lstlisting}[language=Python, caption=Parallele Evaluation mit asyncio]
-import asyncio
-import aiohttp
-
-async def evaluate_single(session, example, prompt_fn):
-    """Einzelnen Testfall evaluieren (parallelisierbar)."""
-    try:
-        output = await prompt_fn(example["input"])
-        return evaluate_output(example, output)
-    except Exception as e:
-        return {"input": example["input"], "error": str(e)}
-
-async def evaluate_parallel(dataset, prompt_fn, max_concurrent=20):
-    """Evaluierung parallelisiert mit Semaphore."""
-    sem = asyncio.Semaphore(max_concurrent)
-    async with aiohttp.ClientSession() as session:
-
-        async def bounded_eval(example):
-            async with sem:
-                return await evaluate_single(session, example, prompt_fn)
-
-        tasks = [bounded_eval(ex) for ex in dataset]
-        return await asyncio.gather(*tasks)
-
-# Nutzung
-results = asyncio.run(evaluate_parallel(GOLDEN_DATASET, my_prompt_fn))
-pass_rate = sum(1 for r in results if r.get("passed")) / len(results) * 100
-print(f"Pass Rate: {pass_rate:.1f}% ({len(results)} Tests)")
-\end{lstlisting}
-
-\subsection{Caching für wiederholte Evaluation}
-
-Bei der Prompt-Entwicklung evaluierst du denselben Input oft mehrfach. Ein Cache vermeidet unnötige API-Calls:
-
-\begin{lstlisting}[language=Python, caption=Disk-Cache für LLM-Responses bei Evaluation]
-import json
-import hashlib
-from pathlib import Path
-
-class EvalCache:
-    """Persistenter Cache für LLM-Responses in der Evaluation."""
-
-    def __init__(self, cache_dir: str = ".eval_cache"):
-        self.cache_dir = Path(cache_dir)
-        self.cache_dir.mkdir(exist_ok=True)
-
-    def _key(self, prompt: str, model: str) -> str:
-        content = f"{model}:{prompt}"
-        return hashlib.sha256(content.encode()).hexdigest()
-
-    def get(self, prompt: str, model: str) -> str | None:
-        key = self._key(prompt, model)
-        path = self.cache_dir / f"{key}.json"
-        if path.exists():
-            return json.loads(path.read_text())
-        return None
-
-    def set(self, prompt: str, model: str, response: str):
-        key = self._key(prompt, model)
-        path = self.cache_dir / f"{key}.json"
-        path.write_text(json.dumps(response))
-
-cache = EvalCache()
-
-def cached_eval(example: dict) -> dict:
-    """Mit Cache, um wiederholte API-Calls zu vermeiden."""
-    cached = cache.get(example["input"], "gpt-4o-mini")
-    if cached:
-        return {"input": example["input"], "cached": True, **cached}
-
-    response = call_llm("gpt-4o-mini", example["input"])
-    cache.set(example["input"], "gpt-4o-mini", response)
-    return {"input": example["input"], "cached": False, "response": response}
-\end{lstlisting}
-
-% ===========================================================%
-% CODE -- CI/CD-Integration für Evaluation
-% ============================================================
-\section{Codebeispiele -- CI/CD-Integration für Evaluation}
-
-Eine Evaluations-Pipeline in GitHub Actions stellt sicher, dass kein
-Prompt-Update die Qualität verschlechtert:
-
-\begin{lstlisting}[language=Python, caption={GitHub-Actions-Workflow für Evaluation}, label=lst:eval-ci]
-# .github/workflows/eval.yml
-# name: LLM Evaluation Pipeline
-# on: [push, pull_request]
-# jobs:
-#   evaluate:
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v4
-#       - name: Run Golden Dataset eval
-#         run: python eval/run_golden.py --dataset golden_v3.json
-#         env:
-#           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-#       - name: Check pass rate
-#         run: |
-#           PASS_RATE=$(python eval/check_results.py)
-#           if (( $(echo "$PASS_RATE < 0.85" | bc -l) )); then
-#             echo "FAIL: Pass rate $PASS_RATE below threshold 0.85"
-#             exit 1
-#           fi
-#           echo "PASS: Pass rate $PASS_RATE"
-\end{lstlisting}
-
-\begin{lstlisting}[language=Python, caption={CI-Script: Golden-Dataset-Evaluator}, label=lst:eval-ci-script]
-"""run_golden.py -- Fuhrt Golden-Dataset-Evaluation aus."""
-import json
-import sys
-from pathlib import Path
-
-def load_golden(path: str) -> list[dict]:
-    with open(path) as f:
-        return json.load(f)
-
-def evaluate_dataset(dataset: list[dict]) -> dict:
-    results = []
-    passed = 0
-    for case in dataset:
-        output = call_llm(case["prompt"])
-        is_correct = judge_output(
-            output, case["expected"], case["criteria"]
-        )
-        if is_correct:
-            passed += 1
-        results.append({
-            "id": case["id"],
-            "passed": is_correct,
-            "latency_ms": output["latency_ms"],
-            "cost": output["cost"],
-        })
-
-    pass_rate = passed / len(dataset)
-    return {
-        "pass_rate": pass_rate,
-        "total": len(dataset),
-        "passed": passed,
-        "failed": len(dataset) - passed,
-        "results": results,
-    }
-
-def check_threshold(report: dict,
-                    threshold: float = 0.85) -> bool:
-    """Exit 1 wenn Pass-Rate unter Threshold."""
-    if report["pass_rate"] < threshold:
-        print(f"FAIL: {report['pass_rate']:.1%} < {threshold:.0%}")
-        sys.exit(1)
-    print(f"PASS: {report['pass_rate']:.1%}")
-    return True
-
-if __name__ == "__main__":
-    dataset = load_golden(sys.argv[1])
-    report = evaluate_dataset(dataset)
-    check_threshold(report)
-\end{lstlisting}
-
-\subsection{Kostenkontrolle in der Evaluations-Pipeline}
-
-Evaluations-Pipelines können teuer werden: 500 Testfälle $\times$ 3
-Modelle $\times$ 200 Tokens = 300.000 Tokens pro Run. Optimierungen:
-
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Cache aktivieren}: Wiederholte Runs (gleicher Prompt,
-    gleiches Modell) sollten gecached werden -- bis zu 80\,\%
-    Kosteneinsparung.
-    \item \textbf{Delta-Evaluation}: Nur geänderte Prompts und deren
-    abhängige Testfälle evaluieren, nicht das gesamte Dataset.
-    \item \textbf{Modell-Stufen}: Teure Modelle (GPT-4o, Claude 4) nur
-    für kritische Testfälle, günstige Modelle für Standardfälle.
-    \item \textbf{Budget-Limit}: Max 5 \$ pro Run. Bei Überschreitung
-    bricht die Pipeline ab.
-\end{itemize}
-
-% ===========================================================%
-% CODE ENDE
-% ============================================================
-
-% ============================================================
-% SICHERHEIT
-% ============================================================
-\section{Sicherheit in Evaluations-Pipelines}
-
-\praxishinweis{Evaluations-Pipelines verarbeiten oft sensitive Daten: User-Inputs aus Produktion, interne Dokumente, Ground-Truth-Antworten mit Geschäftsgeheimnissen. Golden Datasets gehören nie in öffentliche Repositories. Separate API-Keys mit Budget-Limits für Evals nutzen, nicht die Produktions-Keys.}
-
-Evaluations-Pipelines verarbeiten oft sensitive Daten -- User-Inputs aus der Produktion, interne Dokumente, korrekte Antworten mit Geschäftsgeheimnissen. Sicherheitsaspekte:
-
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Golden Dataset nicht öffentlich}: Ein Golden Dataset enthält Ground-Truth-Daten. Diese können Geschäftsgeheimnisse oder Kundeninformationen enthalten. Niemals in öffentliche Repositories.
-    \item \textbf{PII-Masking vor Evaluation}: Wenn du Produktionsdaten in dein Dataset aufnimmst, maskiere personenbezogene Daten vor der Speicherung.
-    \item \textbf{Kein User-Input in LLM-Judge-Prompts ohne Sanitization}: Der LLM-Judge bekommt die tatsächliche Antwort. Stelle sicher, dass keine sensiblen Daten an den Judge-Anbieter gesendet werden.
-    \item \textbf{Zugriffskontrolle}: Evaluations-Reports zeigen die Schwachstellen des Systems. Zugriff auf diese Reports einschränken.
-    \item \textbf{Separate API-Keys}: Evaluations-Pipelines sollten eigene API-Keys mit Budget-Limits verwenden, nicht die Produktions-Keys.
-\end{itemize}
-
-% ============================================================
-% ZUSAMMENFASSUNG
-% ============================================================
-
-% ============================================================
-% DIE METRIKEN-ENTSCHEIDUNGSMATRIX
-% ============================================================
-\section{Die Metriken-Entscheidungsmatrix}
-
-Die wichtigste Frage in der Evaluation ist nicht "Welche Metrik ist am genauesten?" sondern "Welche Metrik zählt für diesen Anwendungsfall?" -- denn die falsche Metrik führt zu optimalem Verhalten für das falsche Ziel.
-
-Die folgende Matrix gibt dir einen schnellen Leitfaden: Welches Use Case hat welche Priorität -- und welches sollte man nie ignorieren.
+\section{Failure Modes — Was schiefgeht und wie du es verhinderst}
 
 \begin{table}[H]
 \centering
-\begin{tabularx}{\linewidth}{l l l l}
+\begin{tabularx}{\linewidth}{lXXX}
 \toprule
-\textbf{Use Case} & \textbf{Primär} & \textbf{Sekundär} & \textbf{Guardrail} \\
+\textbf{Failure Mode} & \textbf{Symptom} & \textbf{Detection} & \textbf{Prevention} \\
 \midrule
-Support-Chatbot & Accuracy & P95 Latenz $<$ 2s & Halluzinationen \\
-Code-Generation & Functional Correctness & Format Compliance & Security \\
-Summarization & Faithfulness & Coverage & PII-Leak \\
-RAG-System & Hit-Rate & MRR @ K & Context Precision \\
-Agent-System & Success-Rate & Step-Efficiency & Cost/Task \\
+Judge Bias nicht kalibriert & Judge-Score $\uparrow$, Human-Score $\downarrow$ & Monthly Krippendorff $\alpha < 0.8$ & Monatliche Human-Calibration \\
+Golden Set veraltet & Pass Rate $\uparrow$, Prod-Quality $\downarrow$ & Online/Offline Gap > 10\% & Jeder Prod-Fehler $\to$ Golden Set + CI Fail \\
+Dataset Leakage & Perfekt auf Golden, Müll in Prod & Train/Test Split verwechselt & Streng getrennte Splits, Versionierung \\
+Metric Gaming & Optimierung auf Faithfulness $\to$ Answer Relevance $\downarrow$ & Guardrail-Metriken im Dashboard & \textbf{Immer} Primär + Sekundär + Guardrail \\
+Cost Explosion in Eval & \$50/Run statt \$5 & Budget Gate in CI & Max \$5/Run, Cache 80\%, Delta-Eval \\
+Alert Fatigue & Drift-Alerts täglich, keiner schaut & Alert/Week > 3 ohne Action & SLO-basiert: nur Alert bei SLO-Verletzung \\
 \bottomrule
 \end{tabularx}
-\caption{Metriken-Entscheidungsmatrix -- nach Use Case priorisiert}
+\caption{Top 6 Failure Modes in der Evaluation}
 \end{table}
 
-\praxishinweis{Beginne mit einer Metrik pro Use Case. Nicht mehr. Wenn du nur eine Zahl aus dem Dashboard behältst, was soll es sein? Für einen Support-Chatbot ist das die Accuracy -- alles andere ist Lärm, wenn die Antworten falsch sind.}
+% ============================================================
+% 8. EVALUATION — META-EVALUATION
+% ============================================================
+\section{Meta-Evaluation — Wie evaluiere ich meine Evaluation?}
 
-\subsection{Die drei Metrik-Ebenen}
+\begin{itemize}
+    \item \textbf{Offline/Online Correlation}: Pearson r zwischen Golden-Set-Pass-Rate und Prod-Quality (Ziel: r > 0.7)
+    \item \textbf{Judge Calibration}: Monthly Human vs. Judge Agreement (Krippendorff $\alpha$)
+    \item \textbf{False Positive Rate}: Alerts fired / True Regressions (Ziel: < 30\%)
+    \item \textbf{Time to Detect}: Median Zeit von Regressions-Einführung bis Alert (Ziel: < 10 Min)
+    \item \textbf{Cost per Detection}: Eval-Kosten / gefundene Regression (Ziel: < \$10)
+\end{itemize}
 
-\begin{enumerate}[leftmargin=*]
-     \item \textbf{Die Einzelmeterik} -- Was misst ein einzelner Request? (Accuracy, Latenz, Kosten)
-     \item \textbf{Die Systemmeterik} -- Was zeigt das Gesamtsystem? (P95 Latenz, Error Rate, Kosten/Tag)
-     \item \textbf{Die Business-Metrik} -- Was zählt für das Geschäft? (Customer Satisfaction, Conversion, Cost per Ticket)
+\praxishinweis{Messe deine Evaluation. Wenn du nicht weisst, wie gut dein Eval-System funktioniert, fliegst du blind — genau das, was du vermeiden willst.}
+
+% ============================================================
+% 9. BEST PRACTICES
+% ============================================================
+\section{Best Practices für LLM-Evaluation}
+
+\begin{enumerate}
+    \item \textbf{Golden Dataset versionieren} — Git Tags \texttt{eval/golden-v\{N\}}, Changelog pro Version
+    \item \textbf{CI-Gate hart} — Exit Code 1 bei Pass Rate < 85\% ODER Faithfulness < 0.8 ODER Cost > Budget
+    \item \textbf{Multi-Judge Pflicht} — 3 Modelle, verschiedene Familien, Majority Vote + Agreement
+    \item \textbf{Budget Gate in CI} — Max \$5/Run, Delta-Eval für geänderte Prompts
+    \item \textbf{Prompt-Hash in Traces} — Jeder Trace verknüpft Prompt-Version $\to$ Golden-Set-Run
+    \item \textbf{Synthetisch $\to$ Human Pipeline} — LLM generiert Test-Cases $\to$ Human validiert $\to$ Golden Set
+    \item \textbf{Drift Detection Dual} — KS-Test (Embeddings) + PSI (Cost/Latency) + Quality Trend
+    \item \textbf{Human Evaluation Protocol} — Guidelines, Krippendorff $\alpha \geq 0.8$, Blind, Stratified
+    \item \textbf{A/B Test Framework} — Canary 5\%, Minimum Detectable Effect definiert, Power Analysis
+    \item \textbf{Documentation} — Jeder Metrik: Definition, Baseline, Threshold, Owner, Last Reviewed
 \end{enumerate}
 
-\realitycheck{Die meisten Teams scheitern nicht an der Einzelmeterik -- sie scheitern an der Business-Metrik. Ein System kann 99\,\% Accuracy haben und trotzdem 80\,\% der Kunden frustrieren, wenn die 1\,\% falschen Antworten katastrophal sind.}
-
-\subsection{Code-Qualitäts-Kennzeichnung}
-
-Jeder Code-Block in diesem Buch ist nach seiner Produktionsreife gekennzeichnet:
-
-\begin{itemize}[leftmargin=*]
-     \item \textbf{[Production-Ready]} -- Direkt in der Produktion verwendbar. Includes error handling, retry logic, and cost monitoring.
-     \item \textbf{[Didaktisch vereinfacht]} -- Lernzwecke optimiert.生产-ready Erweiterungen als \textit{Aufgabe} gekennzeichnet.
-     \item \textbf{[Architekturskizze]} -- Nur konzeptionell. Implementierungsdetails folgen im nächsten Kapitel.
-\end{itemize}
-
-
-
-
-\par\mbox{}\par
-\begin{merkeEnv}
-Metriken ohne Use Case sind nur Zahlen. Finde deine eine Nummer, die zählt.
-\end{merkeEnv}
-\begin{zusammenfassungEnv}
-\begin{itemize}[leftmargin=*]
-    \item Golden Datasets (Input-Output-Paare) sind der Standard für reproduzierbare Prompt-Evaluation
-    \item LLM-as-a-Judge ermöglicht qualitative Bewertung -- immer mit Multi-Judge-Ansatz gegen Bias
-    \item Tracing (Langfuse, LangSmith) ist unerlässlich für kontinuierliches Produktions-Monitoring
-    \item Miss immer drei Dimensionen: Qualität, Kosten, Latenz
-    \item Das Golden Dataset muss kontinuierlich wachsen und versioniert werden
-    \item Evaluations-Pipelines gehören in die CI/CD -- kein Prompt-Update ohne Test
-\end{itemize}
-\end{zusammenfassungEnv}
-
 % ============================================================
-% MERKE
+% 10. ANTI-PATTERNS
 % ============================================================
+\section{Anti-Patterns — Was du vermeiden solltest}
 
-
-
-\par\mbox{}\par
-\begin{merkeEnv}
-Ohne Golden Dataset ist jede Prompt-Änderung geraten. Ein Dataset mit 50--100 Testfällen reicht für den Start -- aber es muss wachsen. Sammle jeden Produktions-Fehler als neuen Testfall.
-\end{merkeEnv}
-
-% ============================================================
-% PRAXISPROJEKT
-% ============================================================
-\section{Praxisprojekt -- Evaluations-Dashboard für einen Chatbot}
-
-\textbf{Ziel:} Baue ein Evaluations-Dashboard, das einen Chatbot gegen ein Golden Dataset testet, LLM-Judge-Ergebnisse sammelt und einen Report generiert.
-
-\textbf{Aufgaben:}
-\begin{enumerate}[leftmargin=*]
-    \item Erstelle ein Golden Dataset mit 20 Testfällen für einen Kundenservice-Chatbot
-    \item Implementiere einen Evaluations-Runner, der das Dataset gegen den Chatbot laufen lässt
-    \item Integriere einen Multi-Judge (2 Modelle) für qualitative Bewertung
-    \item Generiere einen HTML-Report mit Pass Rate, Score-Verteilung und fehlgeschlagenen Tests
-    \item Füge Kosten- und Latenz-Metriken hinzu
+\begin{enumerate}
+    \item \textbf{Evaluation ohne Golden Dataset} $\to$ LLM-Judge misst nur Judge-Meinung
+    \item \textbf{Judge = zu evaluierendes Modell} $\to$ Selbstbestätigung, keine externe Validierung
+    \item \textbf{Nur Accuracy messen} $\to$ System 100\% Accuracy, aber 10s Latency / \$1/Query / unsicher
+    \item \textbf{Einmaliges Dataset} $\to$ Nach 3 Monaten irrelevant (User-Verhalten, Model-Updates, Produkt)
+    \item \textbf{Human Evaluation ignorieren} $\to$ LLM-Judge ersetzt keine Domänen-Expertise (Medizin, Recht, Finance)
+    \item \textbf{Online Monitoring vergessen} $\to$ Offline grün, Prod rot (Model Drift, Data Drift, Provider Drift)
+    \item \textbf{Single Metric Optimization} $\to$ Faithfulness $\uparrow$ aber Answer Relevance $\downarrow$ = nutzlose Antworten
+    \item \textbf{Kein Budget Gate} $\to$ \$500 Eval-Run blockiert CI, Team deaktiviert Tests
 \end{enumerate}
 
-\textbf{Erweiterung:} Integriere die Pipeline in GitHub Actions, sodass sie bei jedem Push automatisch läuft.
-Füge ein Budget-Limit hinzu, das die Pipeline abbricht, wenn die Evaluationskosten 5 \$ übersteigen.
-
 % ============================================================
-% RESSOURCEN
+% 11. PRODUCTION CHECKLIST
 % ============================================================
-\section{Ressourcen}
+\section{Production Checklist}
 
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Langfuse Documentation}: \href{https://langfuse.com/docs}{langfuse.com/docs} -- Tracing \& Evaluation Framework
-    \item \textbf{LangSmith Documentation}: \href{https://docs.smith.langchain.com}{docs.smith.langchain.com} -- LangChain Monitoring
-    \item \textbf{DeepEval}: \href{https://github.com/confident-ai/deepeval}{github.com/confident-ai/deepeval} -- Open-Source LLM-Evaluation
-    \item \textbf{Promptfoo}: \href{https://www.promptfoo.dev}{promptfoo.dev} -- CLI-Tool für Prompt-Evaluation
-    \item \textbf{Garak}: \href{https://github.com/leondz/garak}{github.com/leondz/garak} -- LLM Vulnerability Scanner
-    \item \textbf{OpenAI Evals}: \href{https://github.com/openai/evals}{github.com/openai/evals} -- OpenAIs Evaluations-Framework
+\begin{itemize}
+    \item [ ] Golden Dataset $\geq 50$ Cases, versioniert in Git, wächst wöchentlich
+    \item [ ] CI Pipeline: Lint $\to$ Golden Set $\to$ Multi-Judge $\to$ Cost/Latency Gate $\to$ Exit Code
+    \item [ ] Multi-Judge: 3 Modelle (verschiedene Familien), Agreement $\geq 66\%$
+    \item [ ] Tracing: Jeder Call geloggt (Prompt-Hash, Tokens, Latency, Cost, Validation)
+    \item [ ] Dashboard: Quality (Faithfulness/Relevance), Cost/Query, P95 Latency, Error Rate
+    \item [ ] Alerts: Quality < 0.7, Cost > 2x Baseline, P95 > 2s, Drift (KS/PSI) p < 0.01
+    \item [ ] Model Pinning: Explizite Versionen (\texttt{gpt-4o-mini-2024-07-18}), Canary 5\%
+    \item [ ] Human Eval: Wöchentlich 50 Cases, Krippendorff $\alpha \geq 0.8$, Guidelines dokumentiert
+    \item [ ] A/B Framework: Canary für Prompts, Full Randomisierung für Model Swaps
+    \item [ ] Runbooks: Quality Drop, Cost Spike, Provider Outage, Drift Alert
 \end{itemize}
 
-\textbf{Nächster Schritt:} Jetzt weißt du, wie du misst. Im nächsten Kapitel geht es um Inference Optimization and Serving -- wie du dein System schnell und kostengünstig machst.
+% ============================================================
+% 12. EXERCISES
+% ============================================================
+\section{Übungen}
+
+\begin{enumerate}
+    \item \textbf{Golden Set Bootstrap}: Erstelle 30 Cases für SupportPilot (10 Status, 8 Rechnung, 7 Kündigung, 5 Technisch) mit Expected Keywords + JSON Schema
+    \item \textbf{Multi-Judge Implementation}: Implementiere Majority Vote + Agreement für 3 Judge-Modelle
+    \item \textbf{CI Gate}: GitHub Action mit Pass Rate $\geq 85\%$, Faithfulness $\geq 0.8$, Cost $\leq \$5$
+    \item \textbf{Drift Alert}: KS-Test auf Embedding-Distribution + PSI auf Cost/Query, Alert bei p < 0.01
+    \item \textbf{Human Evaluation}: Annotation Guidelines für 3 Annotatoren, Krippendorff $\alpha$ Berechnung
+    \item \textbf{A/B Test Design}: Sample Size Calculator für Prompt-v1 vs v2 (MDE 5\%, Power 80\%, $\alpha$ 5\%)
+    \item \textbf{Cost Anomaly Detection}: Rolling 7-Day Cost/Query, Alert bei +50\% vs. Baseline
+\end{enumerate}
+
+% ============================================================
+% 13. FURTHER READING
+% ============================================================
+\section{Weiterführende Ressourcen}
+
+\begin{itemize}
+    \item \textbf{Primary}: Chip Huyen — "AI Engineering", Kap. 3 (Evaluation); "Designing ML Systems", Kap. 8
+    \item \textbf{Papers}: 
+        \begin{itemize}
+            \item Liu et al. (2023) — "LLM-as-a-Judge" (Bias Taxonomy)
+            \item Sarti et al. (2024) — "RAGAS: Automated Evaluation of RAG"
+            \item Yan et al. (2024) — "Corrective RAG" (CRAG Quality Gate)
+            \item Zheng et al. (2024) — "Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena"
+        \end{itemize}
+    \item \textbf{Tools}: Langfuse (Open Source), DeepEval, Promptfoo, RAGAS, OpenAI Evals, Garak (Security)
+    \item \textbf{Standards}: ISO/IEC 25059 (AI Quality Model), NIST AI RMF (Evaluation)
+\end{itemize}
+
+% ============================================================
+% TEASER FÜR NÄCHSTES KAPITEL
+% ============================================================
+
+\par\mbox{}\par
+\begin{AUTORnotizEnv}
+Nächstes Kapitel: RAG und Vector Datenbanken. Da lernst du: Chunking als Hebel (Recursive 512/64), Hybrid Search (BM25 + Embedding), Cross-Encoder Re-Ranker, Faithfulness-Metrik für Generation. Die Evaluation-Disziplin hier zahlt sich aus: Golden Set für Retrieval (Hit Rate @ 5, MRR), Faithfulness für Generation. Ohne Eval-Gate fliegst du blind in RAG.
+\end{AUTORnotizEnv}
+
+\textbf{Nächster Schritt:} Jetzt weisst du, wie du misst. Im nächsten Kapitel geht es um RAG und Vector Datenbanken — wie du LLMs mit deinem eigenen Wissen anreicherst. Die Evaluation-Disziplin hier zahlt sich aus: Golden Set für Retrieval, Faithfulness-Metrik für Generation.
 \endinput
 
 \clearpage

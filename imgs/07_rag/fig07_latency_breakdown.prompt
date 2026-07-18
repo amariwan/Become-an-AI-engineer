@@ -1,0 +1,1 @@
+Horizontal stacked bar chart showing RAG query latency breakdown. Segments: Query Embedding (50-200ms, blue), Hybrid Search (30-80ms, teal), Re-Ranking (40-100ms, orange), Context Building (<1ms, gray), LLM Generation (500-1500ms, dark blue - largest segment). Total p50: 700-1200ms, Total p99: 1500-2500ms. Annotations in German, clean data viz style.

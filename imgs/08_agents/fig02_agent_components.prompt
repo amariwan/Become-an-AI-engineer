@@ -1,0 +1,1 @@
+Box architecture diagram: AI Agent container with 6 internal components in 2 rows. ROW 1: LLM (GPT-4o/Claude), Memory (History + Vector), Tool Registry (search, calc, db_query icons). ROW 2: Planner (Strategy), Executor (Tool Run), Safety Guard (HITL, Budget). Clean box-in-box layout, connection lines, technical documentation style.

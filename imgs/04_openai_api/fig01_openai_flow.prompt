@@ -1,0 +1,1 @@
+OpenAI API Request/Response Flow. Sequence diagram: User Prompt -> Tokenizer (Tokens) -> OpenAI API (Network 50ms) -> Model (GPT-4o, 200-2000ms) -> Stream Tokens -> Detokenizer -> Text Output. Side boxes: System Prompt Injection, Function Calling Loop, JSON Mode Response Format. Latency markers at each step. German labels, technical sequence diagram style.

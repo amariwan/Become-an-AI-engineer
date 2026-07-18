@@ -5,11 +5,10 @@
 % AUTOR-NOTIZ STATT LERNZIELE
 % ============================================================
 \autornotiz{
-2023 habe ich für einen E-Commerce-Kunden ein RAG-System gebaut. 50k Produktdokumente, 200k Queries/Tag.
-Erster Versuch: Naive RAG mit OpenAI Embeddings + Pinecone. Hit Rate @ 5: 67\%. Latenz p99: 3.2s. Kosten: \$450/Tag.
-Nach 3 Wochen Tuning: Recursive Chunking (512/64) + Hybrid Search (BM25 + Embedding) + Cross-Encoder Re-Ranker + pgvector.
-Hit Rate @ 5: 94\%. Latenz p99: 800ms. Kosten: \$38/Tag.
-Der Unterschied war nicht das Embedding-Modell. Es war Disziplin bei Chunking, Retrieval und Evaluation.
+2024 habe ich für einen FinTech-Kunden ein SQL-Generierungs-Modell fine-getunt. Base: Llama 3.1 8B. LoRA r=16, 500 Examples (Text-to-SQL).
+Vorher: 61\% Execution Accuracy auf Spider Test-Set. Nachher: 89\%.
+Aber: MMLU-General-Drift -12\%. Fix: 20\% generische Instruct-Examples im Training-Set beibehalten.
+Lektion: Fine-Tuning ohne Forgetting-Check ist blind. Eval vor/nach ist Pflicht, nicht Nice-to-have.
 }
 
 % ============================================================
@@ -46,7 +45,7 @@ Qualität bei Spezialisierung & Niedrig bis mittel & Mittel bis hoch & Hoch \\
 \bottomrule
 \end{tabularx}
 \caption{RAG vs Fine-Tuning vs Prompt Engineering}
-\label{tab:ft-vs-rag}
+\protect\label{tab:ft-vs-rag}
 \end{table}
 
 \paragraph{Entscheidungsmatrix:}
@@ -145,7 +144,7 @@ Der Rang $r$ bestimmt die Anzahl trainierbarer Parameter und damit die Kapazitä
 \bottomrule
 \end{tabularx}
 \caption{Rang-Konfiguration und Auswirkungen bei 8B-Modell}
-\label{tab:lora-rank}
+\protect\label{tab:lora-rank}
 \end{table}
 
 \textbf{Richtwert:} Für die meisten Aufgaben reicht $r = 16$. Nur wenn das Modell eine komplett neue Fähigkeit erlernen soll (z.\,B. Tool-Use-Format), sind höhere Ränge nötig.
@@ -249,7 +248,7 @@ Deduplizierung & Exakt gleiche Paare entfernen (Levenshtein-Ähnlichkeit $>$ 0.9
 \bottomrule
 \end{tabularx}
 \caption{Dataset-Qualitätskriterien für Fine-Tuning}
-\label{tab:dataset-quality}
+\protect\label{tab:datasetquality}
 \end{table}
 
 \praxishinweis{500 qualitätsgeprüfte Beispiele schlagen 5.000 synthetische. Jeder Fehler im Dataset wird vom Modell gelernt. Manuelle Prüfung von 20\,\% aller Einträge ist Pflicht -- besonders bei synthetisch generierten Daten.}
@@ -317,7 +316,7 @@ if sum(1 for l in lengths if l < 10) > len(lengths) * 0.1:
 \bottomrule
 \end{tabularx}
 \caption{Trainings-Infrastruktur: GPU-Anforderungen und Kosten}
-\label{tab:train-setup}
+\protect\label{tab:train-setup}
 \end{table}
 
 \begin{lstlisting}[language=Python, caption=Fine-Tuning mit Hugging Face Trainer]
@@ -505,7 +504,7 @@ Fine-Tuning ist kein Ersatz für RAG, sondern eine Ergänzung. RAG liefert Fakte
     \item \textbf{QLoRA Paper}: Dettmers et al. (2023): \textit{QLoRA: Efficient Finetuning of Quantized Language Models}
 \end{itemize}
 
-\textbf{Nächster Schritt:} Jetzt kannst du dein Modell anpassen. Im nächsten Kapitel geht es ums Deployment -- wie bringst du dein System in die Welt?
+\textbf{Nächster Schritt:} Modell angepasst, Evaluation grün -- jetzt Deployment: FastAPI, Docker, Kubernetes, Canary, Circuit Breaker, Multi-Region Failover. Wie du SupportPilot in die Welt bringst ohne Downtime.
 \endinput
 
 \clearpage

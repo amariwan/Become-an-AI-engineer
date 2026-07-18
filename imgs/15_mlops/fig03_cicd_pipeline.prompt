@@ -1,0 +1,1 @@
+LLMOps CI/CD Pipeline Stages. Horizontal flow: 1) Lint (Code, Prompts, JSON Schema) -> 2) Golden Dataset Tests -> 3) LLM Judge Tests -> 4) Cost/Latency Checks -> 5) Canary Deploy -> 6) Smoke Tests -> 7) Production. Each stage: pass/fail gate. Cost gate: max tokens per test suite. Canary: 5% traffic. GitHub Actions style boxes. German labels.

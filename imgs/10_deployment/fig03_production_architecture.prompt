@@ -1,0 +1,1 @@
+Production LLM Application Architecture Diagram. Layers: Frontend (Streamlit, React, Mobile) -> API Gateway (Rate Limit, Auth, Routing) -> LLM Service (FastAPI, Fallback) -> Cache (Redis) + Vector DB + Tracing (Langfuse). Each component as box with tech labels. Arrows showing data flow. Kubernetes-style architecture diagram.

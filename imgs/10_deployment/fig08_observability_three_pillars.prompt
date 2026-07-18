@@ -1,0 +1,1 @@
+Observability Three Pillars Diagram. Three columns: METRICS (Prometheus gauges: Requests/min, P95 Latency, Cost/Query, Error Rate), LOGGING (Structured JSON: Prompt, Response, Latency, Cost, UserID), TRACING (Distributed spans: API Gateway -> LLM Service -> Vector DB -> Cache -> LLM API). Each with tool icons (Prometheus, Grafana, Loki, Tempo/Langfuse). German labels.

@@ -1,0 +1,1 @@
+Chart Data Extraction Visual. Input Chart Image -> GPT-4o with Pydantic Schema -> Structured JSON Output: {title, x_axis, y_axis, data_points[{label, value}], trend}. Example: Bar chart -> extracted as table data. Show image on left, JSON on right with arrows. German labels.

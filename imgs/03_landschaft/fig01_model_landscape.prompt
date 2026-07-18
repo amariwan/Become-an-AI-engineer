@@ -1,0 +1,1 @@
+Model Landscape Comparison Matrix. X-axis: Model Size (1B to 70B+), Y-axis: Access Type (API vs Open Weights). Four quadrants: Top-Left (Closed Large: GPT-4o, Claude Opus), Top-Right (Open Large: Llama 3.3 70B, Nemotron), Bottom-Left (Closed Small: GPT-4o-mini, Haiku), Bottom-Right (Open Small: Phi-3, Gemma, Llama 3.2 3B). Color coding, model logos, German labels.

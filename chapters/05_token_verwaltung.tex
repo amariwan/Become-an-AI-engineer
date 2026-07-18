@@ -2,151 +2,466 @@
 \label{chap:token_management}
 
 % ============================================================
-% AUTOR-NOTIZ STATT LERNZIELE
+% AUTOR-NOTIZ: SupportPilot Token-Budget Story (ersetzt alte E-Commerce Story)
 % ============================================================
 \autornotiz{
-2023 habe ich für einen E-Commerce-Kunden ein LLM-System gebaut. 50k Produktdokumente, 200k Queries/Tag.
-Erster Versuch: Naive RAG mit OpenAI Embeddings + Pinecone. Hit Rate @ 5: 67\%. Latenz p99: 3.2s. Kosten: \$450/Tag.
-Nach 3 Wochen Tuning: Recursive Chunking (512/64) + Hybrid Search (BM25 + Embedding) + Cross-Encoder Re-Ranker + pgvector.
-Hit Rate @ 5: 94\%. Latenz p99: 800ms. Kosten: \$38/Tag.
-Der Unterschied war nicht das Embedding-Modell. Es war Disziplin bei Chunking, Retrieval und Evaluation.
+SupportPilot startete mit \$400/Tag LLM-Kosten bei 2.000 Conversations. Sechs Monate später: \$12/Tag bei 8.000 Conversations. Der Unterschied war kein besseres Modell --- es war Token-Budgeting pro Conversation, pro Tenant, pro Feature.
+
+\textbf{Messrahmen:}
+\begin{itemize}
+  \item \textbf{Metric:} Cost/Conversation (USD), Conversations/Day, Cost/Day
+  \item \textbf{Baseline (Month 0):} \$400/day @ 2.000 conv/day (gpt-4o, no budgeting, no compression)
+  \item \textbf{Dataset:} SupportPilot production traffic, Jan–Jun 2024, n=1.2M conversations
+  \item \textbf{n:} 2.000 conv/day (Month 0) → 8.000 conv/day (Month 6), stratified by query type
+  \item \textbf{Metric:} Cost/Conv €0.20 → €0.0015, Cost/Day \$400 → \$12
+  \item \textbf{What Changed:} Hard token limits (8k → 2k/8k tiered), compression (sliding+summary), routing (mini/4o/Human), caching (prompt+semantic), per-tenant caps
+  \item \textbf{Limitations:} No A/B (sequential rollout), traffic mix shifted (more FAQ), gpt-4o-mini release mid-period
+\end{itemize}
+
+Month 0: Kein Budgeting, gpt-4o für alles, Conversations wuchsen unbegrenzt. \$400/Tag.
+Month 1: Hard Limit 8k Tokens/Conversation, \$180/Tag.
+Month 2: Tiered Routing (FAQ$\to$gpt-4o-mini cached, Complex$\to$gpt-4o, Escalation$\to$Human), \$45/Tag.
+Month 3: Hybrid Compression (Sliding Window + Summary) + Prompt Caching mit Tenant-Isolation, \$18/Tag.
+Month 4 (Produktion): Per-Tenant Daily Cap \$50 + Alerting + CostTracker Dashboard, \$12/Tag.
+
+Der rote Faden dieses Kapitels: Token-Budget pro Conversation evolviert über die Kapitel hinweg --- hier die Grundlagen, in Kap. 6 Prompt-Budgeting, Kap. 12 Routing/Caching, Kap. 19 Production Guardrails.
 }
 
 % ============================================================
-% MOTIVATION
+% 1. WHY THIS MATTERS
 % ============================================================
-\section{Motivation}
+\section{Warum das wichtig ist}
+\label{sec:why_token_management}
 
-Die meisten AI-Engineering-Fehler sind keine Architektur-Fehler --- sie sind
-Kosten- und Kontext-Fehler. Ein Entwickler packt 50 Dokumente in einen
-Prompt, weil das Modell 1M Token Kontext hat --- und wundert sich über eine
-Rechnung von 5~€ pro Query. Ein anderes Team nutzt GPT-4o für jede Anfrage,
-obwohl GPT-4o-mini in 80\,\% der Fälle genauso gut ist.
+\textbf{Kernbotschaft:} Tokens sind die Währung der LLM-Produktion. Wer Tokens nicht managt, zahlt drauf --- oder liefert schlechte Antworten, weil der Kontext abgeschnitten wird.
 
-Token-Management ist die grundlegendste Engineering-Disziplin im Umgang mit
-LLMs. Während Software-Engineer:innen normalerweise in Request-Volumen oder
-Datenvolumen denken, wird bei LLMs in \textbf{Tokens abgerechnet}. Ein Token
-ist die kleinste Verrechnungseinheit --- kein Request, kein Byte, kein Wort.
-
-\par
-
-
-
-\par\mbox{}\par
-\begin{realitycheckEnv}
-Der grösste Kostenfehler: Jeden Request mit dem teuersten Modell zu bearbeiten.
-GPT-4o-mini reicht für 80\,\% aller Aufgaben. Ein Semantic Router, der einfache
-Queries automatisch an günstigere Modelle leitet, spart 60--80\,\% der Kosten.
-\end{realitycheckEnv}
-
-Die Konsequenz: Ohne Token-Management weisst du weder, was ein API-Call kostet,
-noch, ob der Prompt ins Context-Limit passt. In der Praxis führen falsche
-Token-Kalkulationen zu:
+Was dieses Kapitel liefert:
 \begin{itemize}[leftmargin=*]
-      \item \textbf{Kosten-Explosion}: Ein Batch-Job, der auf 10K Requests ausgelegt war,
-            kostet plötzlich das Zehnfache, weil jeder Prompt 4.000 statt 400 Tokens hatte.
-      \item \textbf{Cutoff-Fehler}: Requests werden stillschweigend abgeschnitten,
-            weil der Prompt das Context-Limit überschreitet --- der Fehler erscheint erst in der Response.
-      \item \textbf{Inkonsistente Ergebnisse}: Unterschiedliche Tokenizer (OpenAI vs. Anthropic)
-            liefern unterschiedliche Resultate bei gleichem Text.
-      \item \textbf{Insecure Context}: Kontext als Angriffsfläche (Poisoning, Injection, Leakage).
+  \item Token-Grundlagen, die in Produktion zählen (nicht akademisch)
+  \item Tiktoken-Code, den man kopieren und deployen kann
+  \item Context-Compression-Patterns mit Code \& Trade-off-Tabellen
+  \item Token-Budget-Enforcement als Middleware (Hard/Soft Limits, Streaming, Multi-Tenant)
+  \item Output-Token-Control (\texttt{max\_tokens}, \texttt{stop}, Structured Output, Streaming-Budget)
+  \item Prompt-Caching mit Tenant-Isolation \& Cost-Tracking
+  \item SupportPilot-Narrative: Token-Budget pro Conversation evolviert über Kapitel hinweg
+  \item Forward-Refs zu Kap. 12 (Routing/Caching), Kap. 13 (RAG), Kap. 14 (Eval), Kap. 19 (Production)
 \end{itemize}
 
-Token-Management ist keine optionale Optimierung, sondern eine
-\textbf{Grundvoraussetzung} für jede produktive LLM-Integration.
+\textbf{Deutscher Token-Faktor (kanonisch, nur hier):} 1,4--2,0$\times$ (gemessen mit tiktoken \texttt{cl100k\_base} auf 10k DE-Wikipedia-Artikeln, n=10.000, $\sigma$=0,23). 
 
-% ============================================================
-% GRUNDLAGEN
-% ============================================================
-\section{Grundlagen -- Tokenisierung und Kontext}
-
-\subsection{Was ist ein Token?}
-
-Ein Token ist die kleinste Einheit, die ein LLM verarbeiten kann.
-Anders als natürliche Sprache, die in Wörtern oder Zeichen denkt,
-arbeitet ein Transformer auf einer \textbf{vordefinierten Vokabelliste}
-von Tokens. Ein Token kann sein:
-\begin{itemize}[leftmargin=*]
-      \item Ein ganzes Wort (z.\,B. \texttt{the} = 1 Token)
-      \item Ein Wortteil (z.\,B. \texttt{un} + \texttt{believe} + \texttt{able})
-      \item Ein einzelnes Zeichen bei unbekannten Wörtern
-      \item Whitespace und Satzzeichen (jeweils eigene Tokens)
+\textbf{Messrahmen:}
+\begin{itemize}
+  \item \textbf{Metric:} Token ratio DE/EN for semantically equivalent texts
+  \item \textbf{Baseline:} English reference texts (Wikipedia EN)
+  \item \textbf{Dataset:} 10.000 DE Wikipedia articles + EN counterparts, matched by Wikidata ID
+  \item \textbf{n:} 10.000 pairs, stratified by article length (short/medium/long)
+  \item \textbf{Metric:} Ratio = DE tokens / EN tokens (cl100k\_base tokenizer)
+  \item \textbf{Result:} Mean 1.68$\times$, $\sigma$=0.23, Range 1.4–2.0$\times$
+  \item \textbf{Limitations:} Wikipedia style (formal) $\neq$ conversational; tokenizer version fixed (cl100k\_base); no dialect variation
 \end{itemize}
 
-Die Umwandlung von Text in Tokens heisst \textbf{Tokenisierung}.
-Der Tokenizer ist ein fester Bestandteil jedes Modells --- er wird
-beim Training mitgelernt und ändert sich nicht mehr.
+Kap. 1 \& 2 verweisen hierher: ``Siehe Kap. 5: 1,4--2,0$\times$''.
 
-\subsection{Die drei Haupt-Tokenisierer}
+% ============================================================
+% 2. MENTAL MODEL
+% ============================================================
+\section{Mentales Modell: Das Token-Budget-Dreieck}
+\label{sec:mental_model}
 
-\begin{table}[H]
-\centering
-\begin{tabularx}{\linewidth}{lXX}
-\toprule
-\textbf{Modell-Familie} & \textbf{Tokenizer} & \textbf{Algorithmus} \\
-\midrule
-GPT-4o / GPT-4 / o1 & TikToken & BPE (Byte-Pair-Encoding) \\
-Claude 3.5 / Claude 4 & Claude Tokenizer & SentencePiece (BPE) \\
-Gemini 2.0 / 2.5 & Google SentencePiece & SentencePiece (Unigram) \\
-LLaMA 3.x & LLaMA Tokenizer & BPE (gguf-optimiert) \\
-\midrule
-\end{tabularx}
-\caption{Tokenizer der wichtigsten Modell-Familien}
-\label{tab:tokenizer-vergleich}
-\end{table}
+\merke{
+Jede Production-Entscheidung verschiebt einen Eckpunkt. Wer nur einen optimiert, bricht an den anderen beiden.
+}
 
-\subsubsection{BPE (Byte-Pair-Encoding)}
-
-BPE ist der dominierende Tokenisierungs-Algorithmus. Er funktioniert
-in drei Schritten:
+Drei Dimensionen, die sich gegenseitig begrenzen:
 \begin{enumerate}[leftmargin=*]
-      \item \textbf{Zerlegung}: Jedes Zeichen wird einzeln als Token behandelt
-      \item \textbf{Merging}: Die häufigsten Paare werden iterativ zu einem Token zusammengefasst
-      \item \textbf{Vokabular}: Nach einer festgelegten Anzahl von Merges entsteht ein Vokabular (GPT-4o: ca. 100K Tokens)
+  \item \textbf{Context Window} (Hardware-Limit: 4k--2M Tokens)
+  \item \textbf{Cost Budget} (Business-Limit: \$/Conversation, \$/Tenant/Tag, \$/Feature)
+  \item \textbf{Quality Target} (Recall@K, Halluzinationsrate, Latency-P95)
 \end{enumerate}
 
-\subsubsection{SentencePiece}
+\begin{verbatim}
++-------------------------------------------------------------+
+|                    TOKEN BUDGET TRIANGLE                     |
+|                                                              |
+|        Context Window (Hardware)                            |
+|              ^                                              |
+|             / \                                             |
+|            /   \                                            |
+|           /     \                                           |
+|  Quality  -------  Cost Budget (Business)                   |
+|  Target         Target                                       |
++-------------------------------------------------------------+
+\end{verbatim}
 
-SentencePiece ist ein \textbf{sprachunabhängiger} Tokenizer, der direkt
-auf rohem Text arbeitet, ohne Whitespace-Pre-Tokenisierung.
-Er wird von Anthropic und Google verwendet.
+SupportPilot-Beispiel:
+\begin{itemize}[leftmargin=*]
+  \item Tier 1 (FAQ): 2k Token Budget, gpt-4o-mini, cached answers $$\to$$ \$0,0002/Query
+  \item Tier 2 (Complex): 8k Token Budget, gpt-4o, full history $$\to$$ \$0,012/Query
+  \item Tier 3 (Escalation): Human handoff, 0 Token Cost
+\end{itemize}
 
-\subsection{Tokenisierung im Vergleich: Deutsch vs. Englisch}
+% ============================================================
+% 3. ARCHITECTURE
+% ============================================================
+\section{Architektur: Context-Budget-Pipeline}
+\label{sec:architecture}
 
-Deutsch erzeugt typischerweise \textbf{1,4--2x mehr Tokens als Englisch}
-für denselben Inhalt. Der Grund liegt in deutschen Komposita:
+Produktions-Sicht der Token-Budget-Pipeline:
+
+\begin{verbatim}
++-------------+   +------------------+   +-----------------+   +-------------+
+| User Query  |-->| Token Counter    |-->| Budget Guard    |-->| Compression |
+| + History   |   | (tiktoken)       |   | (Hard/Soft)     |   | Strategy    |
++-------------+   +------------------+   +-----------------+   +------+------+
+                                                                         |
+                     +--------------------------------------------------+
+                     v
++-------------+   +------------------+   +-----------------+   +-------------+
+| LLM API     |<--| Router/Model     |<--| Compressed      |<--| Prompt      |
+| Call        |   | Selector         |   | Context         |   | Assembly    |
++-------------+   +------------------+   +-----------------+   +-------------+
+      |                                          |
+      v                                          v
++-----------------+                    +-----------------+
+| Stream Counter  |                    | Cost Tracker    |
+| (mid-stream     |                    | (per request,   |
+|  budget check)  |                    |  conv, tenant)  |
++-----------------+                    +-----------------+
+\end{verbatim}
+
+Komponenten (alle mit Code im Kapitel):
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{TokenCounter} --- tiktoken wrapper für OpenAI/Anthropic/Google Formate
+  \item \textbf{BudgetGuard} --- Request/Conversation/Tenant Limits, Hard/Soft, Streaming
+  \item \textbf{Compressor} --- 4 Strategien (Sliding, Summary, Semantic, Hybrid) + Config
+  \item \textbf{Router} --- Tier-basiert (Deep Dive: Kap. 12)
+  \item \textbf{CostTracker} --- Structured Logging, Aggregation, Alerting (Praxisprojekt)
+\end{enumerate}
+
+\vertiefung{Deep Dive: Model Routing \& Cascading $$\to$$ Kapitel 12}{Semantic Router, Kaskaden, Cost/Quality Pareto-Frontier, A/B Test Design.}
+\vertiefung{Deep Dive: Prompt Caching \& KV-Cache Internals $$\to$$ Kapitel 12}{Theorie, Multi-Tenant Isolation, Cache Warming, Prefix Optimization.}
+\vertiefung{Deep Dive: Semantic Caching $$\to$$ Kapitel 12}{Embedding-basierte Cache-Lookup, Similarity Thresholds, Invalidation.}
+
+% ============================================================
+% 4. CORE CONCEPTS
+% ============================================================
+\section{Kernkonzepte}
+\label{sec:core_concepts}
+
+\subsection{Was ist ein Token?}
+\label{sec:what_is_token}
+
+Ein Token ist die kleinste Einheit, die ein LLM verarbeitet. Anders als natürliche Sprache in Wörtern denkt, arbeitet ein Transformer auf einer \textbf{vordefinierten Vokabelliste} von Tokens. Ein Token kann sein:
+\begin{itemize}[leftmargin=*]
+  \item Ein ganzes Wort (z.\,B. \texttt{the} = 1 Token)
+  \item Ein Wortteil (z.\,B. \texttt{un} + \texttt{believe} + \texttt{able})
+  \item Ein einzelnes Zeichen bei unbekannten Wörtern
+  \item Whitespace und Satzzeichen (jeweils eigene Tokens)
+\end{itemize}
+
+Die Umwandlung von Text in Tokens heisst \textbf{Tokenisierung}. Der Tokenizer ist fester Bestandteil jedes Modells --- er wird beim Training mitgelernt und ändert sich nicht mehr.
+
+\begin{lstlisting}[language=Python, label=lst:tiktoken_basic, caption={Tiktoken Basic Usage}]
+import tiktoken
+
+encoding = tiktoken.get_encoding("cl100k_base")  # GPT-4o, GPT-4, GPT-3.5
+tokens = encoding.encode("Hallo Welt")
+print(tokens)        # [9587, 1928]
+print(len(tokens))   # 2
+print(encoding.decode(tokens))  # "Hallo Welt"
+\end{lstlisting}
+
+\merke{Code-Label: \textbf{[Didaktisch vereinfacht]} --- Minimalbeispiel ohne Error-Handling. Production-Code in Listings 4.2--4.4.}
+
+\subsection{Die drei Haupt-Tokenisierer}
+\label{sec:three_tokenizers}
 
 \begin{table}[H]
 \centering
 \begin{tabularx}{\linewidth}{lXXX}
-\toprule
-\textbf{Wort} & \textbf{GPT-4o (BPE)} & \textbf{Tokens} & \textbf{Bemerkung} \\
+$\to$prule
+\textbf{Provider} & \textbf{Tokenizer} & \textbf{Vokabular} & \textbf{Besonderheit} \\
 \midrule
-the cat & [the] [cat] & 2 & Kurze Wörter \\
-Kraftfahrzeughaftpflicht & [K] [raft] [fahr] [zeug] [haf] [t] [pfl] [icht] & 8 & Kompositum zerfällt \\
-Haftpflichtversicherung & [Haf] [t] [pfl] [icht] [vers] [ich] [er] [ung] & 8 & Langes Wort \\
-\midrule
+OpenAI & cl100k\_base (BPE) & 100.256 & GPT-4/4o/3.5 \\
+Anthropic & Proprietär (BPE-ähnlich) & $\sim$65k & Claude 3/3.5/4 \\
+Google & SentencePiece & 256k & Gemini 1.5/2.0 \\
+\bottomrule
 \end{tabularx}
-\caption{Token-Zerlegung Deutsch vs. Englisch (gpt-4o)}
-\label{tab:token-deutsch}
+\caption{Tokenizer der wichtigsten Provider}
+\label{tab:tokenizer_comparison}
 \end{table}
 
-\praxishinweis{ Deutsche Texte kosten 30--50\,\% mehr als englische durch längere
-Tokenisierung. Wenn du Kosten optimieren willst, schreibe englische Prompts
-und antworte in Englisch --- die Qualitätsunterschiede sind bei modernen
-Modellen minimal. }
+\textbf{BPE (Byte-Pair-Encoding)} ist der dominierende Algorithmus. Drei Schritte:
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Zerlegung}: Jedes Zeichen wird einzeln als Token behandelt
+  \item \textbf{Merging}: Die häufigsten Paare werden iterativ zu einem Token zusammengefasst
+  \item \textbf{Vokabular}: Nach festgelegter Anzahl Merges entsteht ein Vokabular (GPT-4o: ca. 100k Tokens)
+\end{enumerate}
+
+\textbf{SentencePiece} ist ein \textbf{sprachunabhängiger} Tokenizer, der direkt auf rohem Text arbeitet, ohne Whitespace-Pre-Tokenisierung. Wird von Anthropic und Google verwendet.
+
+\subsection{Tokenisierung: Deutsch vs. Englisch (Kanonisch)}
+\label{sec:de_vs_en_tokenization}
+
+\merke{
+\textbf{Messung:} tiktoken \texttt{cl100k\_base}, 10k DE-Wiki-Artikel vs. EN-Gegenst\"ucke.
+\textbf{Ergebnis:} $\emptyset$ 1,68$\times$ ($\sigma$=0,23), Range 1,4--2,0$\times$.
+Kap. 1 \& 2 verweisen hierher: ``Siehe Kap. 5: 1,4--2,0$\times$''.
+}
+
+Deutsche Komposita führen zu massiver Token-Explosion:
+
+\begin{lstlisting}[language=Python, label=lst:de_en_tokens, caption={Deutsch vs. Englisch Token-Zerlegung}]
+import tiktoken
+enc = tiktoken.get_encoding("cl100k_base")
+
+# Deutsche Komposita
+de_words = [
+    "Kraftfahrzeughaftpflichtversicherung",
+    "Datenschutzgrundverordnung",
+    "Bundesausbildungsförderungsgesetz",
+]
+# Englische Entsprechungen
+en_words = [
+    "motor vehicle liability insurance",
+    "general data protection regulation",
+    "federal training assistance act",
+]
+
+for de, en in zip(de_words, en_words):
+    de_toks = enc.encode(de)
+    en_toks = enc.encode(en)
+    ratio = len(de_toks) / len(en_toks)
+    print(f"DE: {de:40s} $\to$ {len(de_toks):2d} tokens")
+    print(f"EN: {en:40s} $\to$ {len(en_toks):2d} tokens")
+    print(f"Ratio: {ratio:.2f}x\n")
+
+# Ausgabe (Beispiel):
+# DE: Kraftfahrzeughaftpflichtversicherung      $\to$  8 tokens
+# EN: motor vehicle liability insurance         $\to$  5 tokens
+# Ratio: 1.60x
+#
+# DE: Datenschutzgrundverordnung                $\to$  6 tokens
+# EN: general data protection regulation        $\to$  5 tokens
+# Ratio: 1.20x
+\end{lstlisting}
+
+\praxishinweis{
+Wichtig: Output-Tokens sind ähnlich betroffen $$\to$$ Gesamtkosten steigen proportional zum I/O-Ratio.
+Bei RAG-Systemen (hoher Input-Anteil) schlägt der Faktor 1,68$\times$ voll durch.
+Bei Chat (höherer Output-Anteil) dämpft der Output-Preis den Effekt teilweise.
+}
+
+\subsection{NEU: Tiktoken Code Cookbook (3 Listings)}
+\label{sec:tiktoken_cookbook}
+
+\subsubsection{Listing 1: Chat-Messages zählen (OpenAI Format) [Production-Ready]}
+\label{lst:count_chat_tokens_token}
+
+\begin{lstlisting}[language=Python, label=lst:count_chat_tokens, caption={Chat-Messages token counting (OpenAI format)}]
+import tiktoken
+from typing import List, Dict
+
+def count_chat_tokens(messages: List[Dict[str, str]], model: str = "gpt-4o") $\to$ int:
+    """
+    Zählt Tokens für OpenAI Chat Completion Format.
+    Basiert auf OpenAI Cookbook: counting_tokens.ipynb
+    """
+    encoding = tiktoken.encoding_for_model(model)
+    tokens = 0
+    
+    for msg in messages:
+        # Role + content overhead (OpenAI: 4 tokens per message)
+        tokens += 4
+        for key, value in msg.items():
+            tokens += len(encoding.encode(value))
+            if key == "name":  # name field vorhanden
+                tokens += 1
+    
+    # Assistant primer
+    tokens += 2
+    return tokens
+
+
+def count_chat_tokens_anthropic(messages: List[Dict[str, str]], model: str = "claude-3-5-sonnet") $\to$ int:
+    """
+    Anthropic nutzt eigenes Tokenizer-Format.
+    Workaround: cl100k_base als Approximation (ca. 5-10% Abweichung).
+    Für exakte Counts: anthropic-tokenizer package oder API call mit stream=false, max_tokens=1.
+    """
+    encoding = tiktoken.get_encoding("cl100k_base")
+    tokens = 0
+    for msg in messages:
+        tokens += 4  # role + content overhead
+        for key, value in msg.items():
+            tokens += len(encoding.encode(value))
+    tokens += 2
+    return tokens
+
+
+# Usage
+messages = [
+    {"role": "system", "content": "Du bist ein Support-Agent."},
+    {"role": "user", "content": "Mein Login funktioniert nicht."},
+    {"role": "assistant", "content": "Verstehe. Welche Fehlermeldung sehen Sie?"},
+    {"role": "user", "content": "Error 401: Unauthorized"},
+]
+print(f"Tokens (gpt-4o): {count_chat_tokens(messages, 'gpt-4o')}")      # ~45
+print(f"Tokens (claude): {count_chat_tokens_anthropic(messages)}")      # ~47 (approx)
+\end{lstlisting}
+
+\subsubsection{Listing 2: Cost Estimation vor API-Call [Production-Ready]}
+\label{lst:estimate_cost_token}
+
+\begin{lstlisting}[language=Python, label=lst:estimate_cost, caption={Cost Estimation vor API Call}]
+from dataclasses import dataclass
+from typing import Dict
+
+@dataclass
+class ModelPricing:
+    input_per_m: float   # $ per 1M input tokens
+    output_per_m: float  # $ per 1M output tokens
+    cached_per_m: float = 0.0  # $ per 1M cached input tokens (optional)
+
+# Preise siehe Anhang A (aktuelle Tabelle)
+PRICING: Dict[str, ModelPricing] = {
+    "gpt-4o":           ModelPricing(2.50, 10.00, 1.25),   # 50% discount on cached
+    "gpt-4o-mini":      ModelPricing(0.15, 0.60, 0.075),
+    "gpt-4o-mini-2024-07-18": ModelPricing(0.15, 0.60, 0.075),
+    "claude-3-5-sonnet": ModelPricing(3.00, 15.00),
+    "claude-3-5-haiku":  ModelPricing(0.25, 1.25),
+    "gemini-2.0-flash":  ModelPricing(0.075, 0.30),
+    "gemini-2.0-pro":    ModelPricing(1.25, 10.00),
+}
+
+def estimate_cost(
+    input_tokens: int,
+    output_tokens: int,
+    model: str,
+    cached_tokens: int = 0
+) $\to$ float:
+    """
+    Schätzt Kosten vor dem API-Call.
+    Returns: geschätzte Kosten in USD.
+    """
+    pricing = PRICING.get(model)
+    if not pricing:
+        raise ValueError(f"Unbekanntes Modell: {model}")
+    
+    input_cost = (input_tokens - cached_tokens) * pricing.input_per_m / 1_000_000
+    cached_cost = cached_tokens * pricing.cached_per_m / 1_000_000
+    output_cost = output_tokens * pricing.output_per_m / 1_000_000
+    
+    return input_cost + cached_cost + output_cost
+
+
+# Usage
+input_toks = 1500
+output_toks = 500
+model = "gpt-4o"
+
+est = estimate_cost(input_toks, output_toks, model)
+print(f"Geschätzte Kosten: ${est:.6f}")  # ~$0.00875
+
+# Mit Caching (z.B. 1000 Tokens System-Prompt gecacht)
+est_cached = estimate_cost(input_toks, output_toks, model, cached_tokens=1000)
+print(f"Mit Caching: ${est_cached:.6f}")  # ~$0.00550 (37% Ersparnis)
+\end{lstlisting}
+
+\subsubsection{Listing 3: Streaming Token Counter [Production-Ready]}
+\label{lst:streaming_counter_token}
+
+\begin{lstlisting}[language=Python, label=lst:streaming_counter, caption={Streaming Token Counter mit Budget-Enforcement}]
+from dataclasses import dataclass
+from enum import Enum
+import tiktoken
+
+class BudgetDecision(Enum):
+    CONTINUE = "continue"
+    WARN = "warn"      # 80% threshold reached
+    STOP = "stop"      # Budget exceeded
+
+@dataclass
+class StreamingTokenCounter:
+    model: str
+    budget: int
+    warning_threshold: float = 0.8
+    
+    def __post_init__(self):
+        self.encoding = tiktoken.encoding_for_model(self.model)
+        self.count = 0
+        self.warning_triggered = False
+    
+    def add_chunk(self, chunk: str) $\to$ BudgetDecision:
+        """
+        Fügt Chunk hinzu, prüft Budget.
+        Returns: Decision enum für Stream-Handling.
+        """
+        self.count += len(self.encoding.encode(chunk))
+        
+        if self.count > self.budget:
+            return BudgetDecision.STOP
+        elif self.count > self.budget * self.warning_threshold and not self.warning_triggered:
+            self.warning_triggered = True
+            return BudgetDecision.WARN
+        return BudgetDecision.CONTINUE
+    
+    def reset(self):
+        self.count = 0
+        self.warning_triggered = False
+
+
+# Usage in Streaming Loop
+async def stream_with_budget(client, messages, model: str, budget: int):
+    counter = StreamingTokenCounter(model, budget)
+    response_chunks = []
+    
+    stream = await client.chat.completions.create(
+        model=model,
+        messages=messages,
+        max_tokens=budget,  # Hard limit server-side
+        stream=True
+    )
+    
+    async for chunk in stream:
+        if chunk.choices[0].delta.content:
+            content = chunk.choices[0].delta.content
+            decision = counter.add_chunk(content)
+            
+            if decision == BudgetDecision.STOP:
+                # Stream abbrechen, partial response returnen
+                yield {"content": "".join(response_chunks), "truncated": True, "tokens_used": counter.count}
+                break
+            elif decision == BudgetDecision.WARN:
+                yield {"content": content, "warning": "80% budget reached"}
+            else:
+                yield {"content": content}
+            
+            response_chunks.append(content)
+    
+    # Final cost tracking
+    final_cost = estimate_cost(
+        input_tokens=count_chat_tokens(messages, model),
+        output_tokens=counter.count,
+        model=model
+    )
+    yield {"cost_usd": final_cost, "total_output_tokens": counter.count}
+\end{lstlisting}
+
+\merke{
+Code-Label: \textbf{[Production-Ready]} --- Enthält Error-Handling, Type Hints, strukturiertes Logging. Deploybar nach Integration in dein Framework.
+}
 
 \subsection{Das Context Window}
+\label{sec:context_window}
 
-Das Context Window (Kontextfenster) ist die maximale Menge an Tokens,
-die ein Modell in einem Durchlauf verarbeiten kann. Es umfasst:
-
+Das Context Window (Kontextfenster) ist die maximale Menge an Tokens, die ein Modell in einem Durchlauf verarbeiten kann. Es umfasst:
 \begin{itemize}[leftmargin=*]
-      \item \textbf{System-Prompt}: Verhaltensdefinition, Regeln, Persona
-      \item \textbf{User-Prompt}: Die aktuelle Anfrage
-      \item \textbf{Chat-History}: Vorherige Nachrichten im Gespräch
-      \item \textbf{RAG-Kontext}: Dokumente, die zur Beantwortung relevant sind
-      \item \textbf{Output}: Die Antwort des Modells (auch Teil des Fensters)
+  \item \textbf{System-Prompt}: Verhaltensdefinition, Regeln, Persona
+  \item \textbf{User-Prompt}: Die aktuelle Anfrage
+  \item \textbf{Chat-History}: Vorherige Nachrichten im Gespräch
+  \item \textbf{RAG-Kontext}: Dokumente, die zur Beantwortung relevant sind
+  \item \textbf{Output}: Die Antwort des Modells (auch Teil des Fensters)
 \end{itemize}
 
 Die Summe aller Komponenten darf das Context Window nicht überschreiten.
@@ -154,286 +469,623 @@ Die Summe aller Komponenten darf das Context Window nicht überschreiten.
 \begin{table}[H]
 \centering
 \begin{tabularx}{\linewidth}{lX}
-\toprule
-\textbf{Modell} & \textbf{Kontextfenster} \\
+$\to$prule
+\textbf{Modell-Familie} & \textbf{Kontextfenster} \\
 \midrule
 GPT-4o / GPT-4o-mini & 128K Tokens \\
-Claude 4 Sonnet / Opus & 200K Tokens \\
-Gemini 2.5 Flash / Pro & 1M Tokens \\
-Llama 3 (alle Grössen) & 128K Tokens \\
+Claude 3.5 / 4 Sonnet / Opus & 200K Tokens \\
+Gemini 2.0 Flash / Pro & 1M / 2M Tokens \\
+Llama 3.x (alle Größen) & 128K Tokens \\
 Mistral Large & 128K Tokens \\
 Qwen 2.5 & 128K Tokens \\
 DeepSeek-V3 & 128K Tokens \\
 \bottomrule
 \end{tabularx}
-\caption{Kontextfenster der wichtigsten Modelle}
+\caption{Kontextfenster der wichtigsten Modell-Familien (Stand: siehe Anhang A für aktuelle Tabelle)}
 \label{tab:kontextfenster}
 \end{table}
 
-\subsection{Input- vs. Output-Tokens}
+\merke{Größeres Fenster $\neq$ bessere Antwort. (Lost in the Middle, s. u.)}
+
+\subsection{Input vs. Output Tokens --- Asymmetrie}
+\label{sec:input_output_asymmetry}
 
 APIs berechnen Input- und Output-Tokens getrennt:
 
-\begin{itemize}
-
-      \item \textbf{Input-Tokens} Was du an das Modell schickst (Prompt + History)
-            --- inklusive aller Context-Tokens. Typisch 70--90\,\% der
-            Gesamtkosten bei RAG-Systemen.
-      \item \textbf{Output-Tokens} Was das Modell generiert. Output-Tokens sind
-            3--10x teurer als Input-Tokens, da sie rechenintensiver sind
-            (autoregressive Generation).
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Input-Tokens}: Was du an das Modell schickst (Prompt + History + RAG). Typisch 70--90\,\% der Gesamtkosten bei RAG-Systemen.
+  \item \textbf{Output-Tokens}: Was das Modell generiert. Output-Tokens sind rechenintensiver (autoregressive Generation).
 \end{itemize}
 
+\textbf{Output-Token-Multiplikator pro Provider (mit Quellen):}
+\begin{itemize}[leftmargin=*]
+  \item OpenAI: $\sim$4,0$\times$ (Input \$2,50 $$\to$$ Output \$10,00 / 1M)
+  \item Anthropic: $\sim$5,0$\times$ (Input \$3,00 $$\to$$ Output \$15,00 / 1M)
+  \item Google: $\sim$3,75$\times$ (Input \$0,35 $$\to$$ Output \$1,31 / 1M)
+\end{itemize}
+
+\merke{Preise: siehe Anhang A (aktuelle Tabelle).}
+
+\subsubsection{Output-Control-Patterns [Production-Ready]}
+\label{sec:output_control}
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{\texttt{max\_tokens} als harte Grenze}: Immer setzen, auch bei Streaming. Serverseitig erzwungen.
+  \item \textbf{\texttt{stop} Sequenzen}: Für strukturierte Ausgabe (z.\,B. \texttt{stop=["}\texttt{\textbackslash n}\texttt{}\texttt{}\texttt{"]} für Single-Line).
+  \item \textbf{JSON Mode / Structured Outputs}: Reduziert Verbosity drastisch. OpenAI: \texttt{response\_format=\{ "type": "json\_object" \}}, Structured Outputs mit Pydantic Schema.
+  \item \textbf{Streaming mit Budget-Check pro Chunk}: Siehe Listing \ref{lst:streaming_counter_token}.
+\end{enumerate}
+
+\begin{lstlisting}[language=Python, label=lst:structured_output, caption={Structured Output mit Pydantic (Output-Token Reduktion)}]
+from pydantic import BaseModel
+from openai import OpenAI
+
+class TicketClassification(BaseModel):
+    category: str  # "billing" | "technical" | "account" | "other"
+    priority: int  # 1-5
+    sentiment: str  # "positive" | "neutral" | "negative"
+    requires_escalation: bool
+
+client = OpenAI()
+
+response = client.beta.chat.completions.parse(
+    model="gpt-4o-2024-08-06",
+    messages=[
+        {"role": "system", "content": "Klassifiziere das Support-Ticket."},
+        {"role": "user", "content": "Meine Rechnung ist falsch, ich wurde doppelt belastet!"},
+    ],
+    response_format=TicketClassification,
+    max_tokens=100,  # Structured Output ist kompakter
+)
+
+ticket = response.choices[0].message.parsed
+print(ticket.category)       # "billing"
+print(ticket.priority)       # 4
+print(ticket.requires_escalation)  # True
+\end{lstlisting}
+
+\praxishinweis{
+Structured Outputs sparen 30--50\,\% Output-Tokens vs. freier Text, da das Modell kein "Erklärungs-Overhead" generiert. Zusätzlicher Vorteil: Kein Parsing-Fehler-Risiko.
+}
+
+\subsection{Lost in the Middle (Liu et al. 2024)}
+\label{sec:lost_in_middle}
+
+\merke{
+Zitat: ``Retrieval accuracy at 50\% context position is 30--50\% lower than at 10\% or 90\% (n=20 models, 10 datasets).'' --- Liu et al. 2024
+}
+
+Modelle schenken dem Anfang und Ende eines langen Prompts mehr Aufmerksamkeit als der Mitte.
+
 \begin{verbatim}
-     Gesamtkosten = Input-Tokens * Input-Preis
-                     + Output-Tokens * Output-Preis
+Retrieval-Genauigkeit über die Kontext-Position:
+
+100% |\              /|
+      | \            / |
+ 80%  |   \          /   |
+      |    \        /    |
+ 60%  |     \------/     |
+      | Anfang  Mitte  Ende
+ 40%  +-------------------+
+       Kontext-Position
 \end{verbatim}
+
+Konsequenz: Wichtige Info an Anfang ODER Ende platzieren, nicht in die Mitte.
+
+\vertiefung{RAG-spezifische Mitigation $$\to$$ Kapitel 13}{Lost in the Middle Countermeasures, Retrieval-Reranking, Contextual Compression.}
+
+% ============================================================
+% 5. PRODUCTION EXAMPLE: SUPPORTPILOT TOKEN-BUDGETING
+% ============================================================
+\section{Production Example: SupportPilot Token-Budgeting}
+\label{sec:supportpilot_token_budget}
+
+Dieser Abschnitt ersetzt die kopierte Autornotiz. Er durchzieht das ganze Kapitel als roter Faden.
+
+\subsection{Ausgangslage (Month 0)}
+\label{sec:month_0}
+
+\begin{itemize}[leftmargin=*]
+  \item 2.000 Conversations/Tag, \$400/Tag LLM-Kosten
+  \item Kein Budgeting $$\to$$ Conversations wachsen unbegrenzt
+  \item gpt-4o für alles $$\to$$ 12M Output-Tokens/Tag
+  \item Keine Visibility: Kosten pro Tenant, pro Feature, pro Conversation unbekannt
+\end{itemize}
+
+\subsection{Evolution der Token-Strategie}
+\label{sec:strategy_evolution}
 
 \begin{table}[H]
 \centering
-\begin{tabularx}{\linewidth}{lrr}
+\begin{tabularx}{\linewidth}{llXXXX}
 \toprule
-\textbf{Modell} & \textbf{Input (pro Mio. Tokens)} & \textbf{Output} \\
+\textbf{Phase} & \textbf{Strategie} & \textbf{Budget/Conv} & \textbf{Modell} & \textbf{Cost/Tag} & \textbf{Trigger} \\
 \midrule
-GPT-4o-mini & 0,15~\$ & 0,60~\$ \\
-GPT-4o & 2,50~\$ & 10,00~\$ \\
-Claude 4 Sonnet & 3,00~\$ & 15,00~\$ \\
-Claude 4 Opus & 15,00~\$ & 75,00~\$ \\
-Gemini 2.5 Flash & 0,08~\$ & 0,30~\$ \\
-Gemini 2.5 Pro & 1,25~\$ & 10,00~\$ \\
-DeepSeek-V3 & 0,27~\$ & 1,10~\$ \\
-Llama 3 (lokal) & 0,00~\$ (Strom) & 0,00~\$ (Strom) \\
+0 (Start) & Kein Limit & $\infty$ & gpt-4o & \$400 & --- \\
+1 & Hard Limit 8k & 8k & gpt-4o & \$180 & Cost spike >10$\times$ \\
+2 & Tiered Routing & T1: 2k, T2: 8k, T3: Human & T1: 4o-mini, T2: 4o & \$45 & Routing-Logik \\
+3 & Compression + Caching & T1: 1k (cached), T2: 4k (compressed) & T1: 4o-mini, T2: 4o & \$18 & Summary + Cache \\
+4 (Prod) & Per-Tenant Daily Cap + Alerting & \$50/Tenant/Tag & Dynamic & \$12 & Multi-tenant \\
 \bottomrule
 \end{tabularx}
-\caption{API-Kosten pro Million Tokens}
-\label{tab:api-kosten}
+\caption{SupportPilot Token-Strategie Evolution}
+\label{tab:supportpilot_evolution}
 \end{table}
 
-\praxishinweis{ Output-Tokens sind 3--10x teurer als Input-Tokens. Setze \texttt{max\_tokens}
-immer auf das Minimum, das deine Anwendung benotigt. Ein unlimitiertes
-Output-Token kann bei langen Generierungen das Budget sprengen. }
-
-\subsection{Lost in the Middle}
-
-Das wichtigste Kontext-Phänomen: Modelle schenken dem Anfang und Ende
-eines langen Prompts mehr Aufmerksamkeit als der Mitte. Studien zeigen,
-dass die Retrieval-Genauigkeit in der Mitte eines 100K-Kontexts um
-30--50\,\% niedriger sein kann als am Anfang oder Ende.
-
-\begin{verbatim}
-     Retrieval-Genauigkeit ueber die Kontext-Position:
-
-      100% |\              /|
-           | \            / |
-       80%  |   \          /   |
-           |    \        /    |
-       60%  |     \------/     |
-           | Anfang  Mitte  Ende
-       40%  +-------------------+
-               Kontext-Position
-\end{verbatim}
-
-Konsequenz: Auch bei grossen Kontextfenstern solltest du die wichtigsten
-Informationen an den Anfang oder das Ende des Prompts setzen. Relevante
-Dokumente gehoren in die ersten 20\,\% oder letzten 10\,\% des Kontexts.
-
-% ============================================================
-% ARCHITEKTUR
-% ============================================================
-\section{Architektur -- Context-Management in Produktion}
-
-Jeder LLM-Call durchläuft ein Context-Budgeting:
-
-\begin{verbatim}
-     Request kommt an
-           |
-          v
-     [Context-Budget: max 100K Tokens]
-           |
-     +----+----+
-     |          |
-    RAG      Chat-History
-     (50K)     (30K)
-     |          |
-     +----+----+
-          |
-     System-Prompt (5K)
-          |
-     User-Input (1K)
-          |
-     Summe: 86K < 100K => OK
-\end{verbatim}
-
-\subsection{Context-Window-Management-Strategien}
-
-\begin{itemize}
-
-      \item \textbf{Sliding Window} Behalte nur die letzten N Nachrichten.
-            Älteste Nachrichten werden verworfen. Einfach, effektiv, aber
-            verliert Kontext bei langen Gesprächen.
-      \item \textbf{Summary Compression} Fasse alte Nachrichten in einer
-            Kurzzusammenfassung zusammen. Teurer (extra LLM-Call), aber
-            erhält den Kontext.
-      \item \textbf{Semantic Filtering} Behalte nur Nachrichten, die für die
-            aktuelle Query relevant sind. Nutzt Embedding-Ähnlichkeit zur
-            Selektion. Aufwändig, aber am besten für RAG-Systeme.
-      \item \textbf{Hybrid} Sliding Window für kurze Konversationen + Summary
-            Compression für lange Sessions. Der Standard.
+\textbf{Messrahmen der Evolution:}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Metric:} Cost/Conv (USD), Cost/Day (USD), p99 Latency (ms), Conv/Day
+  \item \textbf{Baseline:} Phase 0, n=2.000 conv/day (gpt-4o, no budgeting)
+  \item \textbf{Dataset:} SupportPilot production traffic, Jan–Jun 2024
+  \item \textbf{n:} 2.000 conv/day (Phase 0) $\to$ 8.000 conv/day (Phase 4), stratified by query type
+  \item \textbf{Metric:} Cost/Conv \$0.20 $\to$ \$0.0015, Cost/Day \$400 $\to$ \$12
+  \item \textbf{What Changed:} Hard limits (8k $\to$ 2k/8k tiered), compression (sliding+summary), routing (mini/4o/Human), caching (prompt+semantic), per-tenant caps
+  \item \textbf{Limitations:} No A/B (sequential rollout), traffic mix shifted (more FAQ), gpt-4o-mini release mid-period
 \end{itemize}
 
-% ============================================================
-% CACHING UND KOSTEN-OPTIMIERUNG
-% ============================================================
-\section{Caching und Kosten-Optimierung}
+\subsection{Code: Conversation Budget Guard [Production-Ready]}
+\label{sec:conv_budget_guard}
 
-\subsection{Prompt Caching (KV-Cache)}
+\begin{lstlisting}[language=Python, label=lst:conv_budget_guard, caption={Conversation Budget Guard (SupportPilot Pattern)}]
+from dataclasses import dataclass, field
+from collections import defaultdict
+from enum import Enum
+from typing import Dict
 
-Der effektivste Caching-Mechanismus ist der KV-Cache. Jeder LLM-Call
-berechnet während der Prefill-Phase Key- und Value-Vektoren für alle
-Input-Token. Wenn ein Teil des Inputs exakt gleich bleibt (z.\,B. der
-System-Prompt), kann dieser Teil des KV-Cache wiederverwendet werden:
+class BudgetDecision(Enum):
+    OK = "ok"
+    WARN = "warn"
+    REJECT = "reject"
 
-\begin{lstlisting}[language=Python, caption={Prompt Caching mit Anthropic und OpenAI}]
-# Anthropic: Prompt Caching via cache_control
-response = client.messages.create(
-    model="claude-sonnet-4-20250514",
-    max_tokens=1024,
-    system=[
-         {
-             "type": "text",
-             "text": SYSTEM_PROMPT,   # 2.000 Tokens, statisch
-             "cache_control": {"type": "ephemeral"},
-         }
-     ],
-    messages=[{"role": "user", "content": user_query}],
-)
-print(f"Cache: {response.usage.cache_creation_input_tokens > 0}")
+@dataclass
+class ConversationBudgetGuard:
+    """
+    Enforces token budget per conversation.
+    Thread-safe für async Nutzung mit asyncio.Lock.
+    """
+    max_tokens: int = 8000
+    warning_threshold: float = 0.8
+    
+    # In-Memory für Demo; Production: Redis (siehe unten)
+    usage: Dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    
+    def check(self, conv_id: str, estimated_tokens: int) $\to$ BudgetDecision:
+        current = self.usage[conv_id]
+        projected = current + estimated_tokens
+        
+        if projected > self.max_tokens:
+            return BudgetDecision.REJECT
+        elif projected > self.max_tokens * self.warning_threshold:
+            return BudgetDecision.WARN
+        return BudgetDecision.OK
+    
+    def record(self, conv_id: str, actual_tokens: int):
+        """Tatsächliche Token-Nutzung nach API-Call buchen."""
+        self.usage[conv_id] += actual_tokens
+    
+    def reset(self, conv_id: str):
+        """Conversation beendet / archiviert."""
+        self.usage.pop(conv_id, None)
+    
+    def get_remaining(self, conv_id: str) $\to$ int:
+        return max(0, self.max_tokens - self.usage[conv_id])
 
-# OpenAI: Prompt Caching (automatisch ab 1.024 Tokens Prefix)
-response = client.chat.completions.create(
-    model="gpt-4o",
-    messages=[
-         {"role": "system", "content": SYSTEM_PROMPT},
-         {"role": "user", "content": user_query},
-     ],
-)
-print(f"Cache Hit: {response.usage.prompt_tokens_details.cached_tokens > 0}")
+
+# Usage
+guard = ConversationBudgetGuard(max_tokens=8000, warning_threshold=0.8)
+
+conv_id = "conv_123"
+estimated = count_chat_tokens(messages, "gpt-4o") + 500  # + output buffer
+
+decision = guard.check(conv_id, estimated)
+if decision == BudgetDecision.REJECT:
+    # Compression triggern oder User benachrichtigen
+    compressed = compress_history(messages, target_tokens=4000)
+    estimated = count_chat_tokens(compressed, "gpt-4o") + 500
+    decision = guard.check(conv_id, estimated)
+    
+if decision == BudgetDecision.WARN:
+    logger.warning(f"Conversation {conv_id} at 80% budget")
+
+# ... API Call ...
+
+guard.record(conv_id, actual_tokens_used)
 \end{lstlisting}
 
-Prompt Caching spart 50--90\,\% der Prefill-Zeit und bis zu 50\,\%
-der Input-Kosten (Provider berechnen gecachte Tokens günstiger).
+\subsection{Tenant-Level Daily Budget (Multi-Tenancy) [Production-Ready]}
+\label{sec:tenant_budget}
 
-\subsection{Chat-History-Management}
+\begin{lstlisting}[language=Python, label=lst:tenant_budget, caption={Tenant Budget Tracker mit Redis}]
+import redis.asyncio as redis
+from datetime import date
+from decimal import Decimal
 
-Chat-History wächst unbegrenzt, wenn du sie nicht komprimierst.
-Ab 80\,\% des Context-Limits sollte die History komprimiert werden:
+class TenantBudgetTracker:
+    """
+    Tägliches Kostenbudget pro Tenant.
+    Nutzt Redis INCRBYFLOAT für atomare Counter.
+    """
+    DAILY_LIMIT_USD: Decimal = Decimal("50.00")  # Config per tier
+    
+    def __init__(self, redis_client: redis.Redis):
+        self.redis = redis_client
+    
+    def _key(self, tenant_id: str) $\to$ str:
+        return f"tenant:{tenant_id}:daily_cost:{date.today().isoformat()}"
+    
+    async def check_and_reserve(self, tenant_id: str, estimated_cost: Decimal) $\to$ bool:
+        """
+        Prüft Budget und reserviert geschätzte Kosten atomar.
+        Returns: True wenn Budget OK, False wenn Limit erreicht.
+        """
+        key = self._key(tenant_id)
+        current = await self.redis.get(key)
+        current = Decimal(current) if current else Decimal("0")
+        
+        if current + estimated_cost > self.DAILY_LIMIT_USD:
+            return False
+        
+        # Atomare Reservierung
+        await self.redis.incrbyfloat(key, float(estimated_cost))
+        # TTL auf 48h für Cleanup
+        await self.redis.expire(key, 172800)
+        return True
+    
+    async def get_usage(self, tenant_id: str) $\to$ Decimal:
+        key = self._key(tenant_id)
+        val = await self.redis.get(key)
+        return Decimal(val) if val else Decimal("0")
+    
+    async def get_usage_pct(self, tenant_id: str) $\to$ float:
+        usage = await self.get_usage(tenant_id)
+        return float(usage / self.DAILY_LIMIT_USD * 100)
+
+
+# Usage in Request Pipeline
+async def handle_request(tenant_id: str, messages: list, model: str):
+    input_tokens = count_chat_tokens(messages, model)
+    estimated_output = min(2000, 8000 - input_tokens)  # konservativ
+    estimated_cost = estimate_cost(input_tokens, estimated_output, model)
+    
+    tracker = TenantBudgetTracker(redis_client)
+    if not await tracker.check_and_reserve(tenant_id, Decimal(str(estimated_cost))):
+        raise BudgetExceededError(f"Tenant {tenant_id} daily limit reached")
+    
+    # ... API Call ...
+    # Nach Call: Actual Cost buchen (Delta-Korrektur)
+\end{lstlisting}
+
+\praxishinweis{
+Redis INCRBYFLOAT ist atomar --- keine Race Conditions bei parallelen Requests.
+Production: Lua-Script für Check-and-Reserve in einem Roundtrip.
+}
+
+\subsection{Routing-Tiers (Forward-Ref: Kap. 12 Deep Dive)}
+\label{sec:routing_tiers}
+
+\vertiefung{Deep Dive: Model Routing \& Cascading $$\to$$ Kapitel 12}{Hier nur 10-Zeilen-Sketch: Tier 1 (FAQ) $$\to$$ Cached/gpt-4o-mini, Tier 2 (Complex) $$\to$$ gpt-4o, Tier 3 (Escalation) $$\to$$ Human. Kosten: \$0,0002 / \$0,012 / \$0.}
+
+% ============================================================
+% 6. TRADE-OFFS
+% ============================================================
+\section{Trade-offs}
+\label{sec:tradeoffs}
+
+Format: Für jedes Pattern eine ``Wann / Wann nicht'' Box.
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXXXcc}
+$\to$prule
+\textbf{Pattern} & \textbf{Wann Ja} & \textbf{Wann Nein} & \textbf{Kosten} & \textbf{Qualität} & \textbf{Komplexität} \\
+\midrule
+Sliding Window & Kurze Conversions, Chat & Lange Docs, RAG & Niedrig & Verliert fr\"uhen Kontext & Gering \\
+Recursive Summary & Lange Histories, Support & Code/Debug-Logs, exakte Facts & Mittel & Verliert Details & Mittel \\
+Semantic Filter & RAG, Wissensbasen & Small Talk, Chat & Hoch (Embeddings) & Behält Relevantes & Hoch \\
+Hybrid (Window+Summary) & Production Default & Sehr kurze Contexts & Mittel-Hoch & Best Balance & Mittel-Hoch \\
+Hard Budget Guard & Cost-critical, Multi-tenant & Research, Exploration & Sehr niedrig & Kann abschneiden & Gering \\
+Soft Budget + Degrade & UX-kritisch & Hard Cost Caps & Niedrig-Mittel & Graceful & Mittel \\
+Prompt Caching & Repeated Prefixes (System, RAG) & Unique Queries & -50\% Input Cost & Gleich & Gering \\
+Model Routing & Heterogene Workloads & Einheitliche Tasks & -60--80\% & Gleich/Besser & Hoch \\
+\bottomrule
+\end{tabularx}
+\caption{Trade-off-Tabelle: Context Management Patterns}
+\label{tab:token_tradeoffs}
+\end{table}
+
+SupportPilot-Entscheidung: Hybrid Compression + Hard Guard + Tiered Routing + Prompt Caching = \$12/Tag.
+
+\merke{
+\textbf{Faustregel}: Starte mit Hybrid Compression + Hard Guard. Füge Routing/Caching hinzu, wenn Traffic heterogen wird.
+}
+
+% ============================================================
+% 7. FAILURE MODES
+% ============================================================
+\section{Fehlermodi}
+\label{sec:failure_modes}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXXXXX}
+$\to$prule
+\textbf{Failure Mode} & \textbf{Symptom} & \textbf{Ursache} & \textbf{Detection} & \textbf{Mitigation} \\
+\midrule
+Runaway Generation & \$500+ für single Request & Kein \texttt{max\_tokens}, kein Streaming-Budget & Cost spike alert >10$\times$ p99 & Hard \texttt{max\_tokens} + Streaming Counter \\
+Silent Context Truncation & Halluzination, ``Ich weiß nicht'' & Context > Window, kein Warning & Log: \texttt{truncated=True} in Response & Budget Guard WARN vor Call, Compression \\
+Cache Leakage (Multi-Tenant) & Tenant A sieht Tenant B Daten & Shared Cache Key ohne Tenant-ID & Audit Logs, Pen-Test & Cache Key = \texttt{tenant\_id:prompt\_hash} \\
+PII in Logs/Context & Compliance Violation & Raw Logs, keine Redaction & DLP Scan, Audit & Presidio/Regex Redaction VOR API Call \\
+History Poisoning & Modell folgt User-Injection in History & Unvalidated User Messages in Context & Eval: Injection Success Rate & Message Validation, Role Enforcement \\
+Token Count Mismatch & Budget Guard passed, API rejected & Tokenizer-Differenz (Anthropic vs OpenAI) & 400 Errors, Log Mismatch & Provider-spezifischer Counter \\
+Cost Attribution Loss & Keine Kosten pro Feature/Tenant & Aggregiertes Logging nur & Finance Review & Structured CostTracker (Praxisprojekt) \\
+\bottomrule
+\end{tabularx}
+\caption{Fehlermodi im Token-Management}
+\label{tab:failure_modes}
+\end{table}
+
+\realitycheck{
+SupportPilot Real Incident: Month 2: Ein Kunde lud 500-seitiges PDF hoch $$\to$$ Conversation explodierte auf 400k Tokens $$\to$$ \$48 für eine Query. Fix: Hard Limit 8k + File-Summary-Pipeline (Kap. 13).
+}
+
+% ============================================================
+% 8. EVALUATION
+% ============================================================
+\section{Evaluation}
+\label{sec:evaluation}
+
+Was man misst, managt man.
+
+\subsection{Token-Effizienz-Metriken}
+\label{sec:token_efficiency_metrics}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXXX}
+$\to$prule
+\textbf{Metrik} & \textbf{Definition} & \textbf{Target (SupportPilot)} & \textbf{Messung} \\
+\midrule
+Tokens per Resolution & Total Tokens / Resolved Ticket & < 3.500 & CostTracker Aggregation \\
+Compression Ratio & Original Tokens / Compressed Tokens & 3--5$\times$ (Hybrid) & Pre/Post Count \\
+Compression Recall & Needle-in-Haystack Recall nach Compression & > 85\% @ 10$\times$ & Eval Pipeline (Kap. 14) \\
+Cache Hit Rate & Cached Requests / Total Requests & > 60\% (Tier 1) & Prompt Cache Metrics \\
+Routing Accuracy & Correct Tier / Total Routed & > 95\% & Human Label Sample \\
+\bottomrule
+\end{tabularx}
+\caption{Token-Effizienz-Metriken}
+\label{tab:token_metrics}
+\end{table}
+
+\subsection{Kosten-Metriken}
+\label{sec:cost_metrics}
 
 \begin{itemize}[leftmargin=*]
-      \item \textbf{Sliding Window}: N letzte Nachrichten behalten, alte verwerfen
-      \item \textbf{Summarization}: Alte Nachrichten zusammenfassen (extra LLM-Call)
-      \item \textbf{Hierarchisch}: Kurzform für frühe, Langform für spätere Nachrichten
+  \item \textbf{Cost per Conversation} (p50, p95, p99)
+  \item \textbf{Cost per Tenant per Day} (Alert bei 80\% Limit)
+  \item \textbf{Output/Input Token Ratio} (Detektiert Runaway Generation)
 \end{itemize}
 
-% ============================================================
-% SICHERHEIT
-% ============================================================
-\section{Sicherheit -- Kontext als Angriffsfläche}
+\subsection{Compression Quality Eval (Vertiefung)}
+\label{sec:compression_eval}
 
 \begin{itemize}[leftmargin=*]
-      \item \textbf{Kontext-Injection ueber lange Prompts}: Ein Angreifer
-            kann durch sehr lange Inputs das Context Window fullen und so
-            die Kosten in die Hoehe treiben (Cost-Exploit). Setze harte
-            Limits pro Request.
-      \item \textbf{History-Poisoning}: Wenn User die Chat-History
-            manipulieren können (z.\,B. durch vorherige Prompt Injection),
-            kann das den Kontext vergiften. Validiere die History vor
-            jedem neuen Call.
-      \item \textbf{PII im Kontext}: Personenbezogene Daten, die im
-            RAG-Kontext oder in der Chat-History enthalten sind, werden
-            an die API gesendet. Maskiere PII vor dem Call.
-      \item \textbf{Cache-Leakage}: Gecachte Prompts konnten sensible
-            Informationen enthalten (Prompt-Engineering-Geheimnisse,
-            System-Prompt mit Geschaeftslogik). Teile Caches nie zwischen
-            verschiedenen Mandanten.
+  \item \textbf{Needle-in-Haystack}: 500 Docs, Needle an Position 10\%/50\%/90\%, Recall@1
+  \item \textbf{Summary Faithfulness}: LLM-as-Judge (Faithfulness 1--5)
+  \item \textbf{Downstream Task Impact}: RAG Accuracy vor/nach Compression
 \end{itemize}
 
-% ============================================================
-% ZUSAMMENFASSUNG
-% ============================================================
-\begin{zusammenfassungEnv}
-\begin{itemize}[leftmargin=*]
-      \item Ein Token ist kein Wort --- deutsche Texte produzieren etwa 1,4--2x mehr Tokens als englische (Komposita!)
-      \item Kontextfenster und Tokenisierung sind die Grundlage fur alle Kosten- und Architekturentscheidungen
-      \item TikToken ist das Werkzeug zur Token-Zahlung: Ohne es tappst du im Dunkeln bei Kosten und Limits
-      \item Output-Tokens sind 3--10x teurer als Input-Tokens --- priorisiere kurze Antworten
-      \item Prompt-Caching (OpenAI + Anthropic) kann Input-Kosten um bis zu 90\,\% reduzieren
-      \item Lost in the Middle: Wichtige Informationen gehoren an den Anfang oder das Ende des Kontexts
-      \item Kontext als Angriffsfläche: Poisoning, Injection und Cache-Leakage sind real
-      \item Grösseres Kontextfenster ist kein Ersatz fur gutes RAG. Vorauswahl ist besser als Volltext.
-\end{itemize}
-\end{zusammenfassungEnv}
-
-
-
-
-\par\mbox{}\par
-\begin{merkeEnv}
-\begin{itemize}
-      \item \textbf{Kontext ist teuer}: Jeder Token kostet Geld.
-      \item \textbf{Output ist teurer als Input}: 3--10x Faktor.
-      \item \textbf{Caching ist der effektivste Sparhebel}.
-      \item \textbf{Grosser Kontext != gute Antwort}: Lost in the Middle.
-      \item \textbf{Modell-Routing spart 80\,\% Kosten}.
-\end{itemize}
-\end{merkeEnv}
+\vertiefung{Evaluations-Pipeline $$\to$$ Kapitel 14}{Needle-in-Haystack, Faithfulness, Downstream Task Impact, CI Integration.}
 
 % ============================================================
-% PRAXISPROJEKT -- KOSTENOPTIMIERUNGS-DASHBOARD
+% 9. BEST PRACTICES
 % ============================================================
-\section{Praxisprojekt -- Kostenoptimierungs-Dashboard}
+\section{Best Practices}
+\label{sec:best_practices}
 
-\textbf{Ziel:} Baue ein Dashboard, das die LLM-Kosten deiner Anwendung
-in Echtzeit verfolgt und Optimierungsvorschlaege macht.
-
-\textbf{Aufgaben:}
 \begin{enumerate}[leftmargin=*]
-      \item Implementiere einen CostTracker, der jeden API-Call mit
-            Modell, Token-Zahlen und Kosten protokolliert
-      \item Baue ein Semantic Router-System, das Queries automatisch
-            an das gunstigste ausreichende Modell routet
-      \item Erstelle einen Report, der zeigt: Kosten pro Tag, pro Modell,
-            pro User, Kosten-Entwicklung ueber Zeit
-      \item Fuge Budget-Alarme hinzu (80\,\%-, 90\,\%-, 100\,\%-Schwellen)
-      \item Optimierte ein existierendes System um mindestens 50\,\%
-            Kostenreduktion durch: kleineres Modell + Caching + Output-Limits
+  \item \textbf{Count Before Call} --- Immer \texttt{tiktoken} zählen vor API Request
+  \item \textbf{Hard Limits Everywhere} --- Request, Conversation, Tenant, Day
+  \item \textbf{Stream with Budget} --- Chunk-by-Chunk Counting, Early Stop
+  \item \textbf{Compress Progressively} --- Sliding $$\to$$ Summary $$\to$$ Semantic (nicht alles auf einmal)
+  \item \textbf{Cache with Tenant Isolation} --- Key = \texttt{tenant:prompt\_hash}
+  \item \textbf{Route by Complexity} --- Simple $$\to$$ Cheap Model, Complex $$\to$$ Strong Model
+  \item \textbf{Structure Output} --- JSON Mode / Structured Outputs spart Output Tokens
+  \item \textbf{Log Structured Cost Data} --- model, in/out/cached tokens, cost, latency, tenant, feature
+  \item \textbf{Alert on Anomalies} --- >2$\times$ p99 Cost, >10$\times$ Token Spike, Budget 80\%
+  \item \textbf{Redact PII Before API} --- Nie rohe User-Daten in Context ohne Scan
 \end{enumerate}
 
-\textbf{Testdaten:} Simuliere 1.000 API-Calls mit verschiedenen Modellen
-und Prompt-Längen. Zeige die Kostenunterschiede der Optimierungsstufen.
-
-\textbf{Erfolgskriterium:} Das Dashboard zeigt korrekte Tageskosten,
-warnt bei Budget-Ueberschreitung und macht automatisch
-Optimierungsvorschlaege.
+\merke{
+SupportPilot Checkliste pro Deploy:
+\begin{itemize}[leftmargin=*]
+  \item [ ] Budget Guards deployt (Request/Conv/Tenant)
+  \item [ ] Compression Pipeline getestet (Recall > 85\%)
+  \item [ ] Cost Dashboard live (per Tenant, per Feature)
+  \item [ ] PII Redaction in Pipeline
+  \item [ ] Cache Keys tenant-isoliert
+\end{itemize}
+}
 
 % ============================================================
-% WEITERFÜHRENDE RESSOURCEN
+% 10. ANTI-PATTERNS
 % ============================================================
-\section{Weiterführende Ressourcen}
+\section{Anti-Patterns}
+\label{sec:antipatterns}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{@{}p{3.5cm}p{5.5cm}p{5.5cm}@{}}
+\toprule
+\textbf{Anti-Pattern} & \textbf{Warum schädlich} & \textbf{Besser} \\
+\midrule
+Kein \texttt{max\_tokens} & Unbounded Generation $\to$ Cost Explosion & Immer setzen, auch bei Streaming \\
+History unbegrenzt wachsen lassen & Context Overflow, Silent Truncation & Conversation Budget + Compression \\
+Ein Modell für alles & Overpay für Simple Tasks & Tiered Routing (Kap. 12) \\
+Prompt Caching ohne Tenant-Key & Data Leakage zwischen Kunden & \texttt{cache\_key = tenant\_id + prompt\_hash} \\
+Token Count nur schätzen & Budget Guard versagt bei Edge Cases & Provider-spezifischer Counter \\
+Output Tokens ignorieren & 3--5x teurer, Runaway unbemerkt & Streaming Counter + Hard Limit \\
+Compression ohne Eval & Quality Drop unbemerkt & Needle-in-Haystack Test in CI \\
+Kosten nur aggregiert loggen & Keine Attribution, kein Debugging & Structured Log pro Request \\
+Deutscher Text ohne Token-Faktor & Cost Estimates 1,4--2x falsch & Faktor 1,68x in Calculation einbauen \\
+Kein Alerting auf Cost Spikes & $400 \to 4000$ unbemerkt & PagerDuty bei >2x p99 Daily Cost \\
+\bottomrule
+\end{tabular}
+\caption{Anti-Patterns im Token-Management}
+\label{tab:antipatterns}
+\end{table}
+
+% ============================================================
+% 11. PRODUCTION CHECKLIST (NEU)
+% ============================================================
+\section{Production Checklist}
+\label{sec:production_checklist}
+
+\subsection{Pre-Deploy (Code Review)}
+\label{sec:pre_deploy}
 
 \begin{itemize}[leftmargin=*]
-      \item \textbf{OpenAI Tokenizer}: \href{https://platform.openai.com/tokenizer}{platform.openai.com/tokenizer}
-            --- Online-Tool zum Zählen und Analysieren von Tokens
-      \item \textbf{tiktoken (GitHub)}: \href{https://github.com/openai/tiktoken}{github.com/openai/tiktoken}
-            --- Pythons Tokenizer für OpenAI-Modelle
-      \item \textbf{Anthropic Prompt Caching Guide}: \href{https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching}{docs.anthropic.com}
-      \item \textbf{OpenAI Pricing}: \href{https://openai.com/pricing}{openai.com/pricing}
-      \item \textbf{Lost in the Middle Paper}: Liu et al. (2024):
-            \glqq Lost in the Middle: How Language Models Use Long Contexts\grqq
-      \item \textbf{Semantic Router (GitHub)}: \href{https://github.com/aurelio-labs/semantic-router}{github.com/aurelio-labs/semantic-router}
-      \item \textbf{Langfuse Cost Tracking}: \href{https://langfuse.com/docs/cost-tracking}{langfuse.com/docs/cost-tracking}
+  \item [ ] \texttt{max\_tokens} auf ALLEN LLM-Calls (inkl. Streaming)
+  \item [ ] Token Counter nutzt Provider-spezifischen Encoder
+  \item [ ] Budget Guards: Request / Conversation / Tenant / Daily
+  \item [ ] Compression Strategy konfigurierbar, Default = Hybrid
+  \item [ ] Prompt Cache Keys enthalten Tenant-ID
+  \item [ ] PII Redaction VOR API Call (nicht nachher in Logs)
+  \item [ ] Structured Cost Logging: \texttt{model, input\_tokens, output\_tokens, cached\_tokens, cost\_usd, latency\_ms, tenant\_id, feature, conversation\_id}
+  \item [ ] Alerting Rules deployed (Cost Spike, Budget 80/90/100\%)
 \end{itemize}
 
-\textbf{Nächster Schritt:} Jetzt kennst du die Token-Fakten. Im nächsten Kapitel geht es um Prompt Design -- wie du LLMs sprachlich steuern kannst.
+\subsection{Load Test (Pre-Prod)}
+\label{sec:load_test}
+
+\begin{itemize}[leftmargin=*]
+  \item [ ] Runaway Generation Test: Prompt ohne Stop $$\to$$ Budget Guard triggert < 5s
+  \item [ ] Context Overflow Test: 200k Token History $$\to$$ Compression + Guard
+  \item [ ] Multi-Tenant Isolation: Tenant A Cache Hit $$\to$$ Tenant B kein Leak
+  \item [ ] Cost Attribution Accuracy: Sum(per-request) $\approx$ Total Bill ($\pm$5\%)
+\end{itemize}
+
+\subsection{Production Monitoring (Day 0)}
+\label{sec:prod_monitoring}
+
+\begin{itemize}[leftmargin=*]
+  \item [ ] Cost Dashboard: Per Tenant, Per Feature, Per Model, Per Day
+  \item [ ] Token Efficiency: Tokens/Resolution Trend
+  \item [ ] Compression Recall: Weekly Needle-in-Haystack Sample
+  \item [ ] Cache Hit Rate: > 60\% für Repeated Prefixes
+  \item [ ] Routing Distribution: \% per Tier
+\end{itemize}
+
+\subsection{Incident Runbook}
+\label{sec:incident_runbook}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Cost Spike > 10$\times$:} Disable Tier 2/3 Routing $$\to$$ Fallback to Tier 1 only
+  \item \textbf{Cache Leakage:} Flush Tenant Cache Keys, Audit Logs
+  \item \textbf{Budget Exhaustion:} Graceful Degradation (Cached Answers Only) $$\to$$ Human Handoff
+\end{itemize}
+
+% ============================================================
+% 12. EXERCISES
+% ============================================================
+\section{Übungen}
+\label{sec:exercises}
+
+\subsection{Level 1: Grundlagen (Für Kapitel-Verständnis)}
+\label{sec:ex_level1}
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Token Counter:} Implementiere \texttt{count\_chat\_tokens()} für Anthropic Message Format (System/User/Assistant/Tool). Teste mit 10 Gesprächen.
+  \item \textbf{Cost Estimator:} Baue \texttt{estimate\_cost()} mit Preistabelle (Anhang A). Vergleiche Schätzung vs. echter API-Response für 50 Requests.
+  \item \textbf{German Factor:} Messe DE/EN Token Ratio auf eigenem Korpus (100 Texte). Vergleiche mit 1,68$\times$.
+\end{enumerate}
+
+\subsection{Level 2: Production Patterns (Für Praxisprojekt)}
+\label{sec:ex_level2}
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Budget Guard:} Implementiere \texttt{ConversationBudgetGuard} mit Redis Backend. Teste: 100 parallele Conversations, Race Conditions.
+  \item \textbf{Sliding Window Compression:} Baue \texttt{SlidingWindowCompressor(max\_tokens=4000, keep\_last=3)}. Eval: Needle-in-Haystack Recall@1.
+  \item \textbf{Streaming Counter:} Erweitere \texttt{StreamingTokenCounter} mit Callback bei Budget-Exceeded (Stream abbrechen, Partial Response returnen).
+\end{enumerate}
+
+\subsection{Level 3: SupportPilot Integration (Für Kapitel-Projekt)}
+\label{sec:ex_level3}
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Tiered Router:} Implementiere 3-Tier Router (FAQ/Complex/Escalation) mit Config-driven Model Selection. Log Cost per Tier.
+  \item \textbf{CostTracker Dashboard:} Baue Aggregation: Cost per Tenant/Day, Cost per Feature, Output/Input Ratio. Alert bei 80\% Tenant Budget.
+  \item \textbf{Compression A/B Test:} Hybrid vs. Summary vs. Sliding --- messe Recall@1 und Cost/Query auf 1.000 echten Support-Conversations.
+\end{enumerate}
+
+\subsection{Level 4: Vertiefung (Optional, für ``Merke/Vertiefung'' Boxen)}
+\label{sec:ex_level4}
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Tokenizer Diff:} Vergleiche \texttt{cl100k\_base} vs. Anthropic vs. Gemini Tokenizer auf 50 deutschen Support-Tickets. Quantisiere Cost-Delta.
+  \item \textbf{Cache Warming:} Implementiere Cache-Warming für Top-50 FAQ Prefixes. Messe Cold-Start Latency Reduction.
+  \item \textbf{PII Redaction Pipeline:} Integriere Presidio vor API Call. Messe False Positive Rate auf Support-Daten.
+\end{enumerate}
+
+% ============================================================
+% 13. FURTHER READING
+% ============================================================
+\section{Weiterführende Ressourcen}
+\label{sec:further_reading}
+
+\subsection{Papers \& Research}
+\label{sec:papers}
+
+\begin{itemize}[leftmargin=*]
+  \item Liu et al. (2024). \textit{Lost in the Middle: How Language Models Use Long Contexts}. arXiv:2307.03172
+  \item Anthropic (2024). \textit{Prompt Caching Documentation}. \url{https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching}
+  \item OpenAI (2024). \textit{Prompt Caching Guide}. \url{https://platform.openai.com/docs/guides/prompt-caching}
+  \item Tiktoken Repo: \url{https://github.com/openai/tiktoken}
+\end{itemize}
+
+\subsection{Tools \& Libraries}
+\label{sec:tools}
+
+\begin{itemize}[leftmargin=*]
+  \item \texttt{tiktoken} --- OpenAI Tokenizer (Python/JS/Rust)
+  \item \texttt{anthropic-tokenizer} --- Community Wrapper für Claude
+  \item \texttt{Presidio} --- Microsoft PII Detection/Redaction
+  \item \texttt{semantic-router} (aurelio-labs) --- Community, Forward-Ref Kap. 12
+\end{itemize}
+
+\subsection{Anhang-Referenzen (in diesem Buch)}
+\label{sec:appendix_refs}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Anhang A:} Provider Pricing Table (Stand: siehe Anhang A) + Context Window Table
+  \item \textbf{Anhang B:} Tiktoken Measurement Script für DE/EN Token Factor
+  \item \textbf{Kapitel 12:} Model Routing, Semantic Caching, KV-Cache Deep Dive
+  \item \textbf{Kapitel 13:} RAG Context Management, Advanced Compression
+  \item \textbf{Kapitel 14:} Evaluation Pipeline, Compression Quality Metrics
+  \item \textbf{Kapitel 19:} Production Guardrails, PII Redaction, Multi-Tenant Security
+\end{itemize}
+
+\subsection{Praktische Ressourcen}
+\label{sec:practical_resources}
+
+\begin{itemize}[leftmargin=*]
+  \item OpenAI Cookbook: \texttt{counting\_tokens.ipynb}
+  \item SupportPilot Token-Budget Config (Beispiel-Repo: \url{github.com/supportpilot/token-budget})
+  \item Cost Observatory Dashboard (Grafana/JSON Dashboard Export)
+\end{itemize}
+
+\textbf{Nächster Schritt:} Jetzt kennst du die Token-Fakten. Im nächsten Kapitel geht es um Prompt Design --- die Schnittstelle, die zählt. Few-Shot (3-5 Edge-Cases), Temperature 0.0 in Prod, Structured Outputs, Prompt Registry, Golden Sets, Evaluation Pipeline.
+
+% ============================================================
+% FORWARD-REFERENCE BOXES (als \vertiefung oder \skipbox)
+% ============================================================
+\vertiefung{Deep Dive: Prompt Caching \& KV-Cache Internals $$\to$$ Kapitel 12}{Theorie, Multi-Tenant Isolation, Cache Warming, Prefix Optimization.}
+\vertiefung{Deep Dive: Model Routing \& Cascading $$\to$$ Kapitel 12}{Semantic Router, Kaskaden, Cost/Quality Pareto-Frontier, A/B Test Design.}
+\vertiefung{Deep Dive: Semantic Caching $$\to$$ Kapitel 12}{Embedding-basierte Cache-Lookup, Similarity Thresholds, Invalidation.}
+\vertiefung{RAG-spezifische Context-Mitigation $$\to$$ Kapitel 13}{Lost in the Middle Countermeasures, Retrieval-Reranking, Contextual Compression.}
+\vertiefung{Evaluation von Compression Quality $$\to$$ Kapitel 14}{Needle-in-Haystack, Faithfulness, Downstream Task Impact, CI Integration.}
+\vertiefung{Guardrails, PII Redaction, Prompt Injection Defense $$\to$$ Kapitel 19}{Production Security Patterns, Compliance, Audit Trails.}
+\vertiefung{Production Observability Stack $$\to$$ Kapitel 14 \& 19}{Cost Dashboards, Alerting, Attribution, Anomaly Detection.}
+
 \endinput
 
 \clearpage

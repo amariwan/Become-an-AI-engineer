@@ -1,0 +1,1 @@
+Four quantization formats compared as horizontal bars: FP16 (140GB VRAM, Reference quality), INT8 (70GB, ~0% loss), INT4 AWQ (35GB, slight loss), INT4 GGUF (35GB, slight loss). Quality loss annotations: General chat -2%, Code -5% to -15%, Math -8% to -20%, Reasoning -10% to -25%. AWQ badge 'Recommended for GPU', GGUF badge 'CPU/Edge'. Color gradient green to yellow to red.

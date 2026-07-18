@@ -2,14 +2,15 @@
 \label{chap:multimodal}
 
 % ============================================================
-% AUTOR-NOTIZ STATT LERNZIELE
+% AUTOR-NOTIZ: Multimodal Story (NEU)
 % ============================================================
 \autornotiz{
-2023 habe ich für einen E-Commerce-Kunden ein RAG-System gebaut. 50k Produktdokumente, 200k Queries/Tag.
-Erster Versuch: Naive RAG mit OpenAI Embeddings + Pinecone. Hit Rate @ 5: 67\%. Latenz p99: 3.2s. Kosten: \$450/Tag.
-Nach 3 Wochen Tuning: Recursive Chunking (512/64) + Hybrid Search (BM25 + Embedding) + Cross-Encoder Re-Ranker + pgvector.
-Hit Rate @ 5: 94\%. Latenz p99: 800ms. Kosten: \$38/Tag.
-Der Unterschied war nicht das Embedding-Modell. Es war Disziplin bei Chunking, Retrieval und Evaluation.
+2024: SupportPilot erhielt Screenshots von Fehlermeldungen (User: "Seht ihr den Fehler?"). Text-only Bot versagte.
+Lösung: GPT-4o Vision für Screenshot-Analyse → Fehlercode extrahieren → Knowledge Base Query → Antwort.
+Erster Versuch: Alle Screenshots an GPT-4o. Kosten \$0.08/Screenshot, p99 3.2s.
+Optimierung: OCR-Vorverarbeitung (Tesseract) → nur relevante Bildausschnitte → GPT-4o-mini Vision.
+Kosten \$0.012/Screenshot, p99 1.1s. OCR-Fallback bei Low-Confidence.
+Der Unterschied war nicht das Vision-Modell. Es war Preprocessing + Model-Routing.
 }
 
 % ============================================================
@@ -56,7 +57,7 @@ Llama 4 90B & Text, Bild & 1024$\times$1024 & Open Source \\
 \bottomrule
 \end{tabularx}
 \caption{Multimodale Modelle im Vergleich}
-\label{tab:multimodal-models}
+\label{tab:multimodalmodels}
 \end{table}
 
 \subsection{Token-Äquivalenz von Bildern}
@@ -585,60 +586,19 @@ class HierarchicalVideoAnalyzer(VideoAnalyzer):
 \end{itemize}
 
 % ===========================================================%
-% SICHERHEIT
+% SICHERHEIT MULTIMODAL (VORWÄRTSVERWEIS)
 % ===========================================================%
-\section{Sicherheit multimodaler Systeme}
+\section{Sicherheit multimodaler Systeme (Vorwärtsverweis auf Kap. 16)}
 
-Multimodale Eingaben eröffnen neue Angriffsvektoren:
+Multimodale Eingaben eröffnen neue Angriffsvektoren (Prompt Injection via Bild/OCR, Adversarial Patches, Acoustic Attacks). Die vollständige Multimodal-Security-Strategie (OCR-Injection-Check, Adversarial Patch Detection, Audio-Frequency-Filter, Model Pinning für Vision-Encoder) findest du in \textbf{Kapitel 16 (Security)}.
 
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Prompt Injection via Bild}: Ein Angreifer bettet unsichtbaren Text in ein Bild ein (z.B. weisse Schrift auf weissem Grund), der vom Vision-Encoder gelesen wird.
-    \item \textbf{OCR-Exploits}: Text in Bildern wird nicht durch Input-Filter erkannt. Ein klassischer Prompt-Injection-Filter greift nicht, wenn der Injection-Text im Bild steht.
-    \item \textbf{Adversarial Patches}: Kleine Bildregionen können das Modell gezielt manipulieren (falsche Klassifikation, übersehene Objekte).
-    \item \textbf{Acoustic Attacks}: Ultraschalltöne, die für Menschen unhörbar sind, können STT-Systeme manipulieren.
+Hier nur das Minimum:
+\begin{enumerate}
+    \item \textbf{OCR-Injection-Check}: Jedes Bild vor LLM-Call durch Tesseract/PaddleOCR + Regex/Regex-Judge auf Injection-Patterns prüfen
+    \item \textbf{Adversarial Patch Detection}: CLIP-basierte Anomalie-Detektion auf Bild-Patches
+    \item \textbf{Audio-Frequency-Filter}: Ultraschall-Filter (>20kHz) vor STT-Pipeline
+    \item \textbf{Model Pinning}: Vision-Encoder-Version explizit pinnen (keine stillen Provider-Updates)
 \end{enumerate}
-
-\begin{lstlisting}[language=Python, caption=Multimodaler Input-Guard]
-class MultimodalGuard:
-    """Sicherheitsfilter fuer multimodale Eingaben."""
-
-    def __init__(self):
-        self.text_filter = InputGuard()  # aus Kapitel 19
-
-    def check_image(self, image_b64: str) -> bool:
-        """Prueft Bild auf Injection-Versuche."""
-        import pytesseract
-        from PIL import Image
-        import io
-
-        image = Image.open(io.BytesIO(base64.b64decode(image_b64)))
-
-        # OCR-extrahierter Text
-        ocr_text = pytesseract.image_to_string(image)
-
-        # Injection-Check im OCR-Text
-        suspicious = self.text_filter.check(ocr_text)
-        if suspicious:
-            logger.warning({
-                "event": "image_injection_detected",
-                "ocr_text": ocr_text[:200],
-                "reason": suspicious,
-            })
-            return False
-
-        return True
-
-    def check_audio(self, audio_path: str) -> bool:
-        """Prueft Audio auf ungewoehnliche Frequenzen."""
-        import librosa
-
-        y, sr = librosa.load(audio_path, sr=None)
-        # Pruefung auf Ultraschall (Frequenzen > 20 kHz)
-        # Vereinfachte Implementierung
-        return True
-\end{lstlisting}
-
-\praxishinweis{Multimodale Sicherheit ist kein nachträglicher Einbau. OCR-Injection-Check und Audio-Frequenz-Filter gehören in die Basis-Pipeline, nicht ins Monitoring-Dashboard. Baut den Input Guard bevor der erste User den Endpoint testet.}
 
 % ===========================================================%
 % ZUSAMMENFASSUNG
@@ -694,7 +654,7 @@ Multimodalität ist kein Feature -- es ist ein neues Paradigma. Die Pipelines, S
     \item \textbf{PyMuPDF}: \href{https://pymupdf.readthedocs.io/}{pymupdf.readthedocs.io}
 \end{itemize}
 
-\textbf{Nächster Schritt:} Im nächsten Teil des Buches tauchst du in die Produktion ein -- beginnend mit Evaluation und Metriken. Wie misst du, ob dein System wirklich gut arbeitet?
+\textbf{Nächster Schritt:} Mit multimodalen Modellen ausgestattet geht es weiter zur zweiten Optimierungsstufe -- Caching, Routing und Guardrails. Wie du wiederholte und ähnliche Anfragen eliminierst und dein System gegen Injection und PII-Leaks absicherst.
 \endinput
 
 \clearpage

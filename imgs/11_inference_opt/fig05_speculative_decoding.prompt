@@ -1,0 +1,1 @@
+Sequence diagram: Speculative Decoding flow. Draft Model (1B) -> [Token 1][Token 2][Token 3][Token 4] (fast guess) -> Target Model (70B) -> [accept/reject Token 1-4] (single forward pass, no autoregression). Accepted tokens continue, rejected trigger recompute. 2-3x speedup, lossless quality. Clean sequence diagram.

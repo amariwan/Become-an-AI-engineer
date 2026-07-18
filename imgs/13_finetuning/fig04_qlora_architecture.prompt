@@ -1,0 +1,1 @@
+QLoRA Architecture: Base Model loaded in 4-bit NF4 (35GB for 70B). LoRA Adapters in BF16 (8MB additional). Two paths: Frozen 4-bit Base -> Dequantize -> Compute -> Quantize. LoRA Path: BF16 Adapters -> Compute. Gradients only flow through LoRA. VRAM comparison: Full FT 140GB vs QLoRA 38GB. German labels, technical architecture diagram.

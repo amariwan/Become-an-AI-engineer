@@ -1,0 +1,1 @@
+Timeline comparison: WITHOUT Continuous Batching: Req1 [====] Gap [====] Req2 [====] Gap [====] Req3. GPU Utilization ~50%. WITH Continuous Batching: Req1 Req2 Req3 Req4 Req5 Req6 tightly packed, new requests fill gaps instantly. GPU Utilization ~95%. Time axis horizontal, colored blocks for requests, white gaps shown. Arrows showing 'new request fills gap'.

@@ -1,0 +1,1 @@
+Architecture diagram: PagedAttention Memory Management. Traditional: Contiguous KV-Cache blocks with fragmentation (red gaps). PagedAttention: Fixed-size pages (green blocks) mapped via page table, non-contiguous physical memory, shared copy-on-write pages for parallel sampling. Page table visualization, memory blocks, arrows showing logical->physical mapping. vLLM branding.

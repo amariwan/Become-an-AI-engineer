@@ -1,0 +1,1 @@
+State machine diagram for LangGraph workflow. Nodes: SUPERVISOR (diamond decision), RESEARCHER (rectangle), ANALYST (rectangle), WRITER (rectangle), END (circle). Edges: Supervisor -> Researcher (condition: research), Supervisor -> END (condition: end), Researcher -> Analyst, Analyst -> Writer, Writer -> END. Graph visualization, nodes with icons, directed edges with labels.

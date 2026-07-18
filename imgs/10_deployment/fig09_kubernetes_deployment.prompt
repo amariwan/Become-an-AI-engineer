@@ -1,0 +1,1 @@
+Kubernetes Deployment Architecture. LLM Service Deployment (3 replicas) with resources, livenessProbe (/health), readinessProbe (/ready). Redis cache service. Prometheus + Grafana monitoring stack. Ingress controller with TLS. Secrets for API keys. HorizontalPodAutoscaler based on CPU/custom metrics. German labels, K8s architecture diagram style.

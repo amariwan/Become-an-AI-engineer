@@ -1,0 +1,1 @@
+Stacked horizontal bar chart: Agent Step Latency. LLM Planning (300-800ms), Tool Execution (50-500ms), Result Processing (100-300ms), Next Planning (300-800ms). Total per step: ~1-2s. Annotations: 'LLM calls dominate', 'Parallel tool calling saves 30-50%'. German labels, technical style.
