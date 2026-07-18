@@ -1,0 +1,1231 @@
+\chapter{LLM Gateway, Feature Flags \& Self-Healing Documentation}
+\label{chap:llm_gateway_featureflags}
+
+% ============================================================
+% AUTOR-NOTIZ STATT LERNZIELE
+% ============================================================
+\autornotiz{
+2024: Unser Support-Bot lief auf einem Premium-Modell. Black Friday: Provider Rate-Limit 429, Latenz 15s, Kosten \$4.000/Tag. Kein Fallback, kein Cache, kein Circuit Breaker. Fix in 4h: LiteLLM Gateway + Redis Circuit Breaker + Fallback zu einem Reasoning-Modell + Self-hosted 70B-Modell. Kosten runter auf \$800/Tag, Availability 99.9~\%.
+Lektion: Single-Provider ist Fahrlässigkeit. LLM Gateway ist keine Option — es ist Infrastruktur wie Load Balancer oder DB.
+}
+
+% ============================================================
+% LERNZIELE
+% ============================================================
+\begin{lernzieleEnv}
+\begin{enumerate}
+    \item Einen Multi-Provider LLM Gateway mit Unified API, Fallback-Ketten, verteiltem Circuit Breaker und Cost-Aware Routing in Produktion betreiben.
+    \item AI Feature Flags für Prompt-Versioning, Model-Switching und Canary-Rollouts mit automatischen Quality Gates (Eval-Score Thresholds) und Instant-Auto-Rollback implementieren.
+    \item Self-Healing Documentation Pipelines bauen, die aus Production Logs signifikante Antwort-Drift erkennen, LLM-basiert Dokumentation aktualisieren und via PR + Auto-Merge deployen.
+    \item Auto-Eval Dataset Builder aus Production Logs aufsetzen: Clustering (HDBSCAN) → Representative Sampling → LLM-as-Judge Labeling → Golden Dataset Export.
+    \item Resiliente LLM-Architektur designen, die Vendor Lock-in vermeidet, Kosten explodieren verhindert und probabilistische Failures graceful degradiert.
+\end{enumerate}
+\end{lernzieleEnv}
+
+% ============================================================
+% MOTIVATION
+% ============================================================
+\section{Motivation}
+
+Eine LLM-Anwendung in Produktion zu bringen unterscheidet sich grundlegend vom klassischen Software-Deployment. Kapitel 10 (\ref{chap:deployment_architektur}) hat die Basis gelegt: Deployment-Modelle, Latenz, Cost-Performance-Trade-offs, Circuit Breaker. Dieses Kapitel geht den nächsten Schritt — wir bauen die **Produktions-Infrastruktur**, die Vendor Lock-in verhindert, probabilistische Änderungen ohne Deploy ermöglicht und Dokumentation automatisch aktuell hält.
+
+Drei Pain Points treffen jedes LLM-Prod-System:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Vendor Lock-in \& Single Point of Failure} — OpenAI down = dein Produkt down. Keine Verhandlungsmacht bei Preiserhöhungen.
+    \item \textbf{Prompt/Model Changes = Code Deploy} — Jede Prompt-Änderung braucht CI/CD, Review, Rollback. Kein Kill-Switch, kein Canary, kein A/B Test.
+    \item \textbf{Docs veralten schneller als Code} — Support-Bot antwortet neu, FAQ ist 3 Monate alt. Kunde vertraut Bot nicht. Manuelle Doc-Updates skalieren nicht.
+\end{enumerate}
+
+\praxishinweis{LLM Gateway ist keine Option — es ist Infrastruktur wie Load Balancer oder DB. Wer ohne Gateway deployed, zahlt Lehrgeld.}
+
+% ============================================================
+% GRUNDLAGEN & ARCHITEKTUR
+% ============================================================
+\section{Grundlagen \& Architektur}
+
+\subsection{LLM Gateway — Die Abstraktionsschicht über alle Provider}
+
+\paragraph{Was ein Gateway leistet}
+Ein LLM Gateway ist die zentrale Abstraktionsschicht zwischen deiner Applikation und den Modell-Providern:
+
+\begin{itemize}
+    \item \textbf{Unified API:} Ein Interface (OpenAI-kompatibel) für 100+ Provider (OpenAI, Anthropic, Vertex, Bedrock, vLLM, TGI, Ollama).
+    \item \textbf{Request/Response Normalisierung:} Parameter-Mapping, Streaming-Uniformität, Token-Counting über Provider hinweg.
+    \item \textbf{Resilience Patterns:} Verteilter Circuit Breaker (Redis-backed), Fallback-Ketten, Rate Limiting (Token/Request/Cost), Request Hedging (Absicherung gegen Tail-Latency).
+    \item \textbf{Observability Hooks:} Kosten, Latenz, Token-Usage pro Call — strukturiert geloggt für Prometheus/Langfuse.
+\end{itemize}
+
+\paragraph{Architektur-Pattern: Gateway als Sidecar vs. Library}
+\begin{itemize}
+    \item \textbf{Sidecar (Portkey, Helicone):} Network Hop, aber sprachagnostisch, zentrale Config, Team-unabhängig.
+    \item \textbf{Library (LiteLLM Python SDK):} In-Process, Zero Latency, volle Control, Python-only.
+    \item \textbf{Empfehlung:} LiteLLM als Library für Python-Services; Sidecar für Polyglot-Stacks.
+\end{itemize}
+
+Siehe auch: Deployment Patterns (Sidecar vs. Library) — Kapitel 10, \ref{chap:deployment_architektur}
+
+\realitycheck{Ein Gateway ohne Observability ist blind. Jeder Request muss Trace-ID, Kosten, Latenz, Provider, Fallback-Status, Circuit-Breaker-State liefern. Ohne diese Daten fliegst du blind in Produktion.}
+
+\subsection{AI Feature Flags — Prompt/Model Versioning ohne Deploy}
+
+\paragraph{Warum klassische Feature Flags nicht reichen}
+\begin{itemize}
+    \item Flags steuern Code-Pfade; AI Flags steuern \textbf{probabilistisches Verhalten} (Prompt, Model, Temperature, Retrieval Config).
+    \item Brauchen \textbf{Quality Gates}: "Rollout nur wenn Eval-Score $\ge$ 90~\% Baseline".
+    \item Brauchen \textbf{Auto-Rollback}: Metrik bricht ein (Error Rate, Cost, Latency, Refusal) → Flag instantly auf 0~\%.
+\end{itemize}
+
+\paragraph{Flag-Typen für AI}
+\begin{description}
+    \item[Prompt Version Flag] Steuerung welches Prompt-Template (v1 vs v2) geladen wird.
+    \item[Model Version Flag] Traffic-Split zwischen Modellen (z.B. 90\% GPT-4o, 10\% Sonnet 4).
+    \item[Routing Rule Flag] Aktivierung neuer Routing-Logik (Semantic Router vs. Keyword Router).
+    \item[Feature Toggle Flag] Ein/Aus für Features (Semantic Cache, Guardrail, Structured Output).
+\end{description}
+
+Siehe auch: Feature Flags in Deployment — Kapitel 10, \ref{chap:deployment_architektur}; Canary Deployments — Kapitel 10
+
+\subsection{Self-Healing Documentation — Docs die sich selbst pflegen}
+
+\paragraph{Problem} Production LLM-Antworten driften von Dokumentation ab. Nutzer vertrauen Docs nicht mehr → Support-Tickets steigen.
+
+\paragraph{Lösung: Pipeline}
+\begin{enumerate}
+    \item \textbf{Log Ingestion:} Täglich Production Traces (Langfuse/Helicone) holen.
+    \item \textbf{Diff Detection:} Embedding-Similarity (text-embedding-3-large) zwischen Prod-Antworten und Doc-Sections. Threshold < 0.85 = Drift.
+    \item \textbf{LLM Doc Update:} GPT-4o/Claude-3.5 generiert aktualisiertes Markdown aus QA-Pairs + altem Doc.
+    \item \textbf{Validation:} Vale (Style), Markdownlint, LLM-as-Judge (Factuality).
+    \item \textbf{PR + Auto-Merge:} GitHub Action erstellt PR, reviewed von Docs-Team, auto-merge bei grünen Checks.
+\end{enumerate}
+
+\praxishinweis{Threshold 0.85 Cosine Similarity hat sich bewährt. Darunter = signifikante inhaltliche Änderung. Darunter löst die Pipeline einen Doc-Update aus.}
+
+\subsection{Auto-Eval Dataset Builder — Golden Datasets aus Produktion}
+
+\paragraph{Warum nicht manuell?} Golden Datasets sind teuer (Experten-Labeling), veralten schnell, decken Edge-Cases nicht ab.
+
+\paragraph{Pipeline}
+\begin{enumerate}
+    \item \textbf{Log Ingestion:} Production Requests/Responses (24h Window).
+    \item \textbf{Clustering:} HDBSCAN auf Embeddings (text-embedding-3-large / gte-large-en-v1.5) — findet variable Dichte, markiert Noise.
+    \item \textbf{Representative Sampling:} Medoid pro Cluster → diverser, repräsentativer Sample.
+    \item \textbf{LLM-as-Judge Labeling:} GPT-4o/Claude-3.5 bewertet (Faithfulness, Relevance, Correctness) mit n=3 + Confidence Scoring.
+    \item \textbf{Quality Filter:} Judge Confidence > 0.8 + Consistency Check (3/3 Agreement).
+    \item \textbf{Export:} JSONL (OpenAI Eval Format) / HuggingFace Dataset → CI/CD Integration.
+\end{enumerate}
+
+Siehe auch: Evaluation Metrics — Kapitel 9, \ref{chap:evaluation}; Observability — Kapitel 15, \ref{chap:mlops_modelllebenszyklus}
+
+% ============================================================
+% THEORY DEEP DIVES
+% ============================================================
+\section{Theory \& Deep Dives}
+
+\subsection{Routing Logic — Intelligence im Gateway}
+
+\paragraph{Routing-Strategien (von einfach bis smart)}
+\begin{enumerate}
+    \item \textbf{Static Priority:} Feste Fallback-Kette (GPT-4o → Sonnet 4 → Llama-3.3-70b).
+    \item \textbf{Intent-Based (Keyword/Classifier):} "Code" → Code-Modell, "Creative" → Creative-Modell.
+    \item \textbf{Semantic Routing (Embedding Classifier):} MiniLM/BERT Embedding → Intent Classifier (<10ms, kein LLM Call). Siehe Ch12.
+    \item \textbf{Cost-Aware Routing:} \texttt{estimated\_cost < budget\_remaining} → günstiges Modell; Else Premium.
+    \item \textbf{Quality-Aware Routing:} Historische Eval-Scores pro Model/Task → Route zum besten Price/Quality Ratio.
+    \item \textbf{Weighted Multi-Provider:} 70\% Cheap Model, 30\% Premium für Quality-Sampling.
+\end{enumerate}
+
+\paragraph{Request Hedging (Tail Latency Optimization)}
+\begin{itemize}
+    \item Nach p99-Latency-Threshold (z.B. 3s) Duplicate Request an Backup-Provider.
+    \item Erste Response gewinnt; andere wird gecancelt.
+    \item Kosten: 2x API Call für Tail Requests (~1-5\% Traffic). Lohnt sich bei p99 > 10s.
+\end{itemize}
+
+Siehe auch: Semantic Caching \& Routing — Kapitel 12, \ref{chap:caching}
+
+\subsection{Rollout Strategies — Progressive Delivery für AI}
+
+\paragraph{Canary Rollout mit Quality Gates}
+\begin{enumerate}
+    \item \textbf{Pre-Flight Eval:} Candidate Config (Prompt v2, Model X) vs. Golden Dataset → Score $\ge$ Baseline × Threshold.
+    \item \textbf{Shadow Traffic:} 100~\% Traffic an Current + Candidate parallel, nur Metriken vergleichen (kein User Impact).
+    \item \textbf{Progressive Rollout:} 5~\% → 25~\% → 50~\% → 100~\% (konfigurierbare Steps + Intervalle).
+    \item \textbf{Continuous Monitoring:} Auto-Rollback bei Metrik-Violation (Error Rate > 5~\%, P99 Latency > 3× Baseline, Cost > 1.5× Baseline, Refusal Rate > 10~\%).
+    \item \textbf{Full Rollout:} Flag auf 100~\%, Baseline aktualisieren.
+\end{enumerate}
+
+\paragraph{Argo Rollouts / Flagger Integration}
+\begin{itemize}
+    \item Kubernetes-native Progressive Delivery.
+    \item AnalysisTemplate definiert Metriken + Thresholds.
+    \item Automatischer Rollback/Abort bei Violation.
+\end{itemize}
+
+\praxishinweis{Shadow Traffic (Schattenverkehr) ist sicherer als direkter Canary. 100~\% Requests an Current + Candidate parallel. User sieht nur Current Response. Candidate Metriken werden gesammelt ohne User Impact. Erst nach 24h Shadow-Analyse (keine Regressionen) startet Canary Rollout.}
+
+\subsection{Clustering Algorithms für Auto-Eval — HDBSCAN Deep Dive}
+
+\paragraph{Warum HDBSCAN nicht K-Means?}
+\begin{itemize}
+    \item K-Means: Fixes k, kugelförmige Clusters, sensitiv zu Outliers.
+    \item HDBSCAN: Hierarchisch, variable Dichte, \textbf{Noise Points explizit}, kein k nötig.
+    \item Production Logs haben variable Cluster-Dichten (FAQs = dicht, Edge Cases = sparse) + viel Rauschen.
+\end{itemize}
+
+\paragraph{Parameter Tuning für LLM Logs}
+\begin{itemize}
+    \item \texttt{min\_cluster\_size}: 10–20 (kleinere Clusters = granularere Topics).
+    \item \texttt{min\_samples}: 1–5 (niedriger = mehr Clusters, höher = konservativer).
+    \item \texttt{metric}: 'cosine' für Embeddings.
+    \item \texttt{cluster\_selection\_method}: 'eom' (Excess of Mass) oder 'leaf' (feingranularer).
+\end{itemize}
+
+\paragraph{Representative Sampling}
+\begin{itemize}
+    \item \textbf{Medoid:} Punkt mit minimaler durchschnittlicher Distanz zu allen Cluster-Mitgliedern (robust).
+    \item \textbf{Centroid:} Mittelwert der Embeddings (schneller, aber sensitiv zu Outliers).
+    \item \textbf{Max-Min Diversity:} Iterativ am weitesten entfernten Punkt wählen (für Coverage).
+\end{itemize}
+
+% ============================================================
+% PRAXIS & IMPLEMENTATION (CODE-ZENTRIERT)
+% ============================================================
+\section{Praxis \& Implementation}
+
+\subsection{Gateway Core — Multi-Provider Router mit Resilience}
+
+\begin{lstlisting}[language=Python, caption={LLM Gateway Core: Multi-Provider Router, Circuit Breaker, Fallback Chains, Rate Limiting}, label=lst:ch17_gateway_core]
+from __future__ import annotations
+import asyncio
+import time
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Optional
+import redis.asyncio as redis
+import litellm
+from litellm import acompletion
+
+class CircuitState(Enum):
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
+
+@dataclass
+class ModelConfig:
+    name: str
+    provider: str
+    tags: list[str] = field(default_factory=list)  # fast, cheap, reasoning, self-hosted
+    cost_per_1k_input: float = 0.0
+    cost_per_1k_output: float = 0.0
+    max_tokens: int = 4096
+
+@dataclass
+class CircuitBreakerState:
+    state: CircuitState = CircuitState.CLOSED
+    failures: int = 0
+    last_failure: float = 0.0
+    successes: int = 0
+
+class DistributedCircuitBreaker:
+    """Redis-backed Circuit Breaker für verteilte Instanzen."""
+    def __init__(self, redis_client: redis.Redis, model_name: str,
+                 failure_threshold: int = 5, recovery_timeout: float = 30.0,
+                 half_open_max_calls: int = 3):
+        self.redis = redis_client
+        self.key = f"circuit_breaker:{model_name}"
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.half_open_max_calls = half_open_max_calls
+
+    async def _load(self) -> CircuitBreakerState:
+        data = await self.redis.hgetall(self.key)
+        if not data:
+            return CircuitBreakerState()
+        return CircuitBreakerState(
+            state=CircuitState(data.get(b"state", b"closed").decode()),
+            failures=int(data.get(b"failures", 0)),
+            last_failure=float(data.get(b"last_failure", 0)),
+            successes=int(data.get(b"successes", 0)),
+        )
+
+    async def _save(self, state: CircuitBreakerState):
+        await self.redis.hset(self.key, mapping={
+            "state": state.state.value,
+            "failures": state.failures,
+            "last_failure": state.last_failure,
+            "successes": state.successes,
+        })
+        await self.redis.expire(self.key, int(self.recovery_timeout * 2))
+
+    async def can_execute(self) -> bool:
+        state = await self._load()
+        if state.state == CircuitState.CLOSED:
+            return True
+        if state.state == CircuitState.OPEN:
+            if time.time() - state.last_failure > self.recovery_timeout:
+                state.state = CircuitState.HALF_OPEN
+                state.successes = 0
+                await self._save(state)
+                return True
+            return False
+        # HALF_OPEN
+        return state.successes < self.half_open_max_calls
+
+    async def record_success(self):
+        state = await self._load()
+        if state.state == CircuitState.HALF_OPEN:
+            state.successes += 1
+            if state.successes >= self.half_open_max_calls:
+                state.state = CircuitState.CLOSED
+                state.failures = 0
+        await self._save(state)
+
+    async def record_failure(self):
+        state = await self._load()
+        state.failures += 1
+        state.last_failure = time.time()
+        if state.failures >= self.failure_threshold:
+            state.state = CircuitState.OPEN
+        await self._save(state)
+
+class TokenBucketRateLimiter:
+    """Redis-backed Token Bucket für User-Level + Global Rate Limiting."""
+    def __init__(self, redis_client: redis.Redis,
+                 user_rpm: int = 60, user_tpm: int = 100_000,
+                 global_rpm: int = 1000):
+        self.redis = redis_client
+        self.user_rpm = user_rpm
+        self.user_tpm = user_tpm
+        self.global_rpm = global_rpm
+
+    async def check_limit(self, user_id: str, estimated_tokens: int = 1000) -> bool:
+        now = time.time()
+        minute_key = int(now // 60)
+
+        # User Requests/Min
+        user_req_key = f"ratelimit:req:{user_id}:{minute_key}"
+        user_req = await self.redis.incr(user_req_key)
+        if user_req == 1:
+            await self.redis.expire(user_req_key, 120)
+        if user_req > self.user_rpm:
+            return False
+
+        # User Tokens/Min (Token Bucket Approximation)
+        user_tok_key = f"ratelimit:tok:{user_id}:{minute_key}"
+        user_tok = await self.redis.incrby(user_tok_key, estimated_tokens)
+        if user_tok == estimated_tokens:
+            await self.redis.expire(user_tok_key, 120)
+        if user_tok > self.user_tpm:
+            return False
+
+        # Global Requests/Min
+        global_key = f"ratelimit:req:global:{minute_key}"
+        global_req = await self.redis.incr(global_key)
+        if global_req == 1:
+            await self.redis.expire(global_key, 120)
+        if global_req > self.global_rpm:
+            return False
+
+        return True
+
+@dataclass
+class FallbackChain:
+    primary: str
+    fallbacks: list[str]  # Model names in priority order
+
+class ModelRegistry:
+    def __init__(self):
+        self.models: dict[str, ModelConfig] = {}
+        self.fallback_chains: dict[str, FallbackChain] = {}
+
+    def register(self, config: ModelConfig):
+        self.models[config.name] = config
+
+    def set_fallback_chain(self, primary: str, fallbacks: list[str]):
+        self.fallback_chains[primary] = FallbackChain(primary=primary, fallbacks=fallbacks)
+
+    def get_fallback_chain(self, model_name: str) -> FallbackChain:
+        return self.fallback_chains.get(model_name, FallbackChain(primary=model_name, fallbacks=[]))
+
+class LLMGateway:
+    """Produktionsreifer Multi-Provider Gateway."""
+    def __init__(self, redis_url: str = "redis://localhost:6379"):
+        self.redis = redis.from_url(redis_url, decode_responses=True)
+        self.registry = ModelRegistry()
+        self.circuit_breakers: dict[str, DistributedCircuitBreaker] = {}
+        self.rate_limiter = TokenBucketRateLimiter(self.redis)
+
+        # Default Models registrieren
+        self._setup_default_models()
+
+    def _setup_default_models(self):
+        self.registry.register(ModelConfig(
+            name="premium", provider="openai", model="gpt-4o",
+            tags=["premium", "reasoning"], cost_per_1k_input=2.50, cost_per_1k_output=10.00
+        ))
+        self.registry.register(ModelConfig(
+            name="fast_cheap", provider="openai", model="gpt-4o-mini",
+            tags=["fast", "cheap"], cost_per_1k_input=0.15, cost_per_1k_output=0.60
+        ))
+        self.registry.register(ModelConfig(
+            name="reasoning", provider="anthropic", model="claude-3-5-sonnet",
+            tags=["premium", "reasoning"], cost_per_1k_input=3.00, cost_per_1k_output=15.00
+        ))
+        self.registry.register(ModelConfig(
+            name="self_hosted_70b", provider="vllm", model="meta-llama/Llama-3.3-70B-Instruct",
+            tags=["self-hosted", "cheap", "private"], cost_per_1k_input=0.0, cost_per_1k_output=0.0
+        ))
+
+        # Fallback Chains
+        self.registry.set_fallback_chain("premium", ["reasoning", "fast_cheap", "self_hosted_70b"])
+        self.registry.set_fallback_chain("fast_cheap", ["self_hosted_70b", "reasoning"])
+        self.registry.set_fallback_chain("reasoning", ["premium", "fast_cheap"])
+        self.registry.set_fallback_chain("self_hosted_70b", ["fast_cheap", "premium"])
+
+        # Circuit Breaker für jedes Modell
+        for name in self.registry.models:
+            self.circuit_breakers[name] = DistributedCircuitBreaker(self.redis, name)
+
+    async def chat_completion(self, user_id: str, messages: list[dict],
+                              model: str = "auto", temperature: float = 0.1,
+                              max_tokens: int = 1024) -> dict:
+        """Haupteinstieg: Routing, CB, Fallback, Rate Limit, Cost Tracking."""
+        # 1. Model Resolution
+        target_model = self._resolve_model(model, messages)
+        config = self.registry.models[target_model]
+
+        # 2. Rate Limit Check
+        if not await self.rate_limiter.check_limit(user_id, max_tokens):
+            return {"error": "rate_limit_exceeded", "retry_after_seconds": 60}
+
+        # 3. Circuit Breaker Check
+        cb = self.circuit_breakers[target_model]
+        if not await cb.can_execute():
+            # Try Fallback
+            chain = self.registry.get_fallback_chain(target_model)
+            for fallback in chain.fallbacks:
+                fb_cb = self.circuit_breakers[fallback]
+                if await fb_cb.can_execute():
+                    target_model = fallback
+                    config = self.registry.models[target_model]
+                    cb = fb_cb
+                    break
+            else:
+                return {"error": "all_models_unavailable", "circuit_breakers_open": True}
+
+        # 4. Execute with Retry
+        for attempt in range(3):
+            try:
+                start = time.time()
+                response = await acompletion(
+                    model=config.name,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                latency_ms = (time.time() - start) * 1000
+
+                # Cost Calculation
+                usage = response.usage
+                cost = (usage.prompt_tokens / 1000 * config.cost_per_1k_input +
+                        usage.completion_tokens / 1000 * config.cost_per_1k_output)
+
+                await cb.record_success()
+
+                return {
+                    "response": response.choices[0].message.content,
+                    "model": target_model,
+                    "provider": config.provider,
+                    "tokens": {"input": usage.prompt_tokens, "output": usage.completion_tokens},
+                    "cost_usd": cost,
+                    "latency_ms": latency_ms,
+                    "fallback_used": target_model != model,
+                }
+
+            except Exception as e:
+                await cb.record_failure()
+                if attempt == 2:
+                    return {"error": "max_retries_exceeded", "details": str(e)}
+                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+
+        return {"error": "unexpected_failure"}
+
+    def _resolve_model(self, model: str, messages: list[dict]) -> str:
+        if model != "auto":
+            return model
+        # Simple heuristic: short context -> fast_cheap, long -> premium
+        total_chars = sum(len(m.get("content", "")) for m in messages)
+        if total_chars < 2000:
+            return "fast_cheap"
+        return "premium"
+\end{lstlisting}
+
+\realitycheck{In-Memory Circuit Breaker ist für Produktion unbrauchbar. State im Prozess → bei Restart/Scale-out verloren. Bei 3 Replicas hat jeder eigenen State → Inconsistente CB-Entscheidungen. Verteilter CB (Redis) teilt State: Alle Instanzen sehen gleichen State, Recovery koordiniert, keine "Split Brain" Failures.}
+
+\subsection{Feature Flag Engine mit Quality Gates \& Auto-Rollback}
+
+\begin{lstlisting}[language=Python, caption={AI Feature Flag Engine: Unleash Integration, Quality Gate, Auto-Rollback, Rollout Controller}, label=lst:ch17_feature_flags]
+from dataclasses import dataclass, field
+from typing import Literal
+import asyncio
+from unleash_client import UnleashClient
+
+@dataclass
+class AIFlag:
+    """Feature Flag für AI-Systeme mit Quality Gates und Auto-Rollback."""
+    name: str
+    flag_type: Literal["prompt_version", "model_version", "routing_rule", "feature_toggle"]
+    eval_dataset: str          # Pfad zu Golden Dataset (JSONL)
+    quality_threshold: float   # z.B. 0.90 = 90% der Baseline
+    rollout_steps: list[int] = field(default_factory=lambda: [5, 25, 50, 100])
+    rollout_interval_hours: int = 24
+    rollback_metrics: dict = field(default_factory=lambda: {
+        "error_rate": 0.05,           # > 5% in 5min
+        "p99_latency_multiplier": 3.0, # > 3x Baseline in 10min
+        "cost_multiplier": 1.5,        # > 1.5x Baseline in 60min
+        "refusal_rate": 0.10,          # > 10% in 10min
+    })
+
+class QualityGateEvaluator:
+    """Pre-Flight Evaluation gegen Golden Dataset."""
+
+    def __init__(self, evaluator_model: str = "gpt-4o"):
+        self.evaluator_model = evaluator_model
+
+    async def evaluate(self, flag: AIFlag, candidate_config: dict) -> tuple[bool, dict]:
+        """
+        Returns: (passed, metrics_dict)
+        """
+        from evaluation import run_golden_dataset  # Ch9
+        baseline_metrics = await run_golden_dataset(flag.eval_dataset, candidate_config)
+        # Simplified: Compare Faithfulness/Relevance vs Baseline
+        faithfulness = baseline_metrics.get("faithfulness", 0.0)
+        relevance = baseline_metrics.get("relevance", 0.0)
+        quality_score = (faithfulness + relevance) / 2
+        passed = quality_score >= flag.quality_threshold
+        return passed, {"faithfulness": faithfulness, "relevance": relevance, "score": quality_score}
+
+
+class AutoRollbackMonitor:
+    """Hintergrund-Task: Prüft Prod-Metriken, triggert Rollback bei Violation."""
+
+    def __init__(self, unleash: UnleashClient, prometheus_url: str):
+        self.unleash = unleash
+        self.prometheus_url = prometheus_url
+
+    async def check_and_rollback(self, flag: AIFlag) -> bool:
+        # Query Prometheus for each metric
+        violations = []
+        for metric, threshold in flag.rollback_metrics.items():
+            current = await self._query_metric(metric)
+            baseline = await self._get_baseline(metric)
+            if self._is_violation(metric, current, baseline, threshold):
+                violations.append(f"{metric}: {current:.2f} > {threshold}x baseline ({baseline:.2f})")
+
+        if violations:
+            # Kill Switch: Flag auf 0%
+            await self.unleash.update_flag(flag.name, {"percentage": 0})
+            await self._alert(violations)
+            return True
+        return False
+
+    async def _query_metric(self, metric: str) -> float:
+        # PromQL query per metric
+        pass
+
+    async def _get_baseline(self, metric: str) -> float:
+        # Load baseline from config
+        pass
+
+    def _is_violation(self, metric: str, current: float, baseline: float, threshold) -> bool:
+        if isinstance(threshold, float):
+            return current > baseline * threshold
+        return False
+
+    async def _alert(self, violations: list[str]):
+        # Slack/PagerDuty
+        pass
+
+
+class RolloutController:
+    """Orchestriert: Quality Gate → Progressive Steps → Monitoring → Completion."""
+
+    def __init__(self, unleash: UnleashClient, quality_gate: QualityGateEvaluator,
+                 rollback_monitor: AutoRollbackMonitor):
+        self.unleash = unleash
+        self.quality_gate = quality_gate
+        self.rollback_monitor = rollback_monitor
+
+    async def rollout(self, flag: AIFlag, candidate_config: dict):
+        # 1. Pre-Flight Quality Gate
+        passed, metrics = await self.quality_gate.evaluate(flag, candidate_config)
+        if not passed:
+            raise ValueError(f"Quality Gate failed: {metrics}")
+
+        # 2. Progressive Rollout
+        for step_pct in flag.rollout_steps:
+            await self.unleash.update_flag(flag.name, {"percentage": step_pct})
+            print(f"Rollout {flag.name}: {step_pct}%")
+
+            # Monitor für rollout_interval_hours
+            end_time = asyncio.get_event_loop().time() + flag.rollout_interval_hours * 3600
+            while asyncio.get_event_loop().time() < end_time:
+                await asyncio.sleep(60)
+                if await self.rollback_monitor.check_and_rollback(flag):
+                    raise RuntimeError(f"Auto-Rollback triggered for {flag.name}")
+
+        # 3. Full Rollout
+        await self.unleash.update_flag(flag.name, {"percentage": 100})
+        print(f"Rollout {flag.name} completed: 100%")
+\end{lstlisting}
+
+\paragraph{Key Classes}
+\begin{itemize}
+    \item \texttt{AIFlag} — Dataclass mit Flag-Type, Eval-Dataset, Threshold, Rollout-Steps, Rollback-Metriken.
+    \item \texttt{QualityGateEvaluator} — Pre-Flight Eval gegen Golden Dataset (relative Thresholds).
+    \item \texttt{AutoRollbackMonitor} — Hintergrund-Task, prüft Prod-Metriken (Prometheus/Langfuse) jede Minute.
+    \item \texttt{RolloutController} — Orchestriert: Quality Gate → Progressive Steps → Monitoring → Completion.
+\end{itemize}
+
+\praxishinweis{Quality Gate Threshold = 0.85–0.95 je Kritikalität. Support-Bot: 0.90. Premium-QA: 0.95. Nie 1.0 — das blockiert jeden Rollout. Relative Thresholds (Baseline × 0.9) sind robuster als absolute, da sich Baseline mit Modell-Updates verschiebt.}
+
+\subsection{Self-Healing Documentation Pipeline (GitHub Actions)}
+
+\begin{lstlisting}[language=bash, caption={GitHub Actions Workflow: Detect Changes → Generate Docs → Validate → PR → Auto-Merge}, label=lst:ch17_self_healing_docs]
+name: Self-Healing Documentation
+on:
+  schedule:
+    - cron: '0 3 * * *'  # Daily 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      drift_detected: ${{ steps.detect.outputs.drift_detected }}
+      changed_sections: ${{ steps.detect.outputs.changed_sections }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: Install deps
+        run: pip install langfuse openai hdbscan scikit-learn numpy
+      - name: Run drift detection
+        id: detect
+        env:
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python scripts/detect_doc_changes.py
+
+  generate-docs:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.drift_detected == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: Generate doc updates
+        id: generate
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python scripts/generate_doc_update.py
+      - name: Upload generated docs
+        uses: actions/upload-artifact@v4
+        with: { name: updated-docs, path: docs/_generated/ }
+
+  validate:
+    needs: generate-docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download generated docs
+        uses: actions/download-artifact@v4
+        with: { name: updated-docs, path: docs/_generated/ }
+      - name: Run validation
+        run: |
+          vale docs/_generated/
+          markdownlint docs/_generated/
+          python scripts/factuality_check.py
+
+  create-pr:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download generated docs
+        uses: actions/download-artifact@v4
+        with: { name: updated-docs, path: docs/_generated/ }
+      - name: Create PR
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: self-healing-docs-${{ github.run_id }}
+          title: "docs: auto-update from production drift"
+          body: |
+            Automatisch generierte Dokumentations-Updates basierend auf Produktions-Drift.
+            Geänderte Sektionen: ${{ needs.detect-changes.outputs.changed_sections }}
+          labels: documentation, automated
+          draft: false
+
+  auto-merge:
+    needs: create-pr
+    if: github.event.pull_request.labels.*.name contains 'automated'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge
+        uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          pull-request-number: ${{ needs.create-pr.outputs.pull-request-number }}
+          merge-method: squash
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python, caption={Drift Detection: Embedding Similarity zwischen Prod-Antworten und Doc-Sections}, label=lst:ch17_detect_changes]
+import numpy as np
+from langfuse import Langfuse
+from openai import OpenAI
+from sklearn.metrics.pairwise import cosine_similarity
+
+langfuse = Langfuse()
+client = OpenAI()
+
+def get_production_answers(hours: int = 24) -> list[dict]:
+    """Holt Traces aus Langfuse, extrahiert User-Query + Model-Answer."""
+    traces = langfuse.trace.list(
+        from_timestamp=datetime.now() - timedelta(hours=hours),
+        limit=5000,
+    )
+    qa_pairs = []
+    for trace in traces:
+        if trace.output and trace.input:
+            qa_pairs.append({
+                "query": trace.input.get("query", ""),
+                "answer": trace.output.get("content", ""),
+                "trace_id": trace.id,
+            })
+    return qa_pairs
+
+def get_document_sections(doc_path: str) -> list[dict]:
+    """Parst Markdown-Docs in Sections (Heading + Content)."""
+    sections = []
+    with open(doc_path) as f:
+        content = f.read()
+    # Simple parser: split by ## headings
+    parts = content.split("\n## ")
+    for part in parts[1:]:  # Skip first (before first ##)
+        lines = part.split("\n")
+        heading = lines[0]
+        body = "\n".join(lines[1:]).strip()
+        if body:
+            sections.append({"heading": heading, "content": body})
+    return sections
+
+def detect_drift(qa_pairs: list[dict], doc_sections: list[dict],
+                 threshold: float = 0.85) -> list[dict]:
+    """Embedding-basierte Drift-Detection."""
+    # Embed all QA answers
+    answers = [q["answer"] for q in qa_pairs]
+    answer_embeddings = embed_batch(answers)
+
+    # Embed all doc sections
+    doc_texts = [s["content"] for s in doc_sections]
+    doc_embeddings = embed_batch(doc_texts)
+
+    # For each QA pair, find max similarity to any doc section
+    drift_results = []
+    sim_matrix = cosine_similarity(answer_embeddings, doc_embeddings)
+    for i, qa in enumerate(qa_pairs):
+        max_sim = sim_matrix[i].max()
+        best_section_idx = sim_matrix[i].argmax()
+        if max_sim < threshold:
+            drift_results.append({
+                "trace_id": qa["trace_id"],
+                "query": qa["query"],
+                "answer": qa["answer"],
+                "best_match_section": doc_sections[best_section_idx]["heading"],
+                "similarity": max_sim,
+            })
+    return drift_results
+
+def embed_batch(texts: list[str]) -> np.ndarray:
+    """Batch embedding via OpenAI text-embedding-3-large."""
+    embeddings = []
+    for i in range(0, len(texts), 100):
+        batch = texts[i:i+100]
+        resp = client.embeddings.create(
+            model="text-embedding-3-large",
+            input=batch,
+        )
+        embeddings.extend([np.array(d.embedding) for d in resp.data])
+    return np.array(embeddings)
+
+if __name__ == "__main__":
+    qa_pairs = get_production_answers(24)
+    doc_sections = get_document_sections("docs/support_faq.md")
+    drift = detect_drift(qa_pairs, doc_sections, 0.85)
+
+    # Output for next step
+    import json
+    with open("drift_report.json", "w") as f:
+        json.dump(drift, f)
+    print(f"Drift detected in {len(drift)} cases")
+
+    # Set GitHub Actions output
+    import os
+    with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+        f.write(f"drift_detected={str(len(drift) > 0).lower()}\n")
+        f.write(f"changed_sections={json.dumps([d['best_match_section'] for d in drift])}\n")
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python, caption={LLM-basierte Doc-Aktualisierung aus QA-Pairs}, label=lst:ch17_generate_docs]
+import json
+from openai import OpenAI
+
+client = OpenAI()
+
+def generate_doc_update(drift_report_path: str, doc_path: str) -> str:
+    """Generiert aktualisiertes Markdown für gedriftete Sektionen."""
+    with open(drift_report_path) as f:
+        drift = json.load(f)
+    with open(doc_path) as f:
+        current_doc = f.read()
+
+    # Group drift by section
+    from collections import defaultdict
+    by_section = defaultdict(list)
+    for d in drift:
+        by_section[d["best_match_section"]].append(d)
+
+    updated_sections = {}
+    for section, cases in by_section.items():
+        # Build prompt: QA pairs + current section
+        qa_pairs_text = "\n\n".join(
+            f"User: {c['query']}\nBot: {c['answer']}" for c in cases
+        )
+        prompt = f"""Du aktualisierst Dokumentation basierend auf echten Produktions-QA-Pairs.
+
+AKTUELLE SEKTION:
+{get_section_content(current_doc, section)}
+
+NEUE QA-PAIRS AUS PRODUKTION:
+{qa_pairs_text}
+
+AUFGABE: Aktualisiere die Sektion so, dass sie die neuen Antworten widerspiegelt.
+REGELN:
+- Nur Fakten aus QA-Pairs übernehmen, keine Halluzinationen
+- Bestehende Struktur/Ton beibehalten
+- Ausgabe: NUR das aktualisierte Markdown für diese Sektion
+"""
+        resp = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+        )
+        updated_sections[section] = resp.choices[0].message.content
+
+    # Rebuild full doc
+    new_doc = rebuild_document(current_doc, updated_sections)
+    return new_doc
+
+def get_section_content(doc: str, heading: str) -> str:
+    # Extract section by heading
+    pass
+
+def rebuild_document(doc: str, updated: dict) -> str:
+    # Replace sections
+    pass
+
+if __name__ == "__main__":
+    new_doc = generate_doc_update("drift_report.json", "docs/support_faq.md")
+    with open("docs/_generated/support_faq.md", "w") as f:
+        f.write(new_doc)
+\end{lstlisting}
+
+\paragraph{Validierungspipeline}
+\begin{enumerate}
+    \item \textbf{Style Check:} Vale (Style-Guide), Markdownlint (Syntax).
+    \item \textbf{Factuality Check:} LLM-as-Judge prüft: "Stimmt generierter Content mit QA-Pairs überein?"
+    \item \textbf{Link Check:} Keine toten Links.
+    \item \textbf{Human-in-the-Loop:} PR requires Reviewer Approval (Docs-Team) vor Auto-Merge. Auto-Merge nur bei allen Checks grün.
+\end{enumerate}
+
+\warnung{Halluzinationen in Docs sind gefährlich. Mehrstufige Validation ist Pflicht: (1) Source Grounding im Prompt, (2) Vale/Markdownlint, (3) LLM-as-Judge Factuality, (4) Human Review. Auto-Merge nur bei allen grün.}
+
+\subsection{Auto-Eval Dataset Builder}
+
+\begin{lstlisting}[language=Python, caption={Auto-Eval Pipeline: Log Ingestion → HDBSCAN Clustering → Medoid Sampling → LLM-as-Judge Labeling → Quality Filter → Dataset Export}, label=lst:ch17_auto_eval_builder]
+import json
+import numpy as np
+import hdbscan
+from langfuse import Langfuse
+from openai import OpenAI
+from sklearn.metrics.pairwise import cosine_similarity
+
+langfuse = Langfuse()
+client = OpenAI()
+
+def fetch_production_logs(days: int = 7) -> list[dict]:
+    """Holt alle Traces der letzten N Tage."""
+    traces = langfuse.trace.list(
+        from_timestamp=datetime.now() - timedelta(days=days),
+        limit=20000,
+    )
+    return [
+        {
+            "trace_id": t.id,
+            "query": t.input.get("query", ""),
+            "answer": t.output.get("content", ""),
+            "metadata": t.metadata,
+        }
+        for t in traces if t.output and t.input
+    ]
+
+def cluster_queries(logs: list[dict]) -> tuple[np.ndarray, np.ndarray]:
+    """HDBSCAN Clustering auf Query-Embeddings."""
+    queries = [log["query"] for log in logs]
+    embeddings = embed_batch(queries)
+
+    clusterer = hdbscan.HDBSCAN(
+        min_cluster_size=15,
+        min_samples=3,
+        metric='cosine',
+        cluster_selection_method='eom',
+    )
+    labels = clusterer.fit_predict(embeddings)
+    return labels, embeddings
+
+def sample_medoids(logs: list[dict], labels: np.ndarray,
+                   embeddings: np.ndarray, max_samples: int = 200) -> list[dict]:
+    """Wählt Medoid (zentralster Punkt) pro Cluster."""
+    from collections import defaultdict
+    cluster_indices = defaultdict(list)
+    for i, label in enumerate(labels):
+        if label >= 0:  # Ignore noise (-1)
+            cluster_indices[label].append(i)
+
+    samples = []
+    for label, indices in cluster_indices.items():
+        cluster_embs = embeddings[indices]
+        # Medoid: point with min average distance to others
+        dist_matrix = 1 - cosine_similarity(cluster_embs)
+        medoid_idx = indices[dist_matrix.mean(axis=1).argmin()]
+        samples.append(logs[medoid_idx])
+
+    # Limit total samples
+    if len(samples) > max_samples:
+        # Diversity sampling
+        samples = diversify_samples(samples, max_samples)
+    return samples
+
+def label_with_llm(samples: list[dict], n_judges: int = 3) -> list[dict]:
+    """LLM-as-Judge Labeling mit Confidence Scoring."""
+    judges = ["gpt-4o", "claude-3-5-sonnet", "gemini-1.5-pro"]
+    labeled = []
+
+    for sample in samples:
+        judge_scores = []
+        for judge in judges[:n_judges]:
+            prompt = f"""Bewerte die Antwort auf Skala 1-10.
+Frage: {sample['query']}
+Antwort: {sample['answer']}
+Kriterien: Faithfulness, Relevance, Correctness
+Gib JSON zurück: {{\"faithfulness\": 1-10, \"relevance\": 1-10, \"correctness\": 1-10, \"confidence\": 0.0-1.0}}"""
+            resp = client.chat.completions.create(
+                model=judge,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
+                response_format={"type": "json_object"},
+            )
+            judge_scores.append(json.loads(resp.choices[0].message.content))
+
+        # Aggregate
+        avg_scores = {k: np.mean([s[k] for s in judge_scores]) for k in judge_scores[0]}
+        confidence = avg_scores.pop("confidence")
+        consistency = len(set(tuple(sorted(s.items())) for s in judge_scores)) == 1
+
+        if confidence > 0.8 and consistency:
+            sample.update({
+                "golden_scores": avg_scores,
+                "judge_confidence": confidence,
+                "judge_consistency": consistency,
+            })
+            labeled.append(sample)
+
+    return labeled
+
+def export_dataset(labeled: list[dict], version: int) -> str:
+    """Export als JSONL im OpenAI Eval Format."""
+    output_path = f"eval_datasets/golden_v{version}.jsonl"
+    with open(output_path, "w") as f:
+        for item in labeled:
+            f.write(json.dumps({
+                "id": item["trace_id"],
+                "input": item["query"],
+                "expected": {"reference_answer": item["answer"]},
+                "metadata": {
+                    "faithfulness": item["golden_scores"]["faithfulness"],
+                    "relevance": item["golden_scores"]["relevance"],
+                    "correctness": item["golden_scores"]["correctness"],
+                    "source": "auto_eval",
+                    "version": version,
+                }
+            }) + "\n")
+    return output_path
+
+if __name__ == "__main__":
+    logs = fetch_production_logs(7)
+    labels, embeddings = cluster_queries(logs)
+    samples = sample_medoids(logs, labels, embeddings, 200)
+    labeled = label_with_llm(samples)
+    path = export_dataset(labeled, version=2)  # Auto-increment
+    print(f"Generated {len(labeled)} golden cases → {path}")
+\end{lstlisting}
+
+\paragraph{Pipeline-Schritte im Detail}
+\begin{enumerate}
+    \item \textbf{Log Ingestion:} Langfuse/Helicone SDK → letzte 7 Tage Traces.
+    \item \textbf{Clustering:} HDBSCAN auf Embeddings — findet Topics ohne festes k, markiert Noise (seltene/fehlerhafte Queries).
+    \item \textbf{Sampling:} Medoid pro Cluster (robust) → 200 Samples gesamt.
+    \item \textbf{Labeling:} GPT-4o/Claude-3.5/Gemini, n=3, Confidence Scoring.
+    \item \textbf{Quality Filter:} Confidence > 0.8 + Consistency 3/3 Agreement.
+    \item \textbf{Export:} JSONL v\{N+1\} versioniert, Baseline aktualisiert.
+\end{enumerate}
+
+\realitycheck{Golden Datasets veralten in Wochen. Production Logs sind kostenlos, repräsentativ, decken echte Edge Cases ab. Auto-Eval Pipeline läuft wöchentlich, neues Dataset versioniert (v1, v2, …), Baseline aktualisiert. Ohne Automatisierung evalust du gegen 6 Monate alte Daten.}
+
+% ============================================================
+% BEST PRACTICES
+% ============================================================
+\section{Best Practices}
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Gateway First, nicht Last.} Baue den Gateway \textit{vor} dem ersten LLM-Call. Nachträgliches Einbauen kostet 10x mehr.
+    \item \textbf{Unified API = OpenAI Format.} Alle Provider auf OpenAI Chat Completions Interface mappen. Vermeidet Vendor-SDK-Lock-in im App-Code.
+    \item \textbf{Cost Tracking pro Request.} Jeder Gateway-Response liefert \texttt{cost\_usd}, \texttt{tokens}, \texttt{latency\_ms}. Ohne Cost-Metric fliegst du blind.
+    \item \textbf{Feature Flags für alles Probabilistische.} Prompt, Model, Temperature, Retrieval-Config, Guardrails — alles flag-gesteuert.
+    \item \textbf{Quality Gate vor Rollout.} Nie ohne Eval-Score deployen. Baseline = Current Production Config. Threshold = 0.85–0.95 je Kritikalität.
+    \item \textbf{Auto-Rollback ist Pflicht, nicht Nice-to-Have.} Definiere 4–5 Key Metriken (Error Rate, P99 Latency, Cost/Query, Refusal Rate, Quality Score) mit Multiplikatoren.
+\item \textbf{Shadow Traffic vor Canary.} 100~\% Shadow für 24h deckt Regressionen auf, ohne User Impact.
+\item \textbf{Self-Healing Docs als CI Job.} Täglich 03:00 UTC. Threshold 0.85 Cosine Similarity. Vale + Markdownlint + LLM-Judge als Quality Gates.
+\item \textbf{Golden Dataset Refresh Weekly.} Auto-Eval Pipeline läuft wöchentlich, neues Dataset versioniert (v1, v2, …), Baseline aktualisiert.
+\item \textbf{Observability vom Gateway aus.} Ein Trace: Gateway Request → Provider Call → Cache Hit/Miss → Fallback? → Response. Alles in einem Trace (Observability-Stack: Kapitel 15).
+\end{enumerate}
+
+% ============================================================
+% ANTI-PATTERNS
+% ============================================================
+\section{Anti-Patterns}
+
+\begin{itemize}
+    \item \textbf{Single-Provider Hardcoding.} \texttt{openai.ChatCompletion.create()} direkt im Business Code. Fix: Gateway Abstraction Layer.
+    \item \textbf{In-Memory Circuit Breaker.} State im Prozess → bei Restart/Scale-out verloren. Fix: Redis-backed, distributed State.
+    \item \textbf{Kein Cost Budget pro User/Tag.} Ein Bug im Agent-Loop → \$50k/Tag. Fix: Token Bucket Rate Limiter (User + Global) im Gateway.
+    \item \textbf{Prompt Changes = Code Deploy.} Prompt im Python String → Jede Änderung = PR + Deploy. Fix: Prompt Templates in DB/Config + Feature Flag.
+    \item \textbf{Canary ohne Quality Gate.} 5\% Traffic auf neuen Prompt, aber kein Eval vorab. Fix: Pre-Flight Eval gegen Golden Dataset.
+    \item \textbf{Auto-Rollback nur auf Error Rate.} Latenz, Cost, Refusal Rate, Quality Score werden ignoriert. Fix: Multi-Metric Rollback Config.
+    \item \textbf{Docs manuell pflegen.} "Wir aktualisieren Docs beim nächsten Sprint." Nie passiert. Fix: Self-Healing Pipeline.
+    \item \textbf{Golden Dataset nie aktualisieren.} Eval läuft gegen 6 Monate alte Daten. Fix: Weekly Auto-Eval Pipeline aus Prod Logs.
+    \item \textbf{Kein Request Hedging bei Tail Latency.} p99 = 30s, User wartet. Fix: Hedging nach p99-Threshold an Backup-Provider.
+    \item \textbf{Alle Traffic auf ein Modell.} Kein Tiering, kein Cost-Aware Routing. Fix: Routing Logic mit Tags (fast/cheap/premium/reasoning).
+\end{itemize}
+
+% ============================================================
+% ZUSAMMENFASSUNG
+% ============================================================
+\begin{zusammenfassungEnv}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{LLM Gateway} ist die zentrale Abstraktionsschicht: Unified API, Resilience (Circuit Breaker, Fallbacks, Rate Limits), Observability, Cost Control.
+    \item \textbf{AI Feature Flags} entkoppeln Prompt/Model/Routing-Änderungen von Code-Deployments. Quality Gates (Eval-Score) + Auto-Rollback (Multi-Metric) machen Rollouts sicher.
+    \item \textbf{Self-Healing Documentation} schließt die Lücke zwischen Production-Verhalten und Nutzer-Dokumentation. Embedding-Drift-Detection + LLM-Generation + PR-Automation.
+    \item \textbf{Auto-Eval Dataset Builder} verwandelt Production Logs in aktuelle Golden Datasets. HDBSCAN Clustering + LLM-as-Judge Labeling ersetzt manuelles Labeling.
+    \item \textbf{Architektur-Prinzip:} External Dependencies (Provider) sind unzuverlässig → Gateway absorbiert Volatilität. Probabilistische Outputs → Continuous Evaluation. Kosten pro Request → Cost-Aware Routing + Budgets.
+\end{itemize}
+\end{zusammenfassungEnv}
+
+
+\par\mbox{}\par
+\begin{merkeEnv}
+\begin{enumerate}
+    \item \textbf{Gateway = Infrastruktur, nicht Feature.} Baue es zuerst. Ohne Gateway hast du Vendor Lock-in, keine Resilience, keine Cost Control.
+    \item \textbf{Feature Flags für AI $\neq$ Feature Flags für Code.} Sie steuern probabilistisches Verhalten. Brauchen Quality Gates (Eval) und Auto-Rollback (Metrics).
+    \item \textbf{Production Logs > Synthetische Eval-Daten.} Echte User-Queries decken Edge Cases ab, die du dir nicht ausdenkst. Automatisiere die Pipeline.
+    \item \textbf{Self-Healing Docs zahlen sich aus.} Drift Detection + LLM Update + Auto-PR hält Docs aktuell ohne manuellen Aufwand. Threshold 0.85 Cosine Similarity.
+    \item \textbf{Cost-Aware Routing ist der Hebel.} 70~\% Traffic auf günstiges Modell, 30~\% auf Premium für Quality — spart 60–80~\% Kosten bei gleicher Qualität.
+    \item \textbf{Auto-Rollback auf 4+ Metriken.} Error Rate, P99 Latency, Cost/Query, Refusal Rate. Eine Metrik alleine blendet Regressionen aus.
+\end{enumerate}
+\end{merkeEnv}
+
+% ============================================================
+% PRAXISPROJEKT
+% ============================================================
+\section{Praxisprojekt — Produktionsreifer LLM Gateway mit Feature Flags \& Self-Healing Docs}
+
+\textbf{Ziel:} Ein vollständiger LLM Gateway Service mit Multi-Provider Routing, AI Feature Flags (Canary + Quality Gate + Auto-Rollback), und Self-Healing Documentation Pipeline — deployed via Docker Compose / Kubernetes.
+
+\subsection*{Aufgaben}
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Gateway Core:} Implementiere \texttt{LLMGateway} Klasse (LiteLLM + Redis Circuit Breaker + Fallback Chains + Token Bucket Rate Limiter + Cost Tracking). Endpoint: \texttt{POST /v1/chat/completions} (OpenAI-kompatibel).
+    \item \textbf{Model Registry:} Konfiguriere 4 Modelle: Premium-Modell (z.B. GPT-4o), Fast/Cheap-Modell (z.B. GPT-4o-mini), Reasoning-Modell (z.B. Claude Sonnet 4), Self-hosted 70B-Modell (z.B. Llama-3.3-70b). Tags: \texttt{fast}, \texttt{cheap}, \texttt{reasoning}, \texttt{self-hosted}.
+    \item \textbf{Fallback Chains:} Premium → Reasoning → Fast/Cheap → Self-hosted 70B. Circuit Breaker Threshold: 5 Failures, Recovery: 30s.
+    \item \textbf{Rate Limiting:} User: 60 req/min, 100k tokens/hour. Global: 1000 req/min. Redis-backed Token Bucket.
+    \item \textbf{AI Feature Flags:} Integriere Unleash. Definiere 3 Flags: \texttt{support-bot-prompt-v2}, \texttt{model-premium-to-reasoning}, \texttt{enable-semantic-cache}. Je Flag: Eval Dataset, Min Score Threshold, Rollout Steps [5, 25, 50, 100], Auto-Rollback Metriken.
+    \item \textbf{Quality Gate:} Pre-Flight Eval gegen Golden Dataset (Langfuse/JSONL). Metric: Faithfulness/Relevance. Threshold: 90~\% of Baseline.
+    \item \textbf{Auto-Rollback Monitor:} Hintergrund-Task prüft alle 60s Prometheus Metriken. Bei Violation → Flag Percentage auf 0, Alert an Slack/PagerDuty.
+    \item \textbf{Self-Healing Docs Pipeline:} GitHub Action (Daily 03:00 UTC). Observability Traces → Embedding Similarity (text-embedding-3-large) vs. Docs → Threshold 0.85 → LLM Doc Update → Vale + Markdownlint + LLM-Judge → PR → Auto-Merge on Green.
+    \item \textbf{Auto-Eval Dataset Builder:} Weekly Job. Observability Logs (7d) → HDBSCAN Clustering → Medoid Sampling (200 Samples) → LLM-as-Judge (GPT-4o, n=3) → Quality Filter (Confidence > 0.8, Consistency 3/3) → Export JSONL v\{N+1\}.
+    \item \textbf{Observability:} Prometheus Metriken (Requests, Latency, Cost, Errors, Fallback Rate, CB State). Grafana Dashboard: Overview + Per-Model + Per-Flag. Observability-Stack (Kapitel 15) für jeden Request.
+    \item \textbf{Deployment:} Docker Compose (Gateway, Redis, Prometheus, Grafana, Unleash, Observability-Stack). Kubernetes Manifests (Deployment, Service, HPA, ConfigMap, Secret).
+\end{enumerate}
+
+\subsection*{Erfolgskriterien (Definition of Done)}
+
+\begin{itemize}
+    \item \checkmark Gateway returned OpenAI-kompatible Responses für alle 4 Provider.
+    \item \checkmark Circuit Breaker öffnet nach 5 Fehlern, Fallback triggert, Half-Open nach 30s, Closed nach 3 Successes.
+    \item \checkmark Rate Limiting blockiert User bei 61. Request/Min mit 429.
+    \item \checkmark Feature Flag \texttt{support-bot-prompt-v2} rollt 5~\% → 25~\% → 50~\% → 100~\% mit Quality Gate (Eval Score $\ge$ 0.9 × Baseline).
+    \item \checkmark Auto-Rollback triggert bei künstlich erzeugter Error Rate > 5~\% (Chaos Test: inject 10~\% Errors).
+    \item \checkmark Self-Healing Pipeline erkennt Drift (geänderte FAQ Antwort), erstellt PR, merged nach Checks.
+    \item \checkmark Auto-Eval Builder erzeugt v2 Dataset mit 200 Samples, Quality > 0.85, Export nach JSONL.
+    \item \checkmark Grafana Dashboard zeigt Live: Cost/Query, P50/P99 Latency, Error Rate, Fallback \%, CB States.
+    \item \checkmark Kubernetes Deployment: HPA (CPU > 70~\%), Readiness Probe (Gateway Health + Provider Reachability), Rolling Update (maxSurge=1, maxUnavailable=0).
+\end{itemize}
+
+\subsection*{Erweiterung (Bonus)}
+
+\begin{itemize}
+    \item Request Hedging: Nach p99 Latency (3s) Duplicate Request an Backup-Provider.
+    \item Semantic Routing: Embedding Classifier (MiniLM) für Intent Detection (<10ms).
+    \item Cost-Aware Routing: User Budget \$5/Tag → Gateway routet automatisch zu günstigerem Modell bei Budget-Erschöpfung.
+    \item Shadow Traffic: 100~\% Traffic an Current + Candidate, Metrik-Vergleich ohne User Impact.
+    \item Multi-LoRA Hot-Swap via Gateway (Vorbereitung Ch18).
+\end{itemize}
+
+% ============================================================
+% INTERVIEWFRAGEN
+% ============================================================
+\section{Interviewfragen}
+
+\subsection*{F1: Warum reicht ein In-Memory Circuit Breaker nicht für LLM Gateways in Produktion?}
+\textbf{Antwort:} In-Memory State geht bei Restart/Scale-out verloren. Bei 3 Replicas hat jeder eigenen State → Inconsistente CB-Entscheidungen. Verteilter CB (Redis) teilt State: Alle Instanzen sehen gleichen State, Recovery koordiniert, keine "Split Brain" Failures.
+
+\subsection*{F2: Was ist der Unterschied zwischen klassischem Feature Flag und AI Feature Flag?}
+\textbf{Antwort:} Klassische Flags steuern deterministischen Code-Pfad (An/Aus). AI Flags steuern probabilistisches Verhalten (Prompt, Model, Temperature, Retrieval Config). Deshalb brauchen AI Flags: (1) Quality Gates (Eval vor Rollout), (2) Auto-Rollback auf Business Metriken (Cost, Latency, Quality), (3) Canary/Shadow Traffic Support, (4) Gradual Rollout mit Metrik-Monitoring pro Step.
+
+\subsection*{F3: Wie funktioniert HDBSCAN und warum ist es besser als K-Means für Production Log Clustering?}
+\textbf{Antwort:} HDBSCAN baut Hierarchie von Dichte-basierten Clustern, extrahiert stabile Clusters über Dichte-Ebenen (Excess of Mass). Vorteile: Kein k nötig, findet variable Dichten (FAQs dicht, Edge Cases sparse), markiert Noise explizit (Outliers = seltene/fehlerhafte Queries), robust gegen Outliers. K-Means zwingt kugelförmige Clusters, fixed k, sensitiv zu Outliers.
+
+\subsection*{F4: Was sind die 4 kritischen Metriken für Auto-Rollback bei AI Feature Flags?}
+\textbf{Antwort:} (1) \textbf{Error Rate} > 5~\% (5min Window) — harte Fehler. (2) \textbf{P99 Latency} > 3× Baseline (10min Window) — Tail Degradation. (3) \textbf{Cost/Query} > 1.5× Baseline (60min Window) — Kostenexplosion. (4) \textbf{Refusal Rate} > 10~\% (10min Window) — Modell verweigert (Safety/Alignment Drift). Optional: Quality Score (Faithfulness/Relevance) < 0.8 × Baseline.
+
+\subsection*{F5: Wie verhindert man, dass Self-Healing Docs Halluzinationen in die Dokumentation schreiben?}
+\textbf{Antwort:} Mehrstufige Validation: (1) \textbf{Source Grounding:} LLM Prompt verbietet Halluzinationen — "Nur Fakten aus QA-Pairs übernehmen". (2) \textbf{Vale/Markdownlint:} Style, Links, Struktur. (3) \textbf{LLM-as-Judge Factuality Check:} Zweiter LLM Call prüft: "Stimmt generierter Content mit QA-Pairs überein?" (4) \textbf{Human-in-the-Loop:} PR requires Reviewer Approval (Docs-Team) vor Auto-Merge. Auto-Merge nur bei allen Checks grün.
+
+\subsection*{F6: Was ist Request Hedging und wann lohnt es sich?}
+\textbf{Antwort:} Nach p99-Latency-Threshold (z.B. 3s) wird identischer Request an Backup-Provider gesendet. Erste Response gewinnt. Kostet ~1–5~\% Extra API Calls (nur Tail Requests). Lohnt sich wenn p99 > 10s und User-facing Latency kritisch ist (Chat, Search). Nicht lohnen bei Batch/Async Workloads.
+
+\subsection*{F7: Wie designst du Cost-Aware Routing ohne Quality-Verlust?}
+\textbf{Antwort:} (1) \textbf{Tag Models:} cheap/fast/premium/reasoning/self-hosted. (2) \textbf{Task Classification:} Simple QA → cheap; Complex Reasoning → premium; Code → code-specialized. (3) \textbf{Budget Enforcement:} User/Day Budget im Gateway → bei Erschöpfung Auto-Downgrade zu cheap Model. (4) \textbf{Quality Sampling:} 10–30~\% Traffic immer auf Premium für Quality Monitoring. (5) \textbf{Continuous Eval:} Täglicher Auto-Eval Report vergleicht Cheap vs. Premium Quality Gap.
+
+\subsection*{F8: Warum ist Shadow Traffic (Mirroring) sicherer als direkter Canary?}
+\textbf{Antwort:} Shadow Traffic sendet 100\% Requests an Current + Candidate parallel. User sieht nur Current Response. Candidate Metriken (Latency, Cost, Quality, Errors) werden gesammelt ohne User Impact. Erst nach 24h Shadow-Analyse (keine Regressionen) startet Canary Rollout. Canary ohne Shadow risikiert echte User bei Regressionen.
+
+% ============================================================
+% WEITERFÜHRENDE RESSOURCEN
+% ============================================================
+\section{Ressourcen}
+
+\subsection*{Gateway \& Multi-Provider Routing}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{LiteLLM Documentation:} \url{https://docs.litellm.ai} — Gateway Implementation Reference, 100+ Provider, Fallbacks, Budgets, Callbacks.
+    \item \textbf{Portkey Blog — "Building a Production LLM Gateway":} \url{https://portkey.ai/blog} — Architecture Patterns, Caching, Fallbacks, Virtual Keys.
+    \item \textbf{Helicone Docs:} \url{https://docs.helicone.ai} — Observability-first Gateway, Prompt Management, Caching.
+\end{itemize}
+
+\subsection*{Feature Flags \& Progressive Delivery}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Unleash Docs — "Feature Flags for AI Applications":} \url{https://docs.getunleash.io} — Strategies, Gradual Rollout, Kill Switches, AI-specific Use Cases.
+    \item \textbf{Argo Rollouts / Flagger:} Kubernetes-native Progressive Delivery — AnalysisTemplates, Metric Providers (Prometheus, Datadog), Automated Rollback.
+\end{itemize}
+
+\subsection*{Evaluation, Clustering \& Observability}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{HDBSCAN Paper:} Campello et al. (2013) "Hierarchical Density Estimates for Data Clustering" — Theoretische Grundlage für Variable-Density Clustering.
+    \item \textbf{LLM-as-Judge:} Zheng et al. (2024) "Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena" — GPT-4 Judge korreliert 0.85+ mit Human Preference; Konsistenz durch n=3 + Confidence.
+    \item \textbf{Google — "Continuous Evaluation of Language Models in Production" (2024):} Shadow Evaluation + Canary + Auto-Rollback = Production Quality ohne Manual Gates.
+    \item \textbf{Anthropic — "Prompt Caching \& Evaluations":} \url{https://docs.anthropic.com} — Prompt Caching (90~\% Prefill Latency Reduction), Eval Framework für Regression Testing.
+    \item \textbf{Databricks — "Building LLM Applications with MLflow \& Gateway" (2024):} MLflow Gateway für Multi-Provider Routing + Evaluation Tracking + Model Registry Integration.
+\end{itemize}
+
+\subsection*{Self-Healing Documentation \& CI/CD}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{GitHub Actions — "Automated Documentation Updates" (2024):} Actions + LLM für Doc-Generation aus Code/Logs — PR-basiert, review-gated, auditierbar.
+    \item \textbf{Vale + Markdownlint:} Style-Guide Enforcement + Syntax-Check für generierte Docs.
+\end{itemize}
+
+\subsection*{Tool-Vergleichstabellen}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXXX}
+\toprule
+\textbf{Tool} & \textbf{Typ} & \textbf{Stärken} & \textbf{Schwächen} \\
+\midrule
+LiteLLM & Python Proxy / SDK & 100+ Provider, OpenAI-kompatibel, Fallbacks, Rate Limits, Budgets, Callbacks & Single-Process (skaliert via Replicas), keine native K8s CRDs \\
+Portkey & Managed Gateway (SaaS/Self-hosted) & Analytics, Caching, Fallbacks, Virtual Keys, Prompt Templates, Canary & Closed Source Core, Pricing bei Scale \\
+Helicone & Observability + Gateway & Open Source, Logging, Caching, Rate Limits, Prompt Management & Weniger Routing-Features als LiteLLM \\
+Langfuse Gateway & Observability-First & Tracing, Evals, Prompt Management, Datasets & Gateway-Features noch jung \\
+\bottomrule
+\end{tabularx}
+\caption{LLM Gateway / Multi-Provider Router Vergleich}
+\label{tab:ch17_gateway_tools}
+\end{table}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXXX}
+\toprule
+\textbf{Tool} & \textbf{Typ} & \textbf{Stärken} & \textbf{Schwächen} \\
+\midrule
+Unleash & Open Source (Self-hosted) & Enterprise Features kostenlos, Strategies (UserID, IP, Custom), API, Webhooks & UI weniger poliert als LaunchDarkly \\
+LaunchDarkly & SaaS & Best-in-class UI, Experimentation, Data Export, Integrations & Teuer (\$\$\$), Vendor Lock-in \\
+GrowthBook & Open Source / SaaS & A/B Testing Focus, SQL-basiert, Visual Editor & Feature Flag Features Basis \\
+Flagsmith & Open Source / SaaS & Simple, Segments, Multivariate Flags & Weniger Enterprise Features \\
+\bottomrule
+\end{tabularx}
+\caption{AI Feature Flag Tools Vergleich}
+\label{tab:ch17_flag_tools}
+\end{table}
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\linewidth}{lXXX}
+\toprule
+\textbf{Komponente} & \textbf{Zweck} & **Empfohlen** & \textbf{Alternative} \\
+\midrule
+Log Source & Production Traces & Langfuse / Helicone & LangSmith, Custom \\
+Clustering & Topic Discovery & HDBSCAN (cosine) & K-Means (fixed k) \\
+Sampling & Representative Selection & Medoid (robust) & Centroid (schneller) \\
+LLM Judge & Auto-Labeling & GPT-4o + Claude + Gemini (n=3) & Single Judge (Bias) \\
+Validation & Quality Gates & Confidence > 0.8 + 3/3 Consistency & Threshold only \\
+Export & CI/CD Integration & JSONL (OpenAI Eval) / HF Dataset & CSV \\
+\bottomrule
+\end{tabularx}
+\caption{Auto-Eval Dataset Builder Pipeline Komponenten}
+\label{tab:ch17_autoeval_components}
+\end{table}
+
+% ============================================================
+% NÄCHSTER SCHRITT
+% ============================================================
+
+\par
+\begin{autornotizEnv}
+Nächstes Kapitel: Production Checklist — Der Pre-Flight-Check für jeden Deploy. Design, Development, Security, Production, Evaluation, Governance, Kosten — alles auf einem Blatt. Dein Checklist-Workflow für Zero-Surprise-Deployments.
+\end{autornotizEnv}
+
+\textbf{Nächster Schritt:} Mit Gateway, Feature Flags, Self-Healing Docs und Auto-Eval hast du die Produktions-Infrastruktur für LLM-Systeme beherrscht. Der letzte Schritt ist die Production Checklist: Dein Pre-Flight-Check für jeden Deploy.
+
+\endinput

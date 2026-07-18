@@ -79,7 +79,7 @@ Die eigentliche Frage ist nicht "welches Modell" sondern "welches Deployment-Mod
 \textbf{Szenario} & \textbf{Empfohlen} & \textbf{Warum} & \textbf{Risiko} \\
 \midrule
 Startups \& MVP & Cloud API (OpenAI, Anthropic) & Kein Infrastruktur-Overhead, sofort einsatzbereit & Vendor-Lock-in, Kostenexplosion bei Scale \\
-Mid-Size mit PII-Daten & Self-hosted Llama/Mistral & Daten verlassen niemals den Server & GPU-Kosten,运维-Overhead \\
+Mid-Size mit PII-Daten & Self-hosted Llama/Mistral & Daten verlassen niemals den Server & GPU-Kosten, Ops-Overhead \\
 Geringe Latenz nötig & Edge oder Cloud Inference & Sub-100ms für Edge, \textless{} 200ms für Cloud Inference & Limitierte Modellgrösse (Edge) \\
 \textgreater{} 1M Requests/Tag & Self-hosted oder Hybrid & Kosteneffizienz bei Scale & Hohe Initialinvestition \\
 Regulierte Industrie & Self-hosted + PII-Filtering & Compliance-Nachweis, vollständige Audit-Trails & Komplexität \\
